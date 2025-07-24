@@ -1,0 +1,42 @@
+{
+  "feature": {
+    "name": "",
+    "tier": "",
+    "description": "",
+    "path": ""
+  },
+  "documentation": {
+    "requirements": {
+      "status": "not_started",
+      "path": "",
+      "lastUpdated": "",
+      "userStories": [],
+      "acceptanceCriteria": []
+    },
+    "design": {
+      "status": "not_started",
+      "path": "",
+      "lastUpdated": "",
+      "components": [],
+      "dataModels": [],
+      "integrationPoints": []
+    },
+    "tasks": {
+      "status": "not_started",
+      "path": "",
+      "lastUpdated": "",
+      "majorTasks": [],
+      "totalTasks": 0
+    }
+  },
+  "process": {
+    "started": "",
+    "completed": "",
+    "currentPhase": "research"
+  },
+  "codebase": {
+    "relevantFiles": [],
+    "primaryComponents": [],
+    "dependencies": []
+  }
+}

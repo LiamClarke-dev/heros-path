@@ -1,0 +1,48 @@
+{
+  "cli": {
+    "version": ">= 7.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "GOOGLE_MAPS_API_KEY_IOS": "$GOOGLE_MAPS_API_KEY_IOS",
+        "GOOGLE_MAPS_API_KEY_ANDROID": "$GOOGLE_MAPS_API_KEY_ANDROID"
+      },
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "GOOGLE_MAPS_API_KEY_IOS": "$GOOGLE_MAPS_API_KEY_IOS",
+        "GOOGLE_MAPS_API_KEY_ANDROID": "$GOOGLE_MAPS_API_KEY_ANDROID"
+      },
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "env": {
+        "GOOGLE_MAPS_API_KEY_IOS": "$GOOGLE_MAPS_API_KEY_IOS",
+        "GOOGLE_MAPS_API_KEY_ANDROID": "$GOOGLE_MAPS_API_KEY_ANDROID"
+      },
+      "ios": {
+        "resourceClass": "m-medium",
+        "autoIncrement": true
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

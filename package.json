@@ -1,0 +1,46 @@
+{
+  "name": "heros-path-fresh",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "export-to-figma": "node scripts/exportTokensToFigma.js"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^14.1.0",
+    "@react-native-async-storage/async-storage": "^2.1.2",
+    "@react-navigation/bottom-tabs": "^7.4.2",
+    "@react-navigation/drawer": "^7.5.3",
+    "@react-navigation/native": "^7.1.14",
+    "@react-navigation/stack": "^7.4.2",
+    "expo": "^53.0.19",
+    "expo-auth-session": "^6.2.1",
+    "expo-constants": "^17.1.7",
+    "expo-dev-client": "~5.2.4",
+    "expo-location": "^18.1.6",
+    "expo-maps": "~0.11.0",
+    "expo-splash-screen": "^0.30.10",
+    "expo-status-bar": "~2.2.3",
+    "expo-task-manager": "^13.1.6",
+    "firebase": "^11.10.0",
+    "lottie-react-native": "7.2.2",
+    "react": "19.0.0",
+    "react-native": "0.79.5",
+    "react-native-gesture-handler": "~2.24.0",
+    "react-native-maps": "1.20.1",
+    "react-native-reanimated": "~3.17.4",
+    "react-native-root-toast": "^4.0.1",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-screens": "^4.11.1",
+    "task-master-ai": "^0.21.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0",
+    "@types/react": "^19.1.8",
+    "react-native-dotenv": "^3.4.11"
+  },
+  "private": true
+}

@@ -1,0 +1,63 @@
+name: Cleanup Stale Branches
+
+on:
+  schedule:
+    # Run every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    # Allow manual trigger
+    inputs:
+      dry_run:
+        description: 'Dry run (show what would be deleted)'
+        required: false
+        default: 'false'
+        type: boolean
+      stale_days:
+        description: 'Consider branches stale after N days'
+        required: false
+        default: '30'
+        type: string
+
+jobs:
+  cleanup:
+    name: Cleanup Stale Branches
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+      
+      - name: Run cleanup script
+        run: |
+          chmod +x scripts/cleanup-branches.sh
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+              ./scripts/cleanup-branches.sh --dry-run --stale-days=${{ github.event.inputs.stale_days }}
+            else
+              ./scripts/cleanup-branches.sh --stale-days=${{ github.event.inputs.stale_days }}
+            fi
+          else
+            # Scheduled run - use defaults
+            ./scripts/cleanup-branches.sh --stale-days=30
+          fi
+      
+      - name: Report cleanup results
+        if: always()
+        run: |
+          echo "## Branch Cleanup Results" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "**Dry Run:** ${{ github.event.inputs.dry_run }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Stale Days:** ${{ github.event.inputs.stale_days }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for detailed cleanup information." >> $GITHUB_STEP_SUMMARY

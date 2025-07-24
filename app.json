@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "heros-path-fresh",
+    "slug": "heros-path",
+    "version": "1.0.0",
+    "assetBundlePatterns": [
+      "assets/**/*.gif"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "com.liamclarke.herospath",
+    "owner": "liamclarke-dev",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1E1E1E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.liamclarke.herospath",
+      "buildNumber": "4",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to show your journey and nearby places.",
+        "NSLocationAlwaysUsageDescription": "This app uses your location to track your journey even when the app is in the background.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location to track your journey and show nearby places.",
+        "UIBackgroundModes": [
+          "location"
+        ]
+      },
+      "config": {
+        "googleMapsApiKey": "${GOOGLE_MAPS_API_KEY_IOS}"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.liamclarke.herospath",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c1dd4c9b-e7b9-4aa0-bf73-a1c3f5846720"
+      }
+    },
+    "plugins": [
+      "expo-maps"
+    ]
+  }
+}

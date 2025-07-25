@@ -1,35 +1,42 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import 'react-native-gesture-handler';
 
-// Screens
-import MapScreen from './screens/MapScreen';
+// Context Providers
+import { ThemeProvider } from './contexts/ThemeContext';
+import { UserProvider } from './contexts/UserContext';
+import { NavigationProvider } from './contexts/NavigationContext';
+
+// Navigation
+import { NavigationContainer } from './navigation/NavigationContainer';
 
 /**
- * TEMPORARY APP STRUCTURE FOR MAP TESTING
+ * Main App component with navigation infrastructure
  * 
- * This is a temporary App.js to test the MapScreen implementation.
- * This will be replaced with full navigation structure later.
+ * Features implemented:
+ * - React Navigation v7 with drawer, tab, and stack navigators
+ * - Theme integration with light, dark, and adventure themes
+ * - Authentication-based navigation routing
+ * - Deep linking support
+ * - Navigation state management
+ * - Accessibility support
  * 
- * NEXT STEPS:
- * 1. Complete Map Navigation & GPS implementation
- * 2. Add User Authentication
- * 3. Add full navigation structure with contexts
- * 4. Add other screens and features
+ * Navigation Structure:
+ * - AuthNavigator: Routes between authenticated and unauthenticated flows
+ * - MainNavigator: Drawer navigation for authenticated users
+ * - TabNavigator: Bottom tabs for core features (Map, Journeys, Discoveries, Saved Places)
+ * - Various stacks for different feature areas
  */
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
-      <MapScreen />
-    </View>
+    <ThemeProvider>
+      <UserProvider>
+        <NavigationProvider>
+          <StatusBar style="auto" />
+          <NavigationContainer />
+        </NavigationProvider>
+      </UserProvider>
+    </ThemeProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-});

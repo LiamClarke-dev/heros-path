@@ -14,6 +14,10 @@ const GPS_WARMUP_READINGS = 5; // minimum readings during warmup
 // Background task name
 const BACKGROUND_LOCATION_TASK = 'background-location';
 
+// Periodic save constants
+const PERIODIC_SAVE_INTERVAL = 30000; // 30 seconds
+const STORAGE_KEY_JOURNEY_BACKUP = 'journey_backup_';
+
 /**
  * BackgroundLocationService handles all location-related functionality
  * including permissions, tracking, filtering, and background operation.
@@ -28,25 +32,49 @@ class BackgroundLocationService {
     this.isWarmingUp = false;
     this.warmupStartTime = null;
     this.warmupReadings = 0;
+    this.periodicSaveInterval = null;
+    this.lastSaveTime = null;
+    this.permissionPromptCallback = null;
     
     // Bind methods to preserve context
     this.handleAppStateChange = this.handleAppStateChange.bind(this);
     this.handleLocationUpdate = this.handleLocationUpdate.bind(this);
+    this.periodicSave = this.periodicSave.bind(this);
   }
 
   /**
    * Initialize the service and set up background task
+   * @param {Object} options - Initialization options
+   * @param {Function} options.onPermissionPrompt - Callback for permission prompts
+   * @returns {Promise<Object>} - Initialization result with status and permissions
    */
-  async initialize() {
+  async initialize(options = {}) {
     try {
       if (this.isInitialized) {
-        return true;
+        const permissions = await this.checkPermissions();
+        return {
+          success: true,
+          alreadyInitialized: true,
+          permissions
+        };
+      }
+
+      // Store permission prompt callback
+      if (options.onPermissionPrompt) {
+        this.permissionPromptCallback = options.onPermissionPrompt;
       }
 
       // Define background location task
       TaskManager.defineTask(BACKGROUND_LOCATION_TASK, ({ data, error }) => {
         if (error) {
           console.error('Background location task error:', error);
+          if (this.locationUpdateCallback) {
+            this.locationUpdateCallback({
+              type: 'error',
+              message: 'Background location tracking error',
+              error: error.message
+            });
+          }
           return;
         }
         if (data) {
@@ -58,11 +86,33 @@ class BackgroundLocationService {
       // Set up app state listener
       AppState.addEventListener('change', this.handleAppStateChange);
 
+      // Check initial permissions and prompt if needed
+      const permissions = await this.checkPermissions();
+      
+      // Requirement 1.5: Prompt user with clear explanation if background permission not granted
+      if (!permissions.background && this.permissionPromptCallback) {
+        this.permissionPromptCallback({
+          type: 'background_permission_needed',
+          title: 'Background Location Required',
+          message: 'Hero\'s Path needs background location access to continue tracking your journey even when the app is minimized or your device is locked. This ensures your complete route is recorded without interruption.',
+          permissions: permissions
+        });
+      }
+
       this.isInitialized = true;
-      return true;
+      
+      return {
+        success: true,
+        permissions,
+        backgroundPermissionAvailable: permissions.background
+      };
     } catch (error) {
       console.error('Failed to initialize BackgroundLocationService:', error);
-      return false;
+      return {
+        success: false,
+        error: error.message,
+        permissions: null
+      };
     }
   }
 
@@ -392,42 +442,116 @@ class BackgroundLocationService {
   }
 
   /**
-   * Request location permissions with proper workflow
+   * Request location permissions with proper workflow and user prompts
+   * @param {Object} options - Request options
+   * @param {boolean} options.showPrompts - Whether to show user prompts
    * @returns {Promise<Object>} - Permission request result
    */
-  async requestPermissions() {
+  async requestPermissions(options = { showPrompts: true }) {
     try {
-      // First request foreground permission
-      const foregroundResult = await Location.requestForegroundPermissionsAsync();
+      // Check current permissions first
+      const currentPermissions = await this.checkPermissions();
       
-      if (foregroundResult.status !== 'granted') {
-        return {
-          success: false,
-          foreground: false,
-          background: false,
-          message: 'Foreground location permission is required for tracking'
-        };
+      // If foreground permission not granted, request it
+      if (!currentPermissions.foreground) {
+        // Requirement 1.5: Prompt user with clear explanation
+        if (options.showPrompts && this.permissionPromptCallback) {
+          this.permissionPromptCallback({
+            type: 'foreground_permission_needed',
+            title: 'Location Permission Required',
+            message: 'Hero\'s Path needs access to your location to track your walking routes and discover interesting places along your journey.',
+            permissions: currentPermissions
+          });
+        }
+
+        const foregroundResult = await Location.requestForegroundPermissionsAsync();
+        
+        if (foregroundResult.status !== 'granted') {
+          const result = {
+            success: false,
+            foreground: false,
+            background: false,
+            message: 'Location permission is required for journey tracking',
+            canAskAgain: foregroundResult.canAskAgain
+          };
+
+          if (options.showPrompts && this.permissionPromptCallback) {
+            this.permissionPromptCallback({
+              type: 'permission_denied',
+              title: 'Permission Required',
+              message: 'Location access is essential for tracking your journeys. Please enable it in your device settings.',
+              result: result
+            });
+          }
+
+          return result;
+        }
       }
 
-      // Then request background permission
-      const backgroundResult = await Location.requestBackgroundPermissionsAsync();
-      
+      // If background permission not granted, request it
+      const updatedPermissions = await this.checkPermissions();
+      if (!updatedPermissions.background) {
+        // Requirement 1.5: Prompt user with clear explanation for background permission
+        if (options.showPrompts && this.permissionPromptCallback) {
+          this.permissionPromptCallback({
+            type: 'background_permission_request',
+            title: 'Background Location Access',
+            message: 'To ensure your complete journey is recorded even when the app is minimized or your device is locked, Hero\'s Path needs background location access. This allows continuous tracking without interruption.',
+            permissions: updatedPermissions
+          });
+        }
+
+        const backgroundResult = await Location.requestBackgroundPermissionsAsync();
+        
+        const finalResult = {
+          success: backgroundResult.status === 'granted',
+          foreground: true,
+          background: backgroundResult.status === 'granted',
+          message: backgroundResult.status === 'granted' 
+            ? 'All location permissions granted successfully' 
+            : 'Background permission not granted - tracking may pause when app is backgrounded',
+          canAskAgain: backgroundResult.canAskAgain
+        };
+
+        // Requirement 1.5: Inform user about background permission impact
+        if (options.showPrompts && this.permissionPromptCallback && backgroundResult.status !== 'granted') {
+          this.permissionPromptCallback({
+            type: 'background_permission_denied',
+            title: 'Limited Tracking Available',
+            message: 'Without background location access, journey tracking will pause when you minimize the app or lock your device. You can enable this later in your device settings for uninterrupted tracking.',
+            result: finalResult
+          });
+        }
+
+        return finalResult;
+      }
+
+      // All permissions already granted
       return {
-        success: backgroundResult.status === 'granted',
+        success: true,
         foreground: true,
-        background: backgroundResult.status === 'granted',
-        message: backgroundResult.status === 'granted' 
-          ? 'All permissions granted' 
-          : 'Background permission denied - tracking will pause when app is backgrounded'
+        background: true,
+        message: 'All location permissions are already granted'
       };
     } catch (error) {
       console.error('Failed to request permissions:', error);
-      return {
+      const errorResult = {
         success: false,
         foreground: false,
         background: false,
         error: error.message
       };
+
+      if (options.showPrompts && this.permissionPromptCallback) {
+        this.permissionPromptCallback({
+          type: 'permission_error',
+          title: 'Permission Error',
+          message: 'An error occurred while requesting location permissions. Please try again.',
+          error: error.message
+        });
+      }
+
+      return errorResult;
     }
   }
 
@@ -479,10 +603,23 @@ class BackgroundLocationService {
       // Configure background tracking if permission is available
       if (permissions.background) {
         await this.configureBackgroundTracking(journeyId);
+      } else {
+        // Requirement 1.5: Prompt user about background permission impact
+        if (this.permissionPromptCallback) {
+          this.permissionPromptCallback({
+            type: 'background_tracking_limited',
+            title: 'Limited Background Tracking',
+            message: 'Journey tracking will pause when the app is minimized. For continuous tracking, please enable background location access in your device settings.',
+            permissions: permissions
+          });
+        }
       }
 
       this.isTracking = true;
       this.currentJourneyId = journeyId;
+      
+      // Requirement 5.4: Start periodic saving to prevent data loss
+      this.startPeriodicSave();
       
       console.log(`Location tracking started for journey: ${journeyId}`);
       return true;
@@ -525,10 +662,16 @@ class BackgroundLocationService {
         isActive: false
       };
 
+      // Requirement 5.4: Stop periodic saving
+      this.stopPeriodicSave();
+
       // Reset tracking state
       this.isTracking = false;
       this.currentJourneyId = null;
       this.locationHistory = [];
+
+      // Clean up backup data
+      await this.clearJourneyBackup(this.currentJourneyId);
 
       console.log('Location tracking stopped');
       return journeyData;
@@ -623,7 +766,9 @@ class BackgroundLocationService {
       currentJourneyId: this.currentJourneyId,
       locationHistoryCount: this.locationHistory.length,
       isWarmingUp: this.isWarmingUp,
-      warmupStatus: this.getWarmupStatus()
+      warmupStatus: this.getWarmupStatus(),
+      periodicSaveStatus: this.getPeriodicSaveStatus(),
+      hasPermissionPromptCallback: !!this.permissionPromptCallback
     };
   }
 
@@ -821,6 +966,161 @@ class BackgroundLocationService {
   }
 
   /**
+   * Start periodic saving of journey data to prevent data loss (Requirement 5.4)
+   */
+  startPeriodicSave() {
+    if (this.periodicSaveInterval) {
+      clearInterval(this.periodicSaveInterval);
+    }
+
+    this.periodicSaveInterval = setInterval(this.periodicSave, PERIODIC_SAVE_INTERVAL);
+    this.lastSaveTime = Date.now();
+    console.log('Periodic save started for journey data backup');
+  }
+
+  /**
+   * Stop periodic saving
+   */
+  stopPeriodicSave() {
+    if (this.periodicSaveInterval) {
+      clearInterval(this.periodicSaveInterval);
+      this.periodicSaveInterval = null;
+      console.log('Periodic save stopped');
+    }
+  }
+
+  /**
+   * Perform periodic save of current journey data (Requirement 5.4)
+   */
+  async periodicSave() {
+    if (!this.isTracking || !this.currentJourneyId || this.locationHistory.length === 0) {
+      return;
+    }
+
+    try {
+      const backupData = {
+        journeyId: this.currentJourneyId,
+        coordinates: this.locationHistory.map(loc => ({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          timestamp: loc.timestamp,
+          accuracy: loc.coords.accuracy
+        })),
+        startTime: this.locationHistory[0]?.timestamp || Date.now(),
+        lastSaveTime: Date.now(),
+        isActive: true
+      };
+
+      const backupKey = `${STORAGE_KEY_JOURNEY_BACKUP}${this.currentJourneyId}`;
+      await AsyncStorage.setItem(backupKey, JSON.stringify(backupData));
+      
+      this.lastSaveTime = Date.now();
+      console.log(`Journey data backed up: ${this.locationHistory.length} coordinates saved`);
+      
+      // Notify callback about successful backup
+      if (this.locationUpdateCallback) {
+        this.locationUpdateCallback({
+          type: 'backup_saved',
+          message: 'Journey data backed up successfully',
+          coordinateCount: this.locationHistory.length,
+          timestamp: this.lastSaveTime
+        });
+      }
+    } catch (error) {
+      console.error('Failed to save journey backup:', error);
+      
+      // Notify callback about backup failure
+      if (this.locationUpdateCallback) {
+        this.locationUpdateCallback({
+          type: 'backup_error',
+          message: 'Failed to backup journey data',
+          error: error.message
+        });
+      }
+    }
+  }
+
+  /**
+   * Recover journey data from backup after app crash (Requirement 5.4)
+   * @param {string} journeyId - Journey ID to recover
+   * @returns {Promise<Object|null>} - Recovered journey data or null
+   */
+  async recoverJourneyFromBackup(journeyId) {
+    try {
+      const backupKey = `${STORAGE_KEY_JOURNEY_BACKUP}${journeyId}`;
+      const backupDataJson = await AsyncStorage.getItem(backupKey);
+      
+      if (!backupDataJson) {
+        console.log(`No backup found for journey: ${journeyId}`);
+        return null;
+      }
+
+      const backupData = JSON.parse(backupDataJson);
+      console.log(`Recovered journey backup: ${backupData.coordinates.length} coordinates`);
+      
+      return backupData;
+    } catch (error) {
+      console.error('Failed to recover journey backup:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear journey backup data
+   * @param {string} journeyId - Journey ID to clear backup for
+   */
+  async clearJourneyBackup(journeyId) {
+    try {
+      if (!journeyId) return;
+      
+      const backupKey = `${STORAGE_KEY_JOURNEY_BACKUP}${journeyId}`;
+      await AsyncStorage.removeItem(backupKey);
+      console.log(`Journey backup cleared for: ${journeyId}`);
+    } catch (error) {
+      console.error('Failed to clear journey backup:', error);
+    }
+  }
+
+  /**
+   * Get all available journey backups
+   * @returns {Promise<Array>} - Array of backup journey IDs
+   */
+  async getAvailableBackups() {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const backupKeys = keys.filter(key => key.startsWith(STORAGE_KEY_JOURNEY_BACKUP));
+      const journeyIds = backupKeys.map(key => key.replace(STORAGE_KEY_JOURNEY_BACKUP, ''));
+      
+      console.log(`Found ${journeyIds.length} journey backups`);
+      return journeyIds;
+    } catch (error) {
+      console.error('Failed to get available backups:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Set callback for permission prompts (Requirement 1.5)
+   * @param {Function} callback - Callback function for permission prompts
+   */
+  setPermissionPromptCallback(callback) {
+    this.permissionPromptCallback = callback;
+  }
+
+  /**
+   * Get periodic save status
+   * @returns {Object} - Save status information
+   */
+  getPeriodicSaveStatus() {
+    return {
+      isActive: !!this.periodicSaveInterval,
+      lastSaveTime: this.lastSaveTime,
+      timeSinceLastSave: this.lastSaveTime ? Date.now() - this.lastSaveTime : null,
+      saveInterval: PERIODIC_SAVE_INTERVAL
+    };
+  }
+
+  /**
    * Clean up service resources and stop all tracking
    */
   async cleanup() {
@@ -829,6 +1129,9 @@ class BackgroundLocationService {
       if (this.isTracking) {
         await this.stopTracking();
       }
+
+      // Stop periodic saving
+      this.stopPeriodicSave();
 
       // Remove event listeners
       AppState.removeEventListener('change', this.handleAppStateChange);
@@ -845,12 +1148,14 @@ class BackgroundLocationService {
       // Clear state
       this.locationHistory = [];
       this.locationUpdateCallback = null;
+      this.permissionPromptCallback = null;
       this.isInitialized = false;
       this.isTracking = false;
       this.currentJourneyId = null;
       this.isWarmingUp = false;
       this.warmupStartTime = null;
       this.warmupReadings = 0;
+      this.lastSaveTime = null;
 
       console.log('BackgroundLocationService cleaned up');
     } catch (error) {

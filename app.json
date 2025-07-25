@@ -11,6 +11,10 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "com.liamclarke.herospath",
+    "deepLinking": {
+      "enabled": true,
+      "prefixes": ["com.liamclarke.herospath://", "https://herospath.app"]
+    },
     "owner": "liamclarke-dev",
     "splash": {
       "image": "./assets/splash-icon.png",

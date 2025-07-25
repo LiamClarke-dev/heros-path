@@ -1,25 +1,18 @@
 # Implementation Plan
 
 - [x] 1. Set up journey data models and storage schema
-
-
-
-
-
   - Create Journey, JourneyData, and LocationCoordinates interfaces
   - Define Firestore schema for journey storage
   - Set up AsyncStorage keys for local caching
   - _Requirements: 1.1, 2.2, 5.1_
 
 - [x] 2. Implement BackgroundLocationService core functionality
+  - [x] 2.1 Create service initialization and permission handling
 
 
 
 
 
-
-
-  - [ ] 2.1 Create service initialization and permission handling
     - Implement initialize() method with permission requests
     - Add permission status checking and error handling
     - Create cleanup method for service reset

@@ -32,6 +32,8 @@ try {
 // Components
 import LocateButton from '../components/ui/LocateButton';
 import JourneyNamingModal from '../components/ui/JourneyNamingModal';
+import MapSprite from '../components/ui/MapSprite';
+import GPSStatusDisplay from '../components/ui/GPSStatusDisplay';
 
 // Services
 import BackgroundLocationService from '../services/BackgroundLocationService';
@@ -51,6 +53,7 @@ import {
 
 // Constants
 import { DEFAULT_JOURNEY_VALUES, VALIDATION_CONSTANTS } from '../constants/JourneyModels';
+import { DEFAULT_SPRITE_STATE } from '../constants/SpriteConstants';
 
 /**
  * MapScreen Component
@@ -96,6 +99,13 @@ const MapScreen = ({ navigation }) => {
   const [savedRoutes, setSavedRoutes] = useState([]);
   const [showSavedRoutes, setShowSavedRoutes] = useState(false);
   const [loadingRoutes, setLoadingRoutes] = useState(false);
+
+  // Sprite state
+  const [spriteState, setSpriteState] = useState(DEFAULT_SPRITE_STATE);
+  const [recentPositions, setRecentPositions] = useState([]);
+  
+  // GPS status display
+  const [showGPSStatus, setShowGPSStatus] = useState(false);
 
   // Refs
   const mapRef = useRef(null);
@@ -185,22 +195,34 @@ const MapScreen = ({ navigation }) => {
       return;
     }
 
-    // Update current position
-    setCurrentPosition({
+    const newPosition = {
       latitude: location.coords.latitude,
       longitude: location.coords.longitude,
-      timestamp: location.timestamp
+      timestamp: location.timestamp,
+      accuracy: location.coords.accuracy || null
+    };
+
+    // Update current position
+    setCurrentPosition(newPosition);
+
+    // Update sprite state with GPS accuracy
+    setSpriteState(prevState => ({
+      ...prevState,
+      gpsAccuracy: location.coords.accuracy || null,
+      position: newPosition,
+    }));
+
+    // Update recent positions for sprite direction calculation (keep last 5 positions)
+    setRecentPositions(prevPositions => {
+      const updated = [...prevPositions, newPosition];
+      return updated.slice(-5); // Keep only last 5 positions
     });
 
     // Add to path if tracking
     if (tracking && currentJourneyId) {
       setPathToRender(prevPath => [
         ...prevPath,
-        {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          timestamp: location.timestamp
-        }
+        newPosition
       ]);
     }
   };
@@ -234,7 +256,12 @@ const MapScreen = ({ navigation }) => {
       const locationResult = await getCurrentLocation(LOCATION_OPTIONS.LOCATE_ME);
       
       if (locationResult.success) {
-        setCurrentPosition(locationResult.location);
+        const initialPosition = {
+          ...locationResult.location,
+          timestamp: Date.now()
+        };
+        setCurrentPosition(initialPosition);
+        setRecentPositions([initialPosition]);
       } else {
         console.warn('Could not get initial location:', locationResult.error);
         // Don't show error alert for initial location failure
@@ -251,7 +278,18 @@ const MapScreen = ({ navigation }) => {
    * Handle locate me button press
    */
   const handleLocateMe = async (location) => {
-    setCurrentPosition(location);
+    const newPosition = {
+      ...location,
+      timestamp: Date.now()
+    };
+    
+    setCurrentPosition(newPosition);
+    
+    // Update recent positions for sprite
+    setRecentPositions(prevPositions => {
+      const updated = [...prevPositions, newPosition];
+      return updated.slice(-5);
+    });
     
     // Animate map to the new location
     if (mapRef.current) {
@@ -587,6 +625,48 @@ const MapScreen = ({ navigation }) => {
   };
 
   /**
+   * Handle sprite state changes
+   */
+  const handleSpriteStateChange = (newSpriteState) => {
+    setSpriteState(newSpriteState);
+    
+    // Show GPS status display when GPS signal is poor or lost
+    const shouldShowGPSStatus = newSpriteState.gpsState?.indicator === 'POOR' || 
+                               newSpriteState.gpsState?.indicator === 'LOST';
+    setShowGPSStatus(shouldShowGPSStatus);
+    
+    // Log sprite state changes for debugging
+    if (__DEV__) {
+      console.log('Sprite state changed:', {
+        state: newSpriteState.state,
+        gpsState: newSpriteState.gpsState,
+        accuracy: newSpriteState.gpsAccuracy,
+        signalStrength: newSpriteState.signalStrength,
+      });
+    }
+  };
+
+  /**
+   * Keep map centered on user position when tracking
+   */
+  useEffect(() => {
+    if (tracking && currentPosition && mapRef.current) {
+      // Smoothly animate map to follow user position
+      const animateToCurrentPosition = async () => {
+        try {
+          await animateToLocation(mapRef.current, currentPosition);
+        } catch (error) {
+          console.warn('Failed to animate map to current position:', error);
+        }
+      };
+      
+      // Throttle map animations to avoid too frequent updates
+      const timeoutId = setTimeout(animateToCurrentPosition, 1000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [currentPosition, tracking]);
+
+  /**
    * Get initial camera position
    */
   const getInitialCameraPosition = () => {
@@ -658,22 +738,66 @@ const MapScreen = ({ navigation }) => {
         });
       }
 
+      // Prepare markers data (for sprite)
+      const markers = [];
+      if (currentPosition) {
+        // Note: expo-maps doesn't support custom marker components directly
+        // We'll render the sprite as an overlay instead
+        markers.push({
+          coordinate: {
+            latitude: currentPosition.latitude,
+            longitude: currentPosition.longitude,
+          },
+          key: 'user-position',
+          // We'll use a transparent marker and overlay the sprite
+          alpha: 0,
+        });
+      }
+
       // Platform-specific map rendering with expo-maps
       if (Platform.OS === 'ios') {
         return (
-          <AppleMaps
-            {...commonProps}
-            mapType="standard" // TODO: Make this dynamic based on mapStyle
-            polylines={polylines}
-          />
+          <View style={styles.mapContainer}>
+            <AppleMaps
+              {...commonProps}
+              mapType="standard" // TODO: Make this dynamic based on mapStyle
+              polylines={polylines}
+              markers={markers}
+            />
+            {/* Render sprite as overlay */}
+            {currentPosition && (
+              <MapSprite
+                position={currentPosition}
+                recentPositions={recentPositions}
+                gpsAccuracy={spriteState.gpsAccuracy}
+                size={32}
+                theme="light" // TODO: Make this dynamic based on app theme
+                onStateChange={handleSpriteStateChange}
+              />
+            )}
+          </View>
         );
       } else {
         return (
-          <GoogleMaps
-            {...commonProps}
-            mapType="standard" // TODO: Make this dynamic based on mapStyle
-            polylines={polylines}
-          />
+          <View style={styles.mapContainer}>
+            <GoogleMaps
+              {...commonProps}
+              mapType="standard" // TODO: Make this dynamic based on mapStyle
+              polylines={polylines}
+              markers={markers}
+            />
+            {/* Render sprite as overlay */}
+            {currentPosition && (
+              <MapSprite
+                position={currentPosition}
+                recentPositions={recentPositions}
+                gpsAccuracy={spriteState.gpsAccuracy}
+                size={32}
+                theme="light" // TODO: Make this dynamic based on app theme
+                onStateChange={handleSpriteStateChange}
+              />
+            )}
+          </View>
         );
       }
     }
@@ -693,41 +817,55 @@ const MapScreen = ({ navigation }) => {
       };
 
       return (
-        <MapView
-          ref={mapRef}
-          style={styles.map}
-          initialRegion={region}
-          onError={handleMapError}
-          {...mapConfig}
-          mapType="standard"
-        >
-          {/* Render saved routes */}
-          {showSavedRoutes && savedRoutes.map((route) => (
-            route.route && route.route.length > 1 && (
+        <View style={styles.mapContainer}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            initialRegion={region}
+            onError={handleMapError}
+            {...mapConfig}
+            mapType="standard"
+          >
+            {/* Render saved routes */}
+            {showSavedRoutes && savedRoutes.map((route) => (
+              route.route && route.route.length > 1 && (
+                <Polyline
+                  key={`saved-route-${route.id}`}
+                  coordinates={route.route}
+                  strokeColor="#4A90E2" // Blue color for saved routes
+                  strokeWidth={4}
+                  strokeOpacity={0.6}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              )
+            ))}
+            
+            {/* Render current journey path (on top) */}
+            {pathToRender.length > 1 && (
               <Polyline
-                key={`saved-route-${route.id}`}
-                coordinates={route.route}
-                strokeColor="#4A90E2" // Blue color for saved routes
-                strokeWidth={4}
-                strokeOpacity={0.6}
+                coordinates={pathToRender}
+                strokeColor="#00FF88" // Glowing green color
+                strokeWidth={6}
+                strokeOpacity={0.8}
                 lineCap="round"
                 lineJoin="round"
               />
-            )
-          ))}
+            )}
+          </MapView>
           
-          {/* Render current journey path (on top) */}
-          {pathToRender.length > 1 && (
-            <Polyline
-              coordinates={pathToRender}
-              strokeColor="#00FF88" // Glowing green color
-              strokeWidth={6}
-              strokeOpacity={0.8}
-              lineCap="round"
-              lineJoin="round"
+          {/* Render sprite as overlay */}
+          {currentPosition && (
+            <MapSprite
+              position={currentPosition}
+              recentPositions={recentPositions}
+              gpsAccuracy={spriteState.gpsAccuracy}
+              size={32}
+              theme="light" // TODO: Make this dynamic based on app theme
+              onStateChange={handleSpriteStateChange}
             />
           )}
-        </MapView>
+        </View>
       );
     }
 
@@ -829,6 +967,19 @@ const MapScreen = ({ navigation }) => {
         </View>
       )}
 
+      {/* GPS Status Display */}
+      {showGPSStatus && spriteState.gpsState && (
+        <View style={styles.gpsStatusContainer}>
+          <GPSStatusDisplay
+            gpsState={spriteState.gpsState}
+            signalStrength={spriteState.signalStrength || 0}
+            visible={showGPSStatus}
+            theme="light" // TODO: Make this dynamic based on app theme
+            onPress={() => setShowGPSStatus(false)}
+          />
+        </View>
+      )}
+
       {/* Journey Naming Modal */}
       <JourneyNamingModal
         visible={showNamingModal}
@@ -850,6 +1001,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  mapContainer: {
+    flex: 1,
+    position: 'relative',
   },
   map: {
     width: width,
@@ -991,6 +1146,13 @@ const styles = StyleSheet.create({
   },
   savedRoutesButtonTextInactive: {
     color: '#666',
+  },
+  gpsStatusContainer: {
+    position: 'absolute',
+    top: 180, // Below journey info
+    left: 0,
+    right: 0,
+    zIndex: 1000,
   },
 });
 

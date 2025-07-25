@@ -58,8 +58,6 @@
   - _Requirements: 3.1, 3.2, 3.5, 3.6_
 
 - [x]  3. Implement journey tracking and route visualization
-
-
   - Create state for tracking status and current journey
   - Implement toggleTracking function for start/stop
   - Add Polyline component for route visualization
@@ -74,15 +72,14 @@
   - _Requirements: 2.3, 2.4, 2.6_
 
 - [x]  3.2 Implement saved routes display
-
-
-
   - Create loadSavedRoutes function to fetch user journeys
   - Add renderSavedRoutes function with styling
   - Implement toggle for showing/hiding past routes
   - _Requirements: 2.5_
 
-- [ ]  4. Implement animated sprite for user movement
+- [x]  4. Implement animated sprite for user movement
+
+
   - Create sprite state constants and direction logic
   - Implement getDirection function for movement analysis
   - Add sprite rendering with appropriate styling
@@ -90,7 +87,9 @@
   - Sprite should render on Android & iOS in both production and development
   - _Requirements: 1.2, 1.3_
 
-- [ ]  4.1 Enhance sprite with visual feedback for GPS states
+- [x]  4.1 Enhance sprite with visual feedback for GPS states
+
+
   - Add visual indicators for GPS signal strength
   - Implement sprite state for GPS signal loss
   - Create smooth transitions between sprite states

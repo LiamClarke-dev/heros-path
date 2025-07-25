@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { onAuthStateChange, signOutUser, db } from '../firebase';
+import { onAuthStateChange, signOutUser } from '../firebase';
+import UserProfileService from '../services/UserProfileService';
 import Logger from '../utils/Logger';
 
 const UserContext = createContext();
@@ -36,67 +36,13 @@ export function UserProvider({ children }) {
       setProfileLoading(true);
       setError(null);
 
-      const userRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userRef);
-
-      const defaultProfile = {
-        uid: user.uid,
-        email: user.email || '',
-        displayName: user.displayName || profileData.displayName || '',
-        photoURL: user.photoURL || null,
-        emailVerified: user.emailVerified || false,
-        lastSignInAt: new Date().toISOString(),
-        isNewUser: !userDoc.exists(),
-        bio: '',
-        location: '',
-        schemaVersion: 2.0,
-        lastUpdated: new Date().toISOString(),
-        preferences: {
-          notifications: true,
-          privacy: 'public',
-          units: 'metric',
-          discoveryPreferences: {
-            categories: [],
-            radius: 1000,
-            autoPing: false,
-          },
-          theme: 'light',
-          mapStyle: 'default',
-        },
-        stats: {
-          totalWalks: 0,
-          totalDistance: 0,
-          totalTime: 0,
-          discoveries: 0,
-          totalPings: 0,
-          averageWalkDistance: 0,
-          longestWalk: 0,
-          favoriteDiscoveryTypes: [],
-        },
-        friends: [],
-        metadata: {},
-        extensions: {},
-      };
-
-      const profileToSave = {
-        ...defaultProfile,
-        ...profileData,
-        uid: user.uid, // Ensure UID is always correct
-        lastUpdated: new Date().toISOString(),
-      };
-
-      if (userDoc.exists()) {
-        // Update existing profile
-        await updateDoc(userRef, profileToSave);
-        Logger.info('User profile updated successfully');
-      } else {
-        // Create new profile
-        await setDoc(userRef, profileToSave);
-        Logger.info('New user profile created successfully');
-      }
-
-      setUserProfile(profileToSave);
-      return profileToSave;
+      Logger.info('Creating or updating user profile via UserProfileService');
+      const updatedProfile = await UserProfileService.createOrUpdateProfile(user, profileData);
+      
+      setUserProfile(updatedProfile);
+      Logger.info('User profile created/updated successfully via service');
+      
+      return updatedProfile;
 
     } catch (error) {
       Logger.error('Failed to create/update user profile:', error);
@@ -120,21 +66,11 @@ export function UserProvider({ children }) {
       setProfileLoading(true);
       setError(null);
 
-      const userRef = doc(db, 'users', user.uid);
-      const updatedData = {
-        ...updates,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      await updateDoc(userRef, updatedData);
-      
-      const updatedProfile = {
-        ...userProfile,
-        ...updatedData,
-      };
+      Logger.info('Updating user profile via UserProfileService');
+      const updatedProfile = await UserProfileService.updateProfile(user.uid, updates);
       
       setUserProfile(updatedProfile);
-      Logger.info('User profile updated successfully');
+      Logger.info('User profile updated successfully via service');
 
     } catch (error) {
       Logger.error('Failed to update user profile:', error);
@@ -243,6 +179,128 @@ export function UserProvider({ children }) {
   };
 
   /**
+   * Update specific profile section
+   * @param {string} section - Section name (preferences, stats, socialProfile, gamification)
+   * @param {Object} sectionData - Section data to update
+   */
+  const updateProfileSection = async (section, sectionData) => {
+    try {
+      if (!user || !userProfile) {
+        throw new Error('No authenticated user or profile');
+      }
+
+      setProfileLoading(true);
+      setError(null);
+
+      Logger.info(`Updating profile section '${section}' via UserProfileService`);
+      const updatedProfile = await UserProfileService.updateProfileSection(user.uid, section, sectionData);
+      
+      setUserProfile(updatedProfile);
+      Logger.info(`Profile section '${section}' updated successfully`);
+
+    } catch (error) {
+      Logger.error(`Failed to update profile section '${section}':`, error);
+      setError(error.message);
+      throw error;
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  /**
+   * Check if user profile exists
+   * @returns {Promise<boolean>} True if profile exists
+   */
+  const profileExists = async () => {
+    try {
+      if (!user) {
+        return false;
+      }
+
+      return await UserProfileService.profileExists(user.uid);
+    } catch (error) {
+      Logger.error('Failed to check if profile exists:', error);
+      return false;
+    }
+  };
+
+  /**
+   * Handle profile creation for new users
+   * This is called automatically when a new user signs in
+   * @param {Object} firebaseUser - Firebase user object
+   */
+  const handleNewUserProfile = async (firebaseUser) => {
+    try {
+      if (!firebaseUser) {
+        throw new Error('Firebase user is required');
+      }
+
+      setProfileLoading(true);
+      setError(null);
+
+      Logger.info('Handling new user profile creation for:', firebaseUser.uid);
+      
+      // Check if profile already exists
+      const exists = await UserProfileService.profileExists(firebaseUser.uid);
+      
+      if (!exists) {
+        // Create new profile with default values
+        const newProfile = await UserProfileService.createProfile(firebaseUser);
+        setUserProfile(newProfile);
+        Logger.info('New user profile created successfully');
+      } else {
+        // Profile exists, just load it
+        const existingProfile = await UserProfileService.readProfile(firebaseUser.uid);
+        setUserProfile(existingProfile);
+        Logger.info('Existing profile loaded for user');
+      }
+
+    } catch (error) {
+      Logger.error('Failed to handle new user profile:', error);
+      setError(error.message);
+      throw error;
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  /**
+   * Handle profile loading errors with retry logic
+   * @param {Object} firebaseUser - Firebase user object
+   * @param {number} retryCount - Current retry attempt
+   */
+  const handleProfileLoadingError = async (firebaseUser, retryCount = 0) => {
+    const maxRetries = 3;
+    
+    try {
+      if (retryCount >= maxRetries) {
+        throw new Error('Maximum retry attempts reached for profile loading');
+      }
+
+      Logger.warn(`Profile loading failed, attempting retry ${retryCount + 1}/${maxRetries}`);
+      
+      // Wait before retrying (exponential backoff)
+      const delay = Math.pow(2, retryCount) * 1000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Attempt to load profile again
+      await loadUserProfile(firebaseUser);
+      
+    } catch (error) {
+      Logger.error('Profile loading retry failed:', error);
+      
+      if (retryCount < maxRetries - 1) {
+        // Try again
+        await handleProfileLoadingError(firebaseUser, retryCount + 1);
+      } else {
+        // Final failure - set appropriate error message
+        setError('Unable to load your profile after multiple attempts. Please check your connection and try again.');
+        throw error;
+      }
+    }
+  };
+
+  /**
    * Refresh user profile from Firestore
    */
   const refreshProfile = async () => {
@@ -254,15 +312,15 @@ export function UserProvider({ children }) {
       setProfileLoading(true);
       setError(null);
 
-      const userRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userRef);
+      Logger.info('Refreshing user profile via UserProfileService');
+      const profile = await UserProfileService.readProfile(user.uid);
 
-      if (userDoc.exists()) {
-        const profile = userDoc.data();
+      if (profile) {
         setUserProfile(profile);
-        Logger.info('User profile refreshed successfully');
+        Logger.info('User profile refreshed successfully via service');
       } else {
         // Profile doesn't exist, create default one
+        Logger.info('Profile not found, creating default profile');
         await createOrUpdateProfile();
       }
 
@@ -287,22 +345,35 @@ export function UserProvider({ children }) {
       }
 
       setProfileLoading(true);
-      const userRef = doc(db, 'users', firebaseUser.uid);
-      const userDoc = await getDoc(userRef);
+      setError(null);
 
-      if (userDoc.exists()) {
-        const profile = userDoc.data();
+      Logger.info('Loading user profile via UserProfileService for:', firebaseUser.uid);
+      const profile = await UserProfileService.readProfile(firebaseUser.uid);
+
+      if (profile) {
         setUserProfile(profile);
-        Logger.info('User profile loaded successfully');
+        Logger.info('User profile loaded successfully via service');
       } else {
         // New user - create default profile
-        Logger.info('New user detected, creating default profile');
-        await createOrUpdateProfile();
+        Logger.info('New user detected, creating default profile via service');
+        const newProfile = await UserProfileService.createOrUpdateProfile(firebaseUser);
+        setUserProfile(newProfile);
       }
 
     } catch (error) {
       Logger.error('Failed to load user profile:', error);
       setError(error.message);
+      
+      // Handle profile loading errors gracefully
+      if (error.message.includes('permission-denied')) {
+        Logger.error('Permission denied - user may not have access to their profile');
+        setError('Unable to access your profile. Please try signing in again.');
+      } else if (error.message.includes('unavailable')) {
+        Logger.error('Firestore service unavailable');
+        setError('Profile service is temporarily unavailable. Please try again later.');
+      } else {
+        setError('Failed to load your profile. Please try again.');
+      }
     } finally {
       setProfileLoading(false);
     }
@@ -324,7 +395,22 @@ export function UserProvider({ children }) {
           // Validate session by trying to get token
           try {
             await firebaseUser.getIdToken(false);
-            await loadUserProfile(firebaseUser);
+            
+            // Load user profile with error handling
+            try {
+              await loadUserProfile(firebaseUser);
+            } catch (profileError) {
+              Logger.warn('Profile loading failed, attempting error handling:', profileError);
+              
+              // Try to handle the error with retry logic
+              try {
+                await handleProfileLoadingError(firebaseUser);
+              } catch (retryError) {
+                Logger.error('Profile loading failed after retries:', retryError);
+                // Don't sign out the user, just show error
+                // They can still use the app with limited functionality
+              }
+            }
           } catch (tokenError) {
             Logger.warn('Invalid session detected, signing out:', tokenError);
             await signOut();
@@ -366,6 +452,12 @@ export function UserProvider({ children }) {
     refreshAuthToken,
     validateSession,
     initializeSession,
+
+    // Enhanced profile management methods
+    updateProfileSection,
+    profileExists,
+    handleNewUserProfile,
+    handleProfileLoadingError,
   };
 
   return (

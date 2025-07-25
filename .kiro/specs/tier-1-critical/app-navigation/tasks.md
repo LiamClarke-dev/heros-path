@@ -8,15 +8,7 @@
   - _Requirements: 1.1, 1.4, 5.1, 6.1_
 
 - [x] 2. Implement authentication-based navigation
-
-
-
-
-
-
   - [x] 2.1 Create AuthNavigator component
-
-
     - Implement conditional navigation based on authentication state
     - Add loading states during authentication checks
     - Create smooth transitions between auth and main navigation
@@ -24,8 +16,6 @@
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
   
   - [x] 2.2 Build authentication stack
-
-
     - Create stack navigator for login/signup screens
     - Implement navigation between authentication screens
     - Add proper back button handling in auth flow

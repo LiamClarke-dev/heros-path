@@ -4,13 +4,14 @@ import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawe
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUser } from '../../contexts/UserContext';
+import { Alert } from 'react-native';
 
 /**
  * Custom drawer content with user profile and navigation items
  */
 export function CustomDrawerContent(props) {
   const { theme } = useTheme();
-  const { user } = useUser();
+  const { user, signOut } = useUser();
   
   const styles = StyleSheet.create({
     container: {
@@ -80,9 +81,36 @@ export function CustomDrawerContent(props) {
     return email.charAt(0).toUpperCase();
   };
   
-  const handleSignOut = () => {
-    // This will be implemented when authentication is added
-    console.log('Sign out pressed');
+  const handleSignOut = async () => {
+    try {
+      Alert.alert(
+        'Sign Out',
+        'Are you sure you want to sign out?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Sign Out',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await signOut();
+              } catch (error) {
+                Alert.alert(
+                  'Sign Out Failed',
+                  error.message,
+                  [{ text: 'OK', style: 'default' }]
+                );
+              }
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
   };
   
   return (

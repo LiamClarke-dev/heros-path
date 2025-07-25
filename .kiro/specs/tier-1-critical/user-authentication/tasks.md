@@ -39,9 +39,6 @@
     - _Requirements: 2.1, 2.3, 2.4, 6.4_
 
 - [x] 4. Develop user profile management
-
-
-
   - [x] 4.1 Create user profile service
     - Implement functions to create, read, and update user profiles in Firestore
     - Add data validation and error handling
@@ -49,23 +46,30 @@
     - _Requirements: 3.1, 3.2, 3.3, 6.3_
 
   - [x] 4.2 Integrate profile management with UserContext
-
-
     - Add profile loading on authentication
     - Implement profile creation for new users
     - Add profile update functionality
     - Handle profile loading errors
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 5. Create authentication UI components
-  - [ ] 5.1 Implement SignInScreen component
+- [x] 5. Create authentication UI components
+
+
+
+
+
+  - [x] 5.1 Implement SignInScreen component
+
+
     - Create UI for Google authentication
     - Add navigation to email authentication
     - Implement loading states and error handling
     - Add theme integration
     - _Requirements: 1.1, 1.2, 5.1, 5.3_
 
-  - [ ] 5.2 Implement EmailAuthScreen component
+
+  - [-] 5.2 Implement EmailAuthScreen component
+
     - Create form for email/password input
     - Add sign-up and sign-in functionality
     - Implement form validation

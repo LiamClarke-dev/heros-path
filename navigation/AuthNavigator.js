@@ -5,7 +5,7 @@ import { useUser } from '../contexts/UserContext';
 import { MainNavigator } from './MainNavigator';
 import { AuthStack } from './AuthStack';
 import { LoadingScreen } from '../screens/LoadingScreen';
-import { Logger } from '../utils/Logger';
+import Logger from '../utils/Logger';
 
 const Stack = createStackNavigator();
 
@@ -22,7 +22,7 @@ export function AuthNavigator() {
   // Handle authentication state changes with smooth transitions
   useEffect(() => {
     if (previousAuthState.current !== isAuthenticated && !isLoading) {
-      Logger.log('AuthNavigator', `Authentication state changed: ${previousAuthState.current} -> ${isAuthenticated}`);
+      Logger.info('AuthNavigator', `Authentication state changed: ${previousAuthState.current} -> ${isAuthenticated}`);
       
       // Fade out and in for smooth transition
       Animated.sequence([

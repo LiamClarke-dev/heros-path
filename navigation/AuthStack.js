@@ -3,8 +3,9 @@ import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/
 import { Platform, BackHandler } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
-import { PlaceholderScreen } from '../screens/PlaceholderScreen';
-import { Logger } from '../utils/Logger';
+import { SignInScreen } from '../screens/SignInScreen';
+import { EmailAuthScreen } from '../screens/EmailAuthScreen';
+import Logger from '../utils/Logger';
 
 const Stack = createStackNavigator();
 
@@ -24,7 +25,7 @@ export function AuthStack() {
         // Allow back navigation within auth stack, but prevent going back to main app
         // if user somehow ended up in auth stack while authenticated
         if (isAuthenticated) {
-          Logger.log('AuthStack', 'Preventing back navigation while authenticated');
+          Logger.info('AuthStack', 'Preventing back navigation while authenticated');
           return true; // Prevent default back behavior
         }
         return false; // Allow default back behavior
@@ -80,35 +81,18 @@ export function AuthStack() {
     >
       <Stack.Screen 
         name="Login" 
-        component={PlaceholderScreen}
+        component={SignInScreen}
         options={{ 
           title: 'Sign In',
           headerLeft: null, // No back button on login screen
         }}
-        initialParams={{ 
-          screenName: 'Login',
-        }}
       />
       <Stack.Screen 
-        name="Signup" 
-        component={PlaceholderScreen}
+        name="EmailAuth" 
+        component={EmailAuthScreen}
         options={{ 
-          title: 'Create Account',
+          title: 'Email Authentication',
           headerBackTitle: 'Sign In',
-        }}
-        initialParams={{ 
-          screenName: 'Sign Up',
-        }}
-      />
-      <Stack.Screen 
-        name="ForgotPassword" 
-        component={PlaceholderScreen}
-        options={{ 
-          title: 'Reset Password',
-          headerBackTitle: 'Sign In',
-        }}
-        initialParams={{ 
-          screenName: 'Reset Password',
         }}
       />
     </Stack.Navigator>

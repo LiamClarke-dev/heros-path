@@ -23,21 +23,12 @@
   - _Requirements: 1.6, 4.2_
 
 - [x]  1.2 Implement "locate me" functionality
-
-
-
   - Add UI button for centering map on current location
   - Create locateMe function with animation to current position
   - Add loading indicator during location acquisition
   - _Requirements: 1.5_
 
 - [x]  2. Implement BackgroundLocationService
-
-
-
-
-
-
   - Create service class with initialization logic
   - Implement permission request workflows
   - Set up location subscription management
@@ -45,9 +36,6 @@
   - _Requirements: 3.1, 3.4, 7.1, 7.2_
 
 - [x]  2.1 Implement location filtering and smoothing
-
-
-
   - Create accuracy threshold constants
   - Implement isLocationAccurate validation function
   - Add smoothLocation algorithm for GPS noise reduction
@@ -56,8 +44,6 @@
 
 
 - [x]  2.2 Implement GPS warm-up mechanism
-
-
   - Create warm-up configuration constants
   - Implement startGPSWarmup function
   - Add logic to detect when warm-up is complete
@@ -65,16 +51,14 @@
   - _Requirements: 5.3_
 
 - [x]  2.3 Implement background tracking capabilities
-
-
-
   - Add AppState monitoring for foreground/background transitions
   - Create handleAppBackground and handleAppForeground methods
   - Configure background notification settings
   - Test background tracking on both iOS and Android
   - _Requirements: 3.1, 3.2, 3.5, 3.6_
 
-- [ ]  3. Implement journey tracking and route visualization
+- [x]  3. Implement journey tracking and route visualization
+
 
   - Create state for tracking status and current journey
   - Implement toggleTracking function for start/stop
@@ -82,15 +66,16 @@
   - Create path rendering logic with styling
   - _Requirements: 2.1, 2.2_
 
-- [ ]  3.1 Implement journey saving workflow
-
+- [x]  3.1 Implement journey saving workflow
   - Create journey naming modal
   - Implement saveJourney function with error handling
   - Add distance calculation algorithm
   - Create journey data structure with metadata
   - _Requirements: 2.3, 2.4, 2.6_
 
-- [ ]  3.2 Implement saved routes display
+- [x]  3.2 Implement saved routes display
+
+
 
   - Create loadSavedRoutes function to fetch user journeys
   - Add renderSavedRoutes function with styling
@@ -98,23 +83,20 @@
   - _Requirements: 2.5_
 
 - [ ]  4. Implement animated sprite for user movement
-
   - Create sprite state constants and direction logic
   - Implement getDirection function for movement analysis
   - Add sprite rendering with appropriate styling
   - Create sprite animation based on movement direction
-  - Sprite should render on Android & iOS in both production and development (see: docs\ARCHIVE\BUG_FIXES_SUMMARY.md)
+  - Sprite should render on Android & iOS in both production and development
   - _Requirements: 1.2, 1.3_
 
 - [ ]  4.1 Enhance sprite with visual feedback for GPS states
-
   - Add visual indicators for GPS signal strength
   - Implement sprite state for GPS signal loss
   - Create smooth transitions between sprite states
   - _Requirements: 1.4, 5.4_
 
 - [ ]  5. Implement saved places with Google Places integration
-
   - Create loadSavedPlaces function to fetch user's saved places
   - Implement renderSavedPlaces function with Google Place Icons
   - Create placeTypeToIcon mapping for appropriate icon selection
@@ -133,11 +115,6 @@
   - _Requirements: 6.5_
 
 - [ ] 6. Implement map styling system
-
-
-
-
-
   - Create map style definitions for different themes
   - Implement style switching functionality
   - Add persistence for user's style preference
@@ -145,7 +122,6 @@
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
 - [ ] 7. Implement comprehensive error handling
-
   - Create error boundary for MapView component
   - Add fallback UI for map loading failures
   - Implement detailed error logging
@@ -153,7 +129,6 @@
   - _Requirements: 1.4, 5.5_
 
 - [ ] 8. Implement privacy-focused permission workflows
-
   - Create clear permission explanation dialogs
   - Add privacy-focused onboarding for location features
   - Implement guidance for enabling permissions in settings
@@ -161,7 +136,6 @@
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
 - [ ] 9. Optimize performance and battery usage
-
   - Implement adaptive tracking frequency based on activity
   - Add battery-aware location update intervals
   - Optimize map rendering for performance
@@ -169,7 +143,6 @@
   - _Requirements: 3.5_
 
 - [ ] 10. Implement comprehensive testing
-
   - Create unit tests for core algorithms
   - Add integration tests for key workflows
   - Create manual testing scenarios document
@@ -177,7 +150,6 @@
   - _Requirements: All_
 
 - [ ] 11. Implement custom overlay system
-
   - [ ] 11.1 Create MapOverlay interface and data model
 
     - Implement MapOverlay interface with type definitions

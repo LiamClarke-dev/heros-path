@@ -40,10 +40,12 @@ export function NavigationProvider({ children }) {
     } catch (error) {
       console.error('Navigation error:', error);
       // Fallback to reset navigation
-      state.navigationRef.reset({
-        index: 0,
-        routes: [{ name: 'Map' }],
-      });
+      if (state.navigationRef.reset) {
+        state.navigationRef.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
+      }
     }
   }, [state.navigationRef]);
 
@@ -59,17 +61,21 @@ export function NavigationProvider({ children }) {
         state.navigationRef.goBack();
       } else {
         // Fallback to home screen if can't go back
-        state.navigationRef.reset({
-          index: 0,
-          routes: [{ name: 'Map' }],
-        });
+        if (state.navigationRef.reset) {
+          state.navigationRef.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          });
+        }
       }
     } catch (error) {
       console.error('Go back error:', error);
-      state.navigationRef.reset({
-        index: 0,
-        routes: [{ name: 'Map' }],
-      });
+      if (state.navigationRef.reset) {
+        state.navigationRef.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
+      }
     }
   }, [state.navigationRef]);
 

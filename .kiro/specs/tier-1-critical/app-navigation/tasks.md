@@ -22,22 +22,33 @@
     - Integrate with UserContext for authentication state
     - _Requirements: 4.1, 4.5, 4.6_
 
-- [ ] 3. Build main navigation structure
-  - [ ] 3.1 Implement DrawerNavigator
+- [x] 3. Build main navigation structure
+
+
+
+
+
+  - [x] 3.1 Implement DrawerNavigator
+
+
     - Create drawer navigator with custom drawer content
     - Design and implement user profile section in drawer header
     - Add navigation items with icons and proper labeling
     - Implement drawer open/close animations and gestures
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
   
-  - [ ] 3.2 Create TabNavigator for core features
+  - [x] 3.2 Create TabNavigator for core features
+
+
     - Implement bottom tab navigator with Map, Journeys, Discoveries, Saved Places
     - Add theme-aware tab styling and icon selection
     - Implement tab badge system for notifications
     - Add accessibility labels and navigation hints
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
   
-  - [ ] 3.3 Build navigation stacks for each feature
+
+  - [x] 3.3 Build navigation stacks for each feature
+
     - Create MapStack for map-related screens
     - Create JourneysStack for journey management screens
     - Create DiscoveriesStack for discovery-related screens

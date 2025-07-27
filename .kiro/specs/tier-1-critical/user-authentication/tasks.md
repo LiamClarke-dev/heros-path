@@ -53,14 +53,7 @@
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
 - [x] 5. Create authentication UI components
-
-
-
-
-
   - [x] 5.1 Implement SignInScreen component
-
-
     - Create UI for Google authentication
     - Add navigation to email authentication
     - Implement loading states and error handling

@@ -34,10 +34,14 @@ import LocateButton from '../components/ui/LocateButton';
 import JourneyNamingModal from '../components/ui/JourneyNamingModal';
 import MapSprite from '../components/ui/MapSprite';
 import GPSStatusDisplay from '../components/ui/GPSStatusDisplay';
+import SavedPlaceMarker from '../components/ui/SavedPlaceMarker';
+import PlaceDetailModal from '../components/ui/PlaceDetailModal';
+import ClusterMarker from '../components/ui/ClusterMarker';
 
 // Services
 import BackgroundLocationService from '../services/BackgroundLocationService';
 import JourneyService from '../services/JourneyService';
+import SavedPlacesService from '../services/SavedPlacesService';
 
 // Contexts
 import { useUser } from '../contexts/UserContext';
@@ -50,6 +54,7 @@ import {
   requestLocationPermissions,
   LOCATION_OPTIONS,
 } from '../utils/locationUtils';
+import { MarkerClusterer } from '../utils/markerClustering';
 
 // Constants
 import { DEFAULT_JOURNEY_VALUES, VALIDATION_CONSTANTS } from '../constants/JourneyModels';
@@ -100,6 +105,22 @@ const MapScreen = ({ navigation }) => {
   const [showSavedRoutes, setShowSavedRoutes] = useState(false);
   const [loadingRoutes, setLoadingRoutes] = useState(false);
 
+  // Saved places state
+  const [savedPlaces, setSavedPlaces] = useState([]);
+  const [showSavedPlaces, setShowSavedPlaces] = useState(false);
+  const [loadingPlaces, setLoadingPlaces] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [showPlaceDetail, setShowPlaceDetail] = useState(false);
+  
+  // Clustering state
+  const [mapZoom, setMapZoom] = useState(16);
+  const [markerClusterer] = useState(() => new MarkerClusterer({
+    gridSize: 60,
+    maxZoom: 15,
+    minClusterSize: 2,
+    theme: 'light' // TODO: Make this dynamic based on app theme
+  }));
+
   // Sprite state
   const [spriteState, setSpriteState] = useState(DEFAULT_SPRITE_STATE);
   const [recentPositions, setRecentPositions] = useState([]);
@@ -131,13 +152,15 @@ const MapScreen = ({ navigation }) => {
   }, []);
 
   /**
-   * Load saved routes when user is authenticated
+   * Load saved routes and places when user is authenticated
    */
   useEffect(() => {
     if (isAuthenticated && user) {
       loadSavedRoutes();
+      loadSavedPlaces();
     } else {
       setSavedRoutes([]);
+      setSavedPlaces([]);
     }
   }, [isAuthenticated, user]);
 
@@ -625,6 +648,166 @@ const MapScreen = ({ navigation }) => {
   };
 
   /**
+   * Load saved places for the current user
+   * Implements requirement 6.1
+   */
+  const loadSavedPlaces = async () => {
+    if (!user) return;
+
+    try {
+      setLoadingPlaces(true);
+      
+      const places = await SavedPlacesService.loadSavedPlaces(user.uid, {
+        limit: 50, // Load up to 50 saved places
+        orderBy: 'createdAt',
+        orderDirection: 'desc'
+      });
+
+      setSavedPlaces(places);
+      
+      // Update marker clusterer with new places
+      markerClusterer.setMarkers(places);
+      
+      console.log(`Loaded ${places.length} saved places`);
+
+    } catch (error) {
+      console.error('Error loading saved places:', error);
+      Alert.alert(
+        'Load Error',
+        'Failed to load your saved places. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setLoadingPlaces(false);
+    }
+  };
+
+  /**
+   * Toggle visibility of saved places on the map
+   * Implements requirement 6.1
+   */
+  const toggleSavedPlaces = () => {
+    setShowSavedPlaces(!showSavedPlaces);
+  };
+
+  /**
+   * Handle saved place marker tap
+   * Implements requirement 6.3
+   */
+  const handlePlaceMarkerPress = (place) => {
+    setSelectedPlace(place);
+    setShowPlaceDetail(true);
+  };
+
+  /**
+   * Handle cluster marker tap - zoom in to expand cluster
+   * Implements requirement 6.5
+   */
+  const handleClusterPress = (cluster) => {
+    if (mapRef.current && cluster.center) {
+      // Zoom in and center on cluster
+      const newZoom = Math.min(mapZoom + 2, 20);
+      setMapZoom(newZoom);
+      markerClusterer.setZoom(newZoom);
+      
+      // Animate to cluster center
+      animateToLocation(mapRef.current, cluster.center);
+    }
+  };
+
+  /**
+   * Handle map zoom change
+   */
+  const handleMapZoomChange = (zoom) => {
+    setMapZoom(zoom);
+    markerClusterer.setZoom(zoom);
+  };
+
+  /**
+   * Handle saving a place
+   * Implements requirement 6.7
+   */
+  const handleSavePlace = async (place) => {
+    try {
+      await SavedPlacesService.savePlace(user.uid, place);
+      
+      // Refresh saved places to include the new place
+      await loadSavedPlaces();
+      
+      Alert.alert(
+        'Place Saved',
+        `${place.name} has been saved to your places.`,
+        [{ text: 'OK' }]
+      );
+
+    } catch (error) {
+      console.error('Error saving place:', error);
+      throw error; // Re-throw to be handled by PlaceDetailModal
+    }
+  };
+
+  /**
+   * Handle unsaving a place
+   * Implements requirement 6.7
+   */
+  const handleUnsavePlace = async (place) => {
+    try {
+      await SavedPlacesService.unsavePlace(user.uid, place.placeId || place.id);
+      
+      // Refresh saved places to remove the unsaved place
+      await loadSavedPlaces();
+      
+      Alert.alert(
+        'Place Removed',
+        `${place.name} has been removed from your saved places.`,
+        [{ text: 'OK' }]
+      );
+
+    } catch (error) {
+      console.error('Error unsaving place:', error);
+      throw error; // Re-throw to be handled by PlaceDetailModal
+    }
+  };
+
+  /**
+   * Handle navigation to a place
+   * Implements requirement 6.7
+   */
+  const handleNavigateToPlace = (place) => {
+    // Close the place detail modal first
+    setShowPlaceDetail(false);
+    
+    // Center map on the place
+    if (mapRef.current && place.latitude && place.longitude) {
+      const placeLocation = {
+        latitude: place.latitude,
+        longitude: place.longitude
+      };
+      
+      animateToLocation(mapRef.current, placeLocation);
+    }
+  };
+
+  /**
+   * Refresh saved places
+   */
+  const refreshSavedPlaces = async () => {
+    await loadSavedPlaces();
+  };
+
+  /**
+   * Update clusterer when saved places or theme changes
+   */
+  useEffect(() => {
+    if (savedPlaces.length > 0) {
+      markerClusterer.setMarkers(savedPlaces);
+      markerClusterer.setZoom(mapZoom);
+      // TODO: Update theme when theme context is available
+      // markerClusterer.setTheme(currentTheme);
+    }
+  }, [savedPlaces, mapZoom]);
+
+  /**
    * Handle sprite state changes
    */
   const handleSpriteStateChange = (newSpriteState) => {
@@ -738,19 +921,37 @@ const MapScreen = ({ navigation }) => {
         });
       }
 
-      // Prepare markers data (for sprite)
+      // Prepare markers data (for sprite and saved places)
       const markers = [];
+      
+      // Add user position marker (transparent, sprite will be overlaid)
       if (currentPosition) {
-        // Note: expo-maps doesn't support custom marker components directly
-        // We'll render the sprite as an overlay instead
         markers.push({
           coordinate: {
             latitude: currentPosition.latitude,
             longitude: currentPosition.longitude,
           },
           key: 'user-position',
-          // We'll use a transparent marker and overlay the sprite
-          alpha: 0,
+          alpha: 0, // Transparent since sprite will be overlaid
+        });
+      }
+
+      // Add saved places markers if visible
+      if (showSavedPlaces && savedPlaces.length > 0) {
+        savedPlaces.forEach((place) => {
+          if (place.latitude && place.longitude) {
+            markers.push({
+              coordinate: {
+                latitude: place.latitude,
+                longitude: place.longitude,
+              },
+              key: `saved-place-${place.id}`,
+              title: place.name,
+              description: place.vicinity || '',
+              // We'll render custom markers as overlays
+              alpha: 0, // Transparent, custom marker will be overlaid
+            });
+          }
         });
       }
 
@@ -775,6 +976,61 @@ const MapScreen = ({ navigation }) => {
                 onStateChange={handleSpriteStateChange}
               />
             )}
+            
+            {/* Render saved places markers and clusters as overlays */}
+            {showSavedPlaces && (
+              <>
+                {/* Render individual markers */}
+                {markerClusterer.getMarkers().map((place) => (
+                  place.latitude && place.longitude && (
+                    <View
+                      key={`saved-place-overlay-ios-${place.id}`}
+                      style={[
+                        styles.markerOverlay,
+                        {
+                          // Note: In a real implementation, this would need proper
+                          // coordinate-to-screen conversion. For now, this is a placeholder.
+                          position: 'absolute',
+                          left: '50%',
+                          top: '50%',
+                          zIndex: 1000,
+                        }
+                      ]}
+                    >
+                      <SavedPlaceMarker
+                        place={place}
+                        theme="light" // TODO: Make this dynamic based on app theme
+                        size={32}
+                        onPress={handlePlaceMarkerPress}
+                      />
+                    </View>
+                  )
+                ))}
+                
+                {/* Render clusters */}
+                {markerClusterer.getClusters().map((cluster) => (
+                  <View
+                    key={`cluster-overlay-ios-${cluster.id}`}
+                    style={[
+                      styles.markerOverlay,
+                      {
+                        // Note: In a real implementation, this would need proper
+                        // coordinate-to-screen conversion. For now, this is a placeholder.
+                        position: 'absolute',
+                        left: '50%',
+                        top: '50%',
+                        zIndex: 1001, // Higher than individual markers
+                      }
+                    ]}
+                  >
+                    <ClusterMarker
+                      cluster={cluster}
+                      onPress={handleClusterPress}
+                    />
+                  </View>
+                ))}
+              </>
+            )}
           </View>
         );
       } else {
@@ -796,6 +1052,61 @@ const MapScreen = ({ navigation }) => {
                 theme="light" // TODO: Make this dynamic based on app theme
                 onStateChange={handleSpriteStateChange}
               />
+            )}
+            
+            {/* Render saved places markers and clusters as overlays */}
+            {showSavedPlaces && (
+              <>
+                {/* Render individual markers */}
+                {markerClusterer.getMarkers().map((place) => (
+                  place.latitude && place.longitude && (
+                    <View
+                      key={`saved-place-overlay-android-${place.id}`}
+                      style={[
+                        styles.markerOverlay,
+                        {
+                          // Note: In a real implementation, this would need proper
+                          // coordinate-to-screen conversion. For now, this is a placeholder.
+                          position: 'absolute',
+                          left: '50%',
+                          top: '50%',
+                          zIndex: 1000,
+                        }
+                      ]}
+                    >
+                      <SavedPlaceMarker
+                        place={place}
+                        theme="light" // TODO: Make this dynamic based on app theme
+                        size={32}
+                        onPress={handlePlaceMarkerPress}
+                      />
+                    </View>
+                  )
+                ))}
+                
+                {/* Render clusters */}
+                {markerClusterer.getClusters().map((cluster) => (
+                  <View
+                    key={`cluster-overlay-android-${cluster.id}`}
+                    style={[
+                      styles.markerOverlay,
+                      {
+                        // Note: In a real implementation, this would need proper
+                        // coordinate-to-screen conversion. For now, this is a placeholder.
+                        position: 'absolute',
+                        left: '50%',
+                        top: '50%',
+                        zIndex: 1001, // Higher than individual markers
+                      }
+                    ]}
+                  >
+                    <ClusterMarker
+                      cluster={cluster}
+                      onPress={handleClusterPress}
+                    />
+                  </View>
+                ))}
+              </>
             )}
           </View>
         );
@@ -927,6 +1238,32 @@ const MapScreen = ({ navigation }) => {
         </View>
       )}
 
+      {/* Saved Places Toggle Button */}
+      {permissionsGranted && isAuthenticated && savedPlaces.length > 0 && (
+        <View style={styles.savedPlacesButtonContainer}>
+          <TouchableOpacity
+            style={[
+              styles.savedPlacesButton,
+              showSavedPlaces ? styles.savedPlacesButtonActive : styles.savedPlacesButtonInactive
+            ]}
+            onPress={toggleSavedPlaces}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={showSavedPlaces ? 'bookmark-off' : 'bookmark'}
+              size={20}
+              color={showSavedPlaces ? '#4A90E2' : '#666'}
+            />
+            <Text style={[
+              styles.savedPlacesButtonText,
+              showSavedPlaces ? styles.savedPlacesButtonTextActive : styles.savedPlacesButtonTextInactive
+            ]}>
+              {showSavedPlaces ? 'Hide' : 'Show'} Places
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Tracking Control Button */}
       {permissionsGranted && isAuthenticated && (
         <View style={styles.trackingButtonContainer}>
@@ -988,6 +1325,21 @@ const MapScreen = ({ navigation }) => {
         defaultName={JourneyService.generateDefaultJourneyName()}
         journeyStats={journeyToSave?.stats || {}}
         loading={savingJourney}
+      />
+
+      {/* Place Detail Modal */}
+      <PlaceDetailModal
+        visible={showPlaceDetail}
+        place={selectedPlace}
+        theme="light" // TODO: Make this dynamic based on app theme
+        onClose={() => {
+          setShowPlaceDetail(false);
+          setSelectedPlace(null);
+        }}
+        onSave={handleSavePlace}
+        onUnsave={handleUnsavePlace}
+        onNavigate={handleNavigateToPlace}
+        isAuthenticated={isAuthenticated}
       />
 
       {/* TODO: Add other UI elements */}
@@ -1146,6 +1498,53 @@ const styles = StyleSheet.create({
   },
   savedRoutesButtonTextInactive: {
     color: '#666',
+  },
+  savedPlacesButtonContainer: {
+    position: 'absolute',
+    top: 170, // Below saved routes button
+    right: 20,
+    zIndex: 1000,
+  },
+  savedPlacesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  savedPlacesButtonActive: {
+    backgroundColor: '#E3F2FD',
+    borderWidth: 1,
+    borderColor: '#4A90E2',
+  },
+  savedPlacesButtonInactive: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  savedPlacesButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  savedPlacesButtonTextActive: {
+    color: '#4A90E2',
+  },
+  savedPlacesButtonTextInactive: {
+    color: '#666',
+  },
+  markerOverlay: {
+    position: 'absolute',
+    zIndex: 1000,
   },
   gpsStatusContainer: {
     position: 'absolute',

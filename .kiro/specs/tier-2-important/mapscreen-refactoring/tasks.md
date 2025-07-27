@@ -188,19 +188,24 @@
 
 
 
-- [ ] 4.2 Create JourneyInfoDisplay component
+- [x] 4.2 Create JourneyInfoDisplay component
   - Extract journey information display logic
   - Implement real-time journey stats visualization
   - Handle journey state changes and display updates
   - _Requirements: 4.1, 4.2, 4.4_
 
-- [ ] 5. Create MapModals component
+- [x] 5. Create MapModals component
+
+
+
   - Extract modal management into organized structure
   - Implement modal state handling and user interactions
   - Ensure proper modal layering and accessibility
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 5.1 Create MapModals container component
+- [x] 5.1 Create MapModals container component
+
+
   - Extract modal rendering and state management
   - Implement modal visibility and interaction handling
   - Accept props for modal states and callbacks

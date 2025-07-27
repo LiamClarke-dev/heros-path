@@ -37,17 +37,20 @@ import GPSStatusDisplay from '../components/ui/GPSStatusDisplay';
 import SavedPlaceMarker from '../components/ui/SavedPlaceMarker';
 import PlaceDetailModal from '../components/ui/PlaceDetailModal';
 import ClusterMarker from '../components/ui/ClusterMarker';
+import MapStyleSelector from '../components/ui/MapStyleSelector';
 
 // Services
 import BackgroundLocationService from '../services/BackgroundLocationService';
 import JourneyService from '../services/JourneyService';
 import SavedPlacesService from '../services/SavedPlacesService';
+import MapStyleService from '../services/MapStyleService';
 
 // Contexts
 import { useUser } from '../contexts/UserContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Utilities
-import { getMapProvider, getMapConfig, MAP_STYLES } from '../utils/mapProvider';
+import { getMapProvider, getMapConfig, MAP_STYLES, getMapStyleConfig } from '../utils/mapProvider';
 import {
   getCurrentLocation,
   animateToLocation,
@@ -81,10 +84,13 @@ const { width, height } = Dimensions.get('window');
 const MapScreen = ({ navigation }) => {
   // User context
   const { user, isAuthenticated } = useUser();
+  const { theme, currentTheme } = useTheme();
 
   // State management
   const [currentPosition, setCurrentPosition] = useState(null);
   const [mapStyle, setMapStyle] = useState(MAP_STYLES.STANDARD);
+  const [mapStyleConfig, setMapStyleConfig] = useState(null);
+  const [showStyleSelector, setShowStyleSelector] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [mapError, setMapError] = useState(null);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
@@ -111,7 +117,7 @@ const MapScreen = ({ navigation }) => {
   const [loadingPlaces, setLoadingPlaces] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [showPlaceDetail, setShowPlaceDetail] = useState(false);
-  
+
   // Clustering state
   const [mapZoom, setMapZoom] = useState(16);
   const [markerClusterer] = useState(() => new MarkerClusterer({
@@ -124,7 +130,7 @@ const MapScreen = ({ navigation }) => {
   // Sprite state
   const [spriteState, setSpriteState] = useState(DEFAULT_SPRITE_STATE);
   const [recentPositions, setRecentPositions] = useState([]);
-  
+
   // GPS status display
   const [showGPSStatus, setShowGPSStatus] = useState(false);
 
@@ -136,12 +142,18 @@ const MapScreen = ({ navigation }) => {
   const mapProvider = getMapProvider(mapStyle);
   const mapConfig = getMapConfig();
 
+  // Helper function to get current theme name for components
+  const getCurrentThemeName = () => {
+    return currentTheme === 'system' ? (theme.dark ? 'dark' : 'light') : currentTheme;
+  };
+
   /**
    * Initialize the map and request permissions
    */
   useEffect(() => {
     initializeMap();
     initializeLocationService();
+    initializeMapStyle();
 
     // Cleanup function
     return () => {
@@ -150,6 +162,13 @@ const MapScreen = ({ navigation }) => {
       }
     };
   }, []);
+
+  /**
+   * Update map style configuration when theme changes
+   */
+  useEffect(() => {
+    updateMapStyleConfig();
+  }, [mapStyle, currentTheme, theme]);
 
   /**
    * Load saved routes and places when user is authenticated
@@ -163,6 +182,65 @@ const MapScreen = ({ navigation }) => {
       setSavedPlaces([]);
     }
   }, [isAuthenticated, user]);
+
+  /**
+   * Initialize map style from saved preferences
+   * Implements requirement 4.4: Remember previously selected map style
+   */
+  const initializeMapStyle = async () => {
+    try {
+      const savedStyle = await MapStyleService.loadMapStyle();
+      setMapStyle(savedStyle);
+      console.log('Map style initialized:', savedStyle);
+    } catch (error) {
+      console.error('Error initializing map style:', error);
+      setMapStyle(MAP_STYLES.STANDARD);
+    }
+  };
+
+  /**
+   * Update map style configuration based on current style and theme
+   * Implements requirement 4.3: Update map colors to match theme
+   */
+  const updateMapStyleConfig = () => {
+    try {
+      const config = MapStyleService.getThemeAwareStyleConfig(mapStyle, {
+        currentTheme,
+        theme
+      });
+      setMapStyleConfig(config);
+      console.log('Map style config updated:', config);
+    } catch (error) {
+      console.error('Error updating map style config:', error);
+    }
+  };
+
+  /**
+   * Handle map style change from selector
+   * Implements requirements 4.1, 4.2: Display options and immediately apply
+   */
+  const handleMapStyleChange = async (newStyle) => {
+    try {
+      setMapStyle(newStyle);
+      console.log('Map style changed to:', newStyle);
+
+      // The useEffect will handle updating the configuration
+    } catch (error) {
+      console.error('Error changing map style:', error);
+      Alert.alert(
+        'Style Change Error',
+        'Failed to change map style. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  /**
+   * Toggle map style selector visibility
+   */
+  const toggleStyleSelector = () => {
+    setShowStyleSelector(!showStyleSelector);
+  };
 
   /**
    * Initialize the BackgroundLocationService
@@ -179,7 +257,7 @@ const MapScreen = ({ navigation }) => {
 
       if (result.success) {
         console.log('BackgroundLocationService initialized successfully');
-        
+
         // Set up location update callback
         locationServiceRef.current.setLocationUpdateCallback(handleLocationUpdate);
       } else {
@@ -195,16 +273,18 @@ const MapScreen = ({ navigation }) => {
    */
   const handlePermissionPrompt = (promptData) => {
     const { type, title, message } = promptData;
-    
+
     Alert.alert(
       title,
       message,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Settings', onPress: () => {
-          // TODO: Open device settings
-          console.log('Open settings for permissions');
-        }},
+        {
+          text: 'Settings', onPress: () => {
+            // TODO: Open device settings
+            console.log('Open settings for permissions');
+          }
+        },
       ]
     );
   };
@@ -257,17 +337,19 @@ const MapScreen = ({ navigation }) => {
     try {
       // Request location permissions
       const permissionResult = await requestLocationPermissions(false);
-      
+
       if (!permissionResult.granted) {
         Alert.alert(
           'Location Permission Required',
           permissionResult.error || 'Location access is needed to show your position on the map.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Settings', onPress: () => {
-              // TODO: Open device settings
-              console.log('Open settings');
-            }},
+            {
+              text: 'Settings', onPress: () => {
+                // TODO: Open device settings
+                console.log('Open settings');
+              }
+            },
           ]
         );
         return;
@@ -277,7 +359,7 @@ const MapScreen = ({ navigation }) => {
 
       // Get initial location
       const locationResult = await getCurrentLocation(LOCATION_OPTIONS.LOCATE_ME);
-      
+
       if (locationResult.success) {
         const initialPosition = {
           ...locationResult.location,
@@ -305,15 +387,15 @@ const MapScreen = ({ navigation }) => {
       ...location,
       timestamp: Date.now()
     };
-    
+
     setCurrentPosition(newPosition);
-    
+
     // Update recent positions for sprite
     setRecentPositions(prevPositions => {
       const updated = [...prevPositions, newPosition];
       return updated.slice(-5);
     });
-    
+
     // Animate map to the new location
     if (mapRef.current) {
       await animateToLocation(mapRef.current, location);
@@ -387,7 +469,7 @@ const MapScreen = ({ navigation }) => {
     try {
       // Generate unique journey ID
       const journeyId = `journey_${user.uid}_${Date.now()}`;
-      
+
       // Start location tracking
       const success = await locationServiceRef.current.startTracking(journeyId, {
         warmup: true,
@@ -400,7 +482,7 @@ const MapScreen = ({ navigation }) => {
         setCurrentJourneyId(journeyId);
         setJourneyStartTime(Date.now());
         setPathToRender([]);
-        
+
         console.log('Journey tracking started:', journeyId);
       } else {
         throw new Error('Failed to start location tracking');
@@ -422,11 +504,11 @@ const MapScreen = ({ navigation }) => {
     try {
       // Stop location tracking and get journey data
       const journeyData = await locationServiceRef.current.stopTracking();
-      
+
       if (journeyData && journeyData.coordinates && journeyData.coordinates.length > 0) {
         // Calculate journey distance
         const distance = calculateJourneyDistance(journeyData.coordinates);
-        
+
         // Check minimum distance requirement
         if (distance < VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE) {
           Alert.alert(
@@ -483,13 +565,13 @@ const MapScreen = ({ navigation }) => {
     const R = 6371000; // Earth's radius in meters
     const dLat = toRadians(coord2.latitude - coord1.latitude);
     const dLon = toRadians(coord2.longitude - coord1.longitude);
-    
-    const a = 
+
+    const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRadians(coord1.latitude)) * 
-      Math.cos(toRadians(coord2.latitude)) * 
+      Math.cos(toRadians(coord1.latitude)) *
+      Math.cos(toRadians(coord2.latitude)) *
       Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
+
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
@@ -507,7 +589,7 @@ const MapScreen = ({ navigation }) => {
   const promptSaveJourney = (journeyData, distance) => {
     // Calculate journey statistics
     const stats = JourneyService.calculateJourneyStats(journeyData.coordinates);
-    
+
     // Prepare journey data for saving
     const journeyToSave = {
       ...DEFAULT_JOURNEY_VALUES,
@@ -547,7 +629,7 @@ const MapScreen = ({ navigation }) => {
       };
 
       const savedJourney = await JourneyService.saveJourney(journeyData);
-      
+
       // Close modal and reset state
       setShowNamingModal(false);
       setJourneyToSave(null);
@@ -580,7 +662,7 @@ const MapScreen = ({ navigation }) => {
   const handleCancelSave = () => {
     setShowNamingModal(false);
     setJourneyToSave(null);
-    
+
     // Ask user if they want to discard the journey
     Alert.alert(
       'Discard Journey',
@@ -611,7 +693,7 @@ const MapScreen = ({ navigation }) => {
 
     try {
       setLoadingRoutes(true);
-      
+
       const routes = await JourneyService.loadUserJourneys(user.uid, {
         limit: 20, // Load last 20 journeys
         orderBy: 'createdAt',
@@ -656,7 +738,7 @@ const MapScreen = ({ navigation }) => {
 
     try {
       setLoadingPlaces(true);
-      
+
       const places = await SavedPlacesService.loadSavedPlaces(user.uid, {
         limit: 50, // Load up to 50 saved places
         orderBy: 'createdAt',
@@ -664,10 +746,10 @@ const MapScreen = ({ navigation }) => {
       });
 
       setSavedPlaces(places);
-      
+
       // Update marker clusterer with new places
       markerClusterer.setMarkers(places);
-      
+
       console.log(`Loaded ${places.length} saved places`);
 
     } catch (error) {
@@ -709,7 +791,7 @@ const MapScreen = ({ navigation }) => {
       const newZoom = Math.min(mapZoom + 2, 20);
       setMapZoom(newZoom);
       markerClusterer.setZoom(newZoom);
-      
+
       // Animate to cluster center
       animateToLocation(mapRef.current, cluster.center);
     }
@@ -730,10 +812,10 @@ const MapScreen = ({ navigation }) => {
   const handleSavePlace = async (place) => {
     try {
       await SavedPlacesService.savePlace(user.uid, place);
-      
+
       // Refresh saved places to include the new place
       await loadSavedPlaces();
-      
+
       Alert.alert(
         'Place Saved',
         `${place.name} has been saved to your places.`,
@@ -753,10 +835,10 @@ const MapScreen = ({ navigation }) => {
   const handleUnsavePlace = async (place) => {
     try {
       await SavedPlacesService.unsavePlace(user.uid, place.placeId || place.id);
-      
+
       // Refresh saved places to remove the unsaved place
       await loadSavedPlaces();
-      
+
       Alert.alert(
         'Place Removed',
         `${place.name} has been removed from your saved places.`,
@@ -776,14 +858,14 @@ const MapScreen = ({ navigation }) => {
   const handleNavigateToPlace = (place) => {
     // Close the place detail modal first
     setShowPlaceDetail(false);
-    
+
     // Center map on the place
     if (mapRef.current && place.latitude && place.longitude) {
       const placeLocation = {
         latitude: place.latitude,
         longitude: place.longitude
       };
-      
+
       animateToLocation(mapRef.current, placeLocation);
     }
   };
@@ -812,12 +894,12 @@ const MapScreen = ({ navigation }) => {
    */
   const handleSpriteStateChange = (newSpriteState) => {
     setSpriteState(newSpriteState);
-    
+
     // Show GPS status display when GPS signal is poor or lost
-    const shouldShowGPSStatus = newSpriteState.gpsState?.indicator === 'POOR' || 
-                               newSpriteState.gpsState?.indicator === 'LOST';
+    const shouldShowGPSStatus = newSpriteState.gpsState?.indicator === 'POOR' ||
+      newSpriteState.gpsState?.indicator === 'LOST';
     setShowGPSStatus(shouldShowGPSStatus);
-    
+
     // Log sprite state changes for debugging
     if (__DEV__) {
       console.log('Sprite state changed:', {
@@ -842,7 +924,7 @@ const MapScreen = ({ navigation }) => {
           console.warn('Failed to animate map to current position:', error);
         }
       };
-      
+
       // Throttle map animations to avoid too frequent updates
       const timeoutId = setTimeout(animateToCurrentPosition, 1000);
       return () => clearTimeout(timeoutId);
@@ -890,14 +972,21 @@ const MapScreen = ({ navigation }) => {
 
       // Prepare polylines data
       const polylines = [];
-      
+
+      // Get theme-aware colors from map style config
+      const styleColors = mapStyleConfig?.colors || {
+        polylineColor: '#00FF88',
+        savedRouteColor: '#4A90E2',
+        markerTint: '#4A90E2'
+      };
+
       // Add saved routes if visible
       if (showSavedRoutes && savedRoutes.length > 0) {
         savedRoutes.forEach((route, index) => {
           if (route.route && route.route.length > 1) {
             polylines.push({
               coordinates: route.route,
-              strokeColor: '#4A90E2', // Blue color for saved routes
+              strokeColor: styleColors.savedRouteColor,
               strokeWidth: 4,
               strokeOpacity: 0.6,
               lineCap: 'round',
@@ -907,12 +996,12 @@ const MapScreen = ({ navigation }) => {
           }
         });
       }
-      
+
       // Add current journey path (should be on top)
       if (pathToRender.length > 1) {
         polylines.push({
           coordinates: pathToRender,
-          strokeColor: '#00FF88', // Glowing green color for current journey
+          strokeColor: styleColors.polylineColor,
           strokeWidth: 6,
           strokeOpacity: 0.8,
           lineCap: 'round',
@@ -923,7 +1012,7 @@ const MapScreen = ({ navigation }) => {
 
       // Prepare markers data (for sprite and saved places)
       const markers = [];
-      
+
       // Add user position marker (transparent, sprite will be overlaid)
       if (currentPosition) {
         markers.push({
@@ -961,7 +1050,8 @@ const MapScreen = ({ navigation }) => {
           <View style={styles.mapContainer}>
             <AppleMaps
               {...commonProps}
-              mapType="standard" // TODO: Make this dynamic based on mapStyle
+              mapType={mapStyleConfig?.mapType || 'standard'}
+              customMapStyle={mapStyleConfig?.customStyle}
               polylines={polylines}
               markers={markers}
             />
@@ -972,11 +1062,11 @@ const MapScreen = ({ navigation }) => {
                 recentPositions={recentPositions}
                 gpsAccuracy={spriteState.gpsAccuracy}
                 size={32}
-                theme="light" // TODO: Make this dynamic based on app theme
+                theme={getCurrentThemeName()}
                 onStateChange={handleSpriteStateChange}
               />
             )}
-            
+
             {/* Render saved places markers and clusters as overlays */}
             {showSavedPlaces && (
               <>
@@ -999,14 +1089,14 @@ const MapScreen = ({ navigation }) => {
                     >
                       <SavedPlaceMarker
                         place={place}
-                        theme="light" // TODO: Make this dynamic based on app theme
+                        theme={getCurrentThemeName()}
                         size={32}
                         onPress={handlePlaceMarkerPress}
                       />
                     </View>
                   )
                 ))}
-                
+
                 {/* Render clusters */}
                 {markerClusterer.getClusters().map((cluster) => (
                   <View
@@ -1038,7 +1128,8 @@ const MapScreen = ({ navigation }) => {
           <View style={styles.mapContainer}>
             <GoogleMaps
               {...commonProps}
-              mapType="standard" // TODO: Make this dynamic based on mapStyle
+              mapType={mapStyleConfig?.mapType || 'standard'}
+              customMapStyle={mapStyleConfig?.customStyle}
               polylines={polylines}
               markers={markers}
             />
@@ -1049,11 +1140,11 @@ const MapScreen = ({ navigation }) => {
                 recentPositions={recentPositions}
                 gpsAccuracy={spriteState.gpsAccuracy}
                 size={32}
-                theme="light" // TODO: Make this dynamic based on app theme
+                theme={getCurrentThemeName()}
                 onStateChange={handleSpriteStateChange}
               />
             )}
-            
+
             {/* Render saved places markers and clusters as overlays */}
             {showSavedPlaces && (
               <>
@@ -1076,14 +1167,14 @@ const MapScreen = ({ navigation }) => {
                     >
                       <SavedPlaceMarker
                         place={place}
-                        theme="light" // TODO: Make this dynamic based on app theme
+                        theme={getCurrentThemeName()}
                         size={32}
                         onPress={handlePlaceMarkerPress}
                       />
                     </View>
                   )
                 ))}
-                
+
                 {/* Render clusters */}
                 {markerClusterer.getClusters().map((cluster) => (
                   <View
@@ -1151,7 +1242,7 @@ const MapScreen = ({ navigation }) => {
                 />
               )
             ))}
-            
+
             {/* Render current journey path (on top) */}
             {pathToRender.length > 1 && (
               <Polyline
@@ -1164,7 +1255,7 @@ const MapScreen = ({ navigation }) => {
               />
             )}
           </MapView>
-          
+
           {/* Render sprite as overlay */}
           {currentPosition && (
             <MapSprite
@@ -1172,7 +1263,7 @@ const MapScreen = ({ navigation }) => {
               recentPositions={recentPositions}
               gpsAccuracy={spriteState.gpsAccuracy}
               size={32}
-              theme="light" // TODO: Make this dynamic based on app theme
+              theme={getCurrentThemeName()}
               onStateChange={handleSpriteStateChange}
             />
           )}
@@ -1197,7 +1288,7 @@ const MapScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
-      
+
       {/* Map */}
       {renderMap()}
 
@@ -1207,7 +1298,7 @@ const MapScreen = ({ navigation }) => {
           <LocateButton
             onLocationFound={handleLocateMe}
             onError={handleLocateError}
-            theme="light" // TODO: Make this dynamic based on app theme
+            theme={getCurrentThemeName()}
           />
         </View>
       )}
@@ -1264,6 +1355,23 @@ const MapScreen = ({ navigation }) => {
         </View>
       )}
 
+      {/* Map Style Button */}
+      {permissionsGranted && (
+        <View style={styles.mapStyleButtonContainer}>
+          <TouchableOpacity
+            style={styles.mapStyleButton}
+            onPress={toggleStyleSelector}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="layers"
+              size={20}
+              color="#666"
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Tracking Control Button */}
       {permissionsGranted && isAuthenticated && (
         <View style={styles.trackingButtonContainer}>
@@ -1311,7 +1419,7 @@ const MapScreen = ({ navigation }) => {
             gpsState={spriteState.gpsState}
             signalStrength={spriteState.signalStrength || 0}
             visible={showGPSStatus}
-            theme="light" // TODO: Make this dynamic based on app theme
+            theme={getCurrentThemeName()}
             onPress={() => setShowGPSStatus(false)}
           />
         </View>
@@ -1331,7 +1439,7 @@ const MapScreen = ({ navigation }) => {
       <PlaceDetailModal
         visible={showPlaceDetail}
         place={selectedPlace}
-        theme="light" // TODO: Make this dynamic based on app theme
+        theme={getCurrentThemeName()}
         onClose={() => {
           setShowPlaceDetail(false);
           setSelectedPlace(null);
@@ -1342,9 +1450,14 @@ const MapScreen = ({ navigation }) => {
         isAuthenticated={isAuthenticated}
       />
 
-      {/* TODO: Add other UI elements */}
-      {/* - Map style selector */}
-      {/* - Sprite animation */}
+      {/* Map Style Selector Modal */}
+      <MapStyleSelector
+        visible={showStyleSelector}
+        onClose={() => setShowStyleSelector(false)}
+        currentStyle={mapStyle}
+        onStyleChange={handleMapStyleChange}
+        showNightModeOption={true}
+      />
     </View>
   );
 };
@@ -1552,6 +1665,28 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
+  },
+  mapStyleButtonContainer: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    zIndex: 1000,
+  },
+  mapStyleButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
 });
 

@@ -92,7 +92,7 @@ const useLocationTracking = () => {
    */
   const requestInitialPermissions = useCallback(async () => {
     try {
-      const permissionResult = await requestLocationPermissions(false);
+      const permissionResult = await requestLocationPermissions(true);
       
       if (permissionResult.granted) {
         setPermissionsGranted(true);

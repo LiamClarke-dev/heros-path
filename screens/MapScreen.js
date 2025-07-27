@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
+  Text,
   StyleSheet,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -29,7 +30,7 @@ import { useTheme } from '../contexts/ThemeContext';
  * Orchestrates child components and manages high-level state.
  */
 
-const MapScreen = React.memo(({ navigation }) => {
+const MapScreen = ({ navigation }) => {
   // Context
   const { user, isAuthenticated } = useUser();
   const { theme, currentTheme } = useTheme();
@@ -54,6 +55,19 @@ const MapScreen = React.memo(({ navigation }) => {
       console.log(`MapScreen render count: ${renderCountRef.current}`);
     }
   });
+
+  // Request permissions on mount
+  useEffect(() => {
+    const requestPermissions = async () => {
+      try {
+        await permissions.requestPermissions();
+      } catch (error) {
+        console.error('Error requesting permissions:', error);
+      }
+    };
+
+    requestPermissions();
+  }, [permissions]);
 
   // Sync location tracking with journey tracking
   useEffect(() => {
@@ -166,13 +180,13 @@ const MapScreen = React.memo(({ navigation }) => {
 
   const gpsStatus = useMemo(() => ({
     gpsState: locationTracking.gpsStatus,
-    signalStrength: locationTracking.gpsStatus?.accuracy ? 
+    signalStrength: locationTracking.gpsStatus?.accuracy ?
       Math.max(0, Math.min(100, 100 - (locationTracking.gpsStatus.accuracy / 2))) : 0,
-    visible: locationTracking.gpsStatus?.indicator === 'POOR' || 
-             locationTracking.gpsStatus?.indicator === 'LOST',
+    visible: locationTracking.gpsStatus?.indicator === 'POOR' ||
+      locationTracking.gpsStatus?.indicator === 'LOST',
   }), [locationTracking.gpsStatus]);
 
-  const currentThemeValue = useMemo(() => 
+  const currentThemeValue = useMemo(() =>
     currentTheme === 'system' ? (theme.dark ? 'dark' : 'light') : currentTheme,
     [currentTheme, theme.dark]
   );
@@ -194,7 +208,7 @@ const MapScreen = React.memo(({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
-      
+
       <MapRenderer
         mapState={mapState}
         locationTracking={locationTracking}
@@ -203,7 +217,7 @@ const MapScreen = React.memo(({ navigation }) => {
         mapStyle={mapStyle}
         onMapReady={handleMapReady}
       />
-      
+
       <MapControls
         trackingState={trackingState}
         savedRoutesState={savedRoutesState}
@@ -216,14 +230,29 @@ const MapScreen = React.memo(({ navigation }) => {
         onToggleSavedPlaces={savedPlaces.toggleVisibility}
         onToggleMapStyle={mapStyle.toggleSelector}
       />
-      
+
       <MapStatusDisplays
         journeyInfo={journeyInfo}
         gpsStatus={gpsStatus}
         theme={currentThemeValue}
         onGPSStatusPress={handleGPSStatusPress}
       />
-      
+
+      {/* Permission prompt overlay */}
+      {!permissions.granted && (
+        <View style={styles.permissionOverlay}>
+          <View style={styles.permissionPrompt}>
+            <Text style={styles.permissionTitle}>Location Access Required</Text>
+            <Text style={styles.permissionText}>
+              Tap the locate button (📍) to enable location access and see the map.
+            </Text>
+            <Text style={styles.permissionSubtext}>
+              Status: {permissions.statusMessage}
+            </Text>
+          </View>
+        </View>
+      )}
+
       <MapModals
         journeyNaming={journeyNamingProps}
         onSaveJourney={handleSaveJourney}
@@ -244,12 +273,54 @@ const MapScreen = React.memo(({ navigation }) => {
       />
     </View>
   );
-});
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  permissionOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2000,
+  },
+  permissionPrompt: {
+    backgroundColor: '#fff',
+    margin: 20,
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  permissionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  permissionText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  permissionSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
 });
 

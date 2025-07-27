@@ -32,10 +32,8 @@ const MapControls = ({
   onToggleSavedPlaces,
   onToggleMapStyle,
 }) => {
-  // Don't render controls if permissions are not granted
-  if (!permissions?.granted) {
-    return null;
-  }
+  // Show locate button even if permissions aren't granted so users can request them
+  // Other controls are hidden until permissions are granted
 
   return (
     <>
@@ -53,33 +51,37 @@ const MapControls = ({
         />
       </View>
 
-      {/* Top Right Toggles */}
-      <View style={styles.topRightToggles}>
-        <SavedRoutesToggle
-          onPress={onToggleSavedRoutes}
-          isVisible={savedRoutesState?.isVisible}
-          isLoading={savedRoutesState?.isLoading}
-          hasRoutes={savedRoutesState?.hasRoutes}
-          isAuthenticated={trackingState?.isAuthenticated}
-        />
-        <SavedPlacesToggle
-          onPress={onToggleSavedPlaces}
-          isVisible={savedPlacesState?.isVisible}
-          isLoading={savedPlacesState?.isLoading}
-          hasPlaces={savedPlacesState?.hasPlaces}
-          isAuthenticated={trackingState?.isAuthenticated}
-        />
-      </View>
+      {/* Top Right Toggles - only show if permissions granted */}
+      {permissions?.granted && (
+        <View style={styles.topRightToggles}>
+          <SavedRoutesToggle
+            onPress={onToggleSavedRoutes}
+            isVisible={savedRoutesState?.isVisible}
+            isLoading={savedRoutesState?.isLoading}
+            hasRoutes={savedRoutesState?.hasRoutes}
+            isAuthenticated={trackingState?.isAuthenticated}
+          />
+          <SavedPlacesToggle
+            onPress={onToggleSavedPlaces}
+            isVisible={savedPlacesState?.isVisible}
+            isLoading={savedPlacesState?.isLoading}
+            hasPlaces={savedPlacesState?.hasPlaces}
+            isAuthenticated={trackingState?.isAuthenticated}
+          />
+        </View>
+      )}
 
-      {/* Bottom Controls */}
-      <View style={styles.bottomControls}>
-        <TrackingButton
-          onPress={onToggleTracking}
-          isTracking={trackingState?.isTracking}
-          isAuthenticated={trackingState?.isAuthenticated}
-          journeyStartTime={trackingState?.journeyStartTime}
-        />
-      </View>
+      {/* Bottom Controls - only show if permissions granted */}
+      {permissions?.granted && (
+        <View style={styles.bottomControls}>
+          <TrackingButton
+            onPress={onToggleTracking}
+            isTracking={trackingState?.isTracking}
+            isAuthenticated={trackingState?.isAuthenticated}
+            journeyStartTime={trackingState?.journeyStartTime}
+          />
+        </View>
+      )}
     </>
   );
 };

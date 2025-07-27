@@ -1,20 +1,18 @@
 import React, { useRef, useEffect } from 'react';
 import { View, StyleSheet, Platform, Text } from 'react-native';
 
-// Try to import expo-maps, fallback to react-native-maps if not available
-let AppleMaps, GoogleMaps, MapView;
+// Import react-native-maps directly since it's available
+import MapView from 'react-native-maps';
+
+// Try to import expo-maps as fallback
+let AppleMaps, GoogleMaps;
 try {
   const expoMaps = require('expo-maps');
   AppleMaps = expoMaps.AppleMaps;
   GoogleMaps = expoMaps.GoogleMaps;
+  console.log('expo-maps loaded successfully');
 } catch (error) {
-  console.log('expo-maps not available, falling back to react-native-maps');
-  try {
-    const reactNativeMaps = require('react-native-maps');
-    MapView = reactNativeMaps.default;
-  } catch (fallbackError) {
-    console.log('react-native-maps also not available');
-  }
+  console.log('expo-maps not available, using react-native-maps:', error.message);
 }
 
 // Sub-components
@@ -137,42 +135,79 @@ const MapRenderer = ({
    */
   const renderMapView = () => {
     const cameraPosition = mapState.cameraPosition || getInitialCameraPosition();
-    
-    // For now, let's create a working map placeholder that shows the refactored structure is working
-    // This will be replaced with actual map implementation once the libraries are properly configured
-    return (
-      <View style={[styles.map, styles.mapPlaceholder, style]}>
-        <Text style={styles.placeholderTitle}>Refactored MapScreen</Text>
-        <Text style={styles.placeholderText}>✅ Custom hooks integrated</Text>
-        <Text style={styles.placeholderText}>✅ Component composition working</Text>
-        <Text style={styles.placeholderText}>✅ Props properly passed</Text>
-        <Text style={styles.placeholderSubtext}>
-          Map libraries will be configured next
-        </Text>
-        
-        {/* Show some state information to verify hooks are working */}
-        <View style={styles.statusContainer}>
-          <Text style={styles.statusText}>
-            Tracking: {locationTracking?.currentPosition ? '📍 Located' : '❌ No location'}
+
+    // Simplified props to avoid potential issues
+    const commonProps = {
+      ref: mapRef,
+      style: [styles.map, style],
+      showsUserLocation: true,
+      showsMyLocationButton: false,
+    };
+
+    // Prepare map children (polylines and overlays) - temporarily simplified
+    const mapChildren = null; // Temporarily remove children to isolate the error
+
+    // Use react-native-maps as primary since it's working
+    if (MapView) {
+      console.log('Using react-native-maps');
+      // Use react-native-maps with safe region
+      const region = {
+        latitude: mapState?.currentPosition?.latitude || 37.7749,
+        longitude: mapState?.currentPosition?.longitude || -122.4194,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+
+      return (
+        <MapView
+          {...commonProps}
+          initialRegion={region}
+          mapType="standard"
+        />
+      );
+    } else if (AppleMaps && GoogleMaps) {
+      console.log('Using expo-maps, platform:', Platform.OS, 'provider:', mapProvider);
+      // Fallback to expo-maps if available
+      if (Platform.OS === 'ios' && mapProvider === 'apple') {
+        return (
+          <AppleMaps
+            {...commonProps}
+            cameraPosition={cameraPosition}
+          >
+            {mapChildren}
+          </AppleMaps>
+        );
+      } else {
+        return (
+          <GoogleMaps
+            {...commonProps}
+            cameraPosition={cameraPosition}
+          >
+            {mapChildren}
+          </GoogleMaps>
+        );
+      }
+    } else {
+      // No map library available - show error message
+      console.error('No map library available - AppleMaps:', !!AppleMaps, 'GoogleMaps:', !!GoogleMaps, 'MapView:', !!MapView);
+      return (
+        <View style={[styles.map, styles.errorContainer, style]}>
+          <Text style={styles.errorText}>Map Library Not Available</Text>
+          <Text style={styles.errorSubtext}>
+            This requires expo-maps or react-native-maps to be installed
           </Text>
-          <Text style={styles.statusText}>
-            Journey: {savedRoutes?.data?.length || 0} saved routes
-          </Text>
-          <Text style={styles.statusText}>
-            Places: {savedPlaces?.data?.length || 0} saved places
-          </Text>
-          <Text style={styles.statusText}>
-            Style: {mapStyle?.mapStyle || 'standard'}
+          <Text style={styles.errorSubtext}>
+            Run: expo install expo-maps
           </Text>
         </View>
-      </View>
-    );
+      );
+    }
   };
 
   return (
     <View style={styles.container}>
       {renderMapView()}
-      
+
       {/* Render overlays on top of the map */}
       <MapOverlays
         currentPosition={locationTracking?.currentPosition}
@@ -198,53 +233,24 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
-  mapPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    padding: 20,
-  },
-  placeholderTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  placeholderText: {
-    fontSize: 16,
-    color: '#27ae60',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  placeholderSubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  statusContainer: {
-    backgroundColor: '#ecf0f1',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  statusText: {
-    fontSize: 14,
-    color: '#34495e',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
   errorContainer: {
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f0f0f0',
+    padding: 20,
   },
   errorText: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#e74c3c',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  errorSubtext: {
+    fontSize: 14,
     color: '#666',
     textAlign: 'center',
+    marginBottom: 5,
   },
 });
 

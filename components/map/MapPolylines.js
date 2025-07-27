@@ -1,19 +1,7 @@
 import React, { useMemo } from 'react';
 
-// Try to import expo-maps, fallback to react-native-maps if not available
-let Polyline;
-try {
-  const expoMaps = require('expo-maps');
-  Polyline = expoMaps.Polyline;
-} catch (error) {
-  console.log('expo-maps not available, falling back to react-native-maps');
-  try {
-    const reactNativeMaps = require('react-native-maps');
-    Polyline = reactNativeMaps.Polyline;
-  } catch (fallbackError) {
-    console.log('react-native-maps also not available');
-  }
-}
+// Import Polyline from react-native-maps directly
+import { Polyline } from 'react-native-maps';
 
 /**
  * MapPolylines Component

@@ -1,7 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useTheme } from '../../contexts/ThemeContext';
-import { SimpleMapScreen } from '../../screens/SimpleMapScreen';
+import MapScreen from '../../screens/MapScreen';
 
 const Stack = createStackNavigator();
 
@@ -27,7 +27,7 @@ export function MapStack() {
     >
       <Stack.Screen 
         name="MapMain" 
-        component={SimpleMapScreen}
+        component={MapScreen}
         options={{ 
           title: 'Map',
           headerShown: false, // Map screen handles its own header

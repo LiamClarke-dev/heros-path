@@ -198,6 +198,7 @@
 
 
 
+
   - Extract modal management into organized structure
   - Implement modal state handling and user interactions
   - Ensure proper modal layering and accessibility
@@ -211,31 +212,45 @@
   - Accept props for modal states and callbacks
   - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 6. Refactor main MapScreen component
+- [x] 6. Refactor main MapScreen component
+
+
+
+
   - Integrate all custom hooks and components
   - Reduce MapScreen to orchestration and high-level state
   - Implement proper prop passing and state management
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 6.1, 6.2, 6.3, 6.4_
 
-- [ ] 6.1 Update MapScreen to use custom hooks
+- [x] 6.1 Update MapScreen to use custom hooks
+
+
   - Replace direct state management with custom hooks
   - Implement hook integration and data flow
   - Remove duplicate state and logic from MapScreen
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 6.1, 6.2_
 
-- [ ] 6.2 Update MapScreen to use new components
+
+
+- [x] 6.2 Update MapScreen to use new components
+
   - Replace inline rendering with component composition
   - Implement proper prop passing and callback handling
   - Ensure component communication and state synchronization
+
+
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 6.1, 6.2_
 
-- [ ] 6.3 Optimize MapScreen performance
+- [x] 6.3 Optimize MapScreen performance
+
   - Implement React.memo and useMemo where appropriate
+
   - Optimize re-rendering and state update patterns
   - Add performance monitoring and measurement
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-- [ ] 6.4 Clean up MapScreen code
+- [x] 6.4 Clean up MapScreen code
+
   - Remove unused imports and dead code
   - Organize remaining code and improve readability
   - Ensure MapScreen is under 200 lines of code

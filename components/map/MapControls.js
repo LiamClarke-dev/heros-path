@@ -4,6 +4,7 @@ import TrackingButton from './TrackingButton';
 import SavedRoutesToggle from './SavedRoutesToggle';
 import SavedPlacesToggle from './SavedPlacesToggle';
 import MapStyleButton from './MapStyleButton';
+import LocateButton from '../ui/LocateButton';
 
 /**
  * MapControls Component
@@ -25,6 +26,7 @@ const MapControls = ({
   permissions,
   
   // Control callbacks
+  onLocateMe,
   onToggleTracking,
   onToggleSavedRoutes,
   onToggleSavedPlaces,
@@ -39,6 +41,11 @@ const MapControls = ({
     <>
       {/* Top Right Controls */}
       <View style={styles.topRightControls}>
+        <LocateButton
+          onLocationFound={onLocateMe}
+          onError={(error) => console.warn('Locate error:', error)}
+          theme="light"
+        />
         <MapStyleButton
           onPress={onToggleMapStyle}
           currentStyle={mapStyleState?.currentStyle}

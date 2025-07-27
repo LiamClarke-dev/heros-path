@@ -145,7 +145,7 @@
 
 
 
-- [ ] 3.3 Create SavedRoutesToggle component
+- [x] 3.3 Create SavedRoutesToggle component
   - Extract saved routes visibility toggle
   - Implement toggle state visualization and interaction
   - Handle routes loading states and user feedback
@@ -153,7 +153,7 @@
 
   - _Requirements: 4.1, 4.2, 4.4_
 
-- [ ] 3.4 Create SavedPlacesToggle component
+- [x] 3.4 Create SavedPlacesToggle component
   - Extract saved places visibility toggle
 
 
@@ -161,23 +161,32 @@
   - Handle places loading states and user feedback
   - _Requirements: 4.1, 4.2, 4.4_
 
-- [ ] 3.5 Create MapStyleButton component
+- [x] 3.5 Create MapStyleButton component
   - Extract map style selector button
   - Implement style selector modal trigger
   - Handle current style indication and user interaction
   - _Requirements: 4.1, 4.2, 4.4_
 
-- [ ] 4. Create MapStatusDisplays component
+- [x] 4. Create MapStatusDisplays component
+
+
+
+
+
   - Extract status display components
   - Implement journey info and GPS status displays
   - Handle display visibility and user interactions
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 4.1 Create MapStatusDisplays container
+- [x] 4.1 Create MapStatusDisplays container
+
+
   - Extract status display layout and positioning
   - Implement conditional display logic
   - Accept props for status data and visibility states
   - _Requirements: 4.1, 4.2, 4.3_
+
+
 
 - [ ] 4.2 Create JourneyInfoDisplay component
   - Extract journey information display logic

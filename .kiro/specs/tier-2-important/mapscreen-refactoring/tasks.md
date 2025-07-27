@@ -116,32 +116,47 @@
   - Handle marker visibility and theme integration
   - _Requirements: 5.1, 5.2, 5.3_
 
-- [ ] 3. Create MapControls component
+- [x] 3. Create MapControls component
+
+
+
+
+
   - Extract UI controls into organized component structure
   - Implement control positioning and interaction handling
   - Create individual control components
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 3.1 Create MapControls container component
+- [x] 3.1 Create MapControls container component
+
+
   - Extract control layout and positioning logic
   - Implement responsive control arrangement
   - Accept props for control states and callbacks
   - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 3.2 Create TrackingButton component
+- [x] 3.2 Create TrackingButton component
+
+
   - Extract journey tracking button logic
   - Implement tracking state visualization and user feedback
   - Handle authentication checks and button interactions
   - _Requirements: 4.1, 4.2, 4.4_
 
+
+
 - [ ] 3.3 Create SavedRoutesToggle component
   - Extract saved routes visibility toggle
   - Implement toggle state visualization and interaction
   - Handle routes loading states and user feedback
+
+
   - _Requirements: 4.1, 4.2, 4.4_
 
 - [ ] 3.4 Create SavedPlacesToggle component
   - Extract saved places visibility toggle
+
+
   - Implement toggle state visualization and interaction
   - Handle places loading states and user feedback
   - _Requirements: 4.1, 4.2, 4.4_

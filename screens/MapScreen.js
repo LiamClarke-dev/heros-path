@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,30 +9,87 @@ import { StatusBar } from 'expo-status-bar';
 
 // Custom Hooks
 import useMapPermissions from '../hooks/useMapPermissions';
+import useLocationTracking from '../hooks/useLocationTracking';
+import useMapState from '../hooks/useMapState';
+import useJourneyTracking from '../hooks/useJourneyTracking';
+import useSavedRoutes from '../hooks/useSavedRoutes';
+import useSavedPlaces from '../hooks/useSavedPlaces';
+import useMapStyle from '../hooks/useMapStyle';
 
 // Components
 import MapRenderer from '../components/map/MapRenderer';
+import MapControls from '../components/map/MapControls';
+import MapStatusDisplays from '../components/map/MapStatusDisplays';
+import MapModals from '../components/map/MapModals';
 
 // Contexts
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 /**
- * Simplified MapScreen for testing - removing complex hooks to isolate the error
+ * MapScreen - Refactored with modular architecture
+ * 
+ * This component orchestrates all map functionality through custom hooks and components:
+ * - useMapPermissions: Location permission management
+ * - useLocationTracking: GPS and location services
+ * - useMapState: Map state and camera management
+ * - useJourneyTracking: Journey recording and saving
+ * - useSavedRoutes: Saved routes display and management
+ * - useSavedPlaces: Saved places display and clustering
+ * - useMapStyle: Map styling and theme integration
  */
-const MapScreen = ({ navigation }) => {
+const MapScreen = () => {
   // Context
-  const { user, isAuthenticated } = useUser();
-  const { theme, currentTheme } = useTheme();
+  const { isAuthenticated } = useUser();
+  const { currentTheme } = useTheme();
 
   // Refs
   const mapRef = useRef(null);
+  const lastProcessedPosition = useRef(null);
 
-  // Add back hooks gradually - starting with permissions
+  // All hooks integrated - permissions + location tracking + map state + journey tracking + saved routes + saved places + map style
   const permissions = useMapPermissions();
+  const locationTracking = useLocationTracking();
+  const mapState = useMapState();
+  const journeyTracking = useJourneyTracking();
+  const savedRoutes = useSavedRoutes();
+  const savedPlaces = useSavedPlaces();
+  const mapStyle = useMapStyle();
 
-  // Simple state for testing
-  const mapState = { currentPosition: null };
+  // Helper function to calculate distance between two positions
+  const calculateDistance = useCallback((pos1, pos2) => {
+    if (!pos1 || !pos2) return Infinity;
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (pos2.latitude - pos1.latitude) * Math.PI / 180;
+    const dLon = (pos2.longitude - pos1.longitude) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(pos1.latitude * Math.PI / 180) * Math.cos(pos2.latitude * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }, []);
+
+  // Sync location data with map state (throttled to prevent excessive updates)
+  useEffect(() => {
+    if (locationTracking.currentPosition) {
+      const currentPos = locationTracking.currentPosition;
+      const lastPos = lastProcessedPosition.current;
+
+      // Only update if position changed significantly (more than 5 meters) or it's the first position
+      const distance = calculateDistance(lastPos, currentPos);
+      if (!lastPos || distance > 5) {
+        // Only update the position in map state, don't animate camera
+        mapState.updateCurrentPosition(currentPos);
+
+        // Add position to journey path if tracking
+        if (journeyTracking.state.isTracking) {
+          journeyTracking.addToPath(currentPos);
+        }
+
+        lastProcessedPosition.current = currentPos;
+      }
+    }
+  }, [locationTracking.currentPosition, calculateDistance]);
 
   // Manual permission request function
   const handleRequestPermissions = async () => {
@@ -44,10 +101,16 @@ const MapScreen = ({ navigation }) => {
     }
   };
 
-  const handleMapReady = (mapInterface) => {
+  const handleMapReady = useCallback((mapInterface) => {
     mapRef.current = mapInterface.ref;
     console.log('Map ready:', mapInterface);
-  };
+  }, []);
+
+  const handleLocateMe = useCallback(async () => {
+    await locationTracking.locateMe(mapRef);
+  }, [locationTracking.locateMe]);
+
+
 
   return (
     <View style={styles.container}>
@@ -55,7 +118,74 @@ const MapScreen = ({ navigation }) => {
 
       <MapRenderer
         mapState={mapState}
+        locationTracking={locationTracking}
+        journeyTracking={journeyTracking}
+        savedRoutes={savedRoutes}
+        savedPlaces={savedPlaces}
+        mapStyle={mapStyle}
         onMapReady={handleMapReady}
+      />
+
+      <MapControls
+        trackingState={useMemo(() => ({
+          isTracking: journeyTracking.state.isTracking,
+          isAuthenticated: journeyTracking.state.isAuthenticated,
+          journeyStartTime: journeyTracking.currentJourney?.startTime
+        }), [journeyTracking.state.isTracking, journeyTracking.state.isAuthenticated, journeyTracking.currentJourney?.startTime])}
+        savedRoutesState={useMemo(() => ({
+          isVisible: savedRoutes.visible,
+          isLoading: savedRoutes.loading,
+          hasRoutes: savedRoutes.data.length > 0
+        }), [savedRoutes.visible, savedRoutes.loading, savedRoutes.data.length])}
+        savedPlacesState={useMemo(() => ({
+          isVisible: savedPlaces.visible,
+          isLoading: savedPlaces.loading,
+          hasPlaces: savedPlaces.data.length > 0
+        }), [savedPlaces.visible, savedPlaces.loading, savedPlaces.data.length])}
+        mapStyleState={useMemo(() => ({
+          currentStyle: mapStyle.currentStyleName,
+          selectorVisible: mapStyle.selector.visible
+        }), [mapStyle.currentStyleName, mapStyle.selector.visible])}
+        permissions={permissions}
+        onLocateMe={handleLocateMe}
+        onToggleTracking={useCallback(() => journeyTracking.toggleTracking(locationTracking), [journeyTracking.toggleTracking, locationTracking])}
+        onToggleSavedRoutes={savedRoutes.toggleVisibility}
+        onToggleSavedPlaces={savedPlaces.toggleVisibility}
+        onToggleMapStyle={mapStyle.toggleSelector}
+      />
+
+      <MapStatusDisplays
+        journeyInfo={useMemo(() => ({
+          isTracking: journeyTracking.state.isTracking,
+          startTime: journeyTracking.currentJourney?.startTime,
+          currentPath: journeyTracking.pathToRender
+        }), [journeyTracking.state.isTracking, journeyTracking.currentJourney?.startTime, journeyTracking.pathToRender])}
+        gpsStatus={useMemo(() => ({
+          gpsState: locationTracking.gpsStatus,
+          signalStrength: locationTracking.gpsStatus?.signalStrength || 0,
+          visible: locationTracking.gpsStatus !== null
+        }), [locationTracking.gpsStatus])}
+        theme={currentTheme}
+        onGPSStatusPress={useCallback(() => console.log('GPS status pressed'), [])}
+      />
+
+      <MapModals
+        journeyNaming={journeyTracking.namingModal}
+        onSaveJourney={journeyTracking.saveJourney}
+        onCancelSaveJourney={journeyTracking.cancelSave}
+        defaultJourneyName={useMemo(() => `Journey ${new Date().toLocaleDateString()}`, [])}
+        savingJourney={journeyTracking.savingJourney}
+        placeDetail={savedPlaces.detailModal}
+        onClosePlaceDetail={savedPlaces.closeDetailModal}
+        onSavePlace={savedPlaces.savePlace}
+        onUnsavePlace={savedPlaces.unsavePlace}
+        onNavigateToPlace={useCallback((place) => savedPlaces.navigateToPlace(place, mapRef), [savedPlaces.navigateToPlace])}
+        mapStyleSelector={mapStyle.selector}
+        onCloseStyleSelector={mapStyle.closeSelector}
+        onStyleChange={mapStyle.handleStyleChange}
+        currentMapStyle={mapStyle.mapStyle}
+        theme={currentTheme}
+        isAuthenticated={isAuthenticated}
       />
 
       {/* Permission prompt overlay */}
@@ -155,6 +285,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
+
 });
 
 export default MapScreen;

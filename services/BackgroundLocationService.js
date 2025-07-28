@@ -18,6 +18,31 @@ const BACKGROUND_LOCATION_TASK = 'background-location';
 const PERIODIC_SAVE_INTERVAL = 30000; // 30 seconds
 const STORAGE_KEY_JOURNEY_BACKUP = 'journey_backup_';
 
+// Define the background location task at module level to ensure it's available immediately
+TaskManager.defineTask(BACKGROUND_LOCATION_TASK, ({ data, error }) => {
+  if (error) {
+    console.error('Background location task error:', error);
+    // Get the singleton instance to call the callback
+    const instance = BackgroundLocationService.getInstance();
+    if (instance && instance.locationUpdateCallback) {
+      instance.locationUpdateCallback({
+        type: 'error',
+        message: 'Background location tracking error',
+        error: error.message
+      });
+    }
+    return;
+  }
+  if (data) {
+    const { locations } = data;
+    // Get the singleton instance to handle the location update
+    const instance = BackgroundLocationService.getInstance();
+    if (instance && instance.handleLocationUpdate) {
+      instance.handleLocationUpdate(locations);
+    }
+  }
+});
+
 /**
  * BackgroundLocationService handles all location-related functionality
  * including permissions, tracking, filtering, and background operation.
@@ -35,11 +60,20 @@ class BackgroundLocationService {
     this.periodicSaveInterval = null;
     this.lastSaveTime = null;
     this.permissionPromptCallback = null;
+    this.appStateSubscription = null;
     
     // Bind methods to preserve context
     this.handleAppStateChange = this.handleAppStateChange.bind(this);
     this.handleLocationUpdate = this.handleLocationUpdate.bind(this);
     this.periodicSave = this.periodicSave.bind(this);
+    
+    // Set singleton instance
+    BackgroundLocationService._instance = this;
+  }
+
+  // Singleton pattern to ensure we can access the instance from the task
+  static getInstance() {
+    return BackgroundLocationService._instance;
   }
 
   /**
@@ -64,27 +98,10 @@ class BackgroundLocationService {
         this.permissionPromptCallback = options.onPermissionPrompt;
       }
 
-      // Define background location task
-      TaskManager.defineTask(BACKGROUND_LOCATION_TASK, ({ data, error }) => {
-        if (error) {
-          console.error('Background location task error:', error);
-          if (this.locationUpdateCallback) {
-            this.locationUpdateCallback({
-              type: 'error',
-              message: 'Background location tracking error',
-              error: error.message
-            });
-          }
-          return;
-        }
-        if (data) {
-          const { locations } = data;
-          this.handleLocationUpdate(locations);
-        }
-      });
+      // Background task is now defined at module level
 
-      // Set up app state listener
-      AppState.addEventListener('change', this.handleAppStateChange);
+      // Set up app state listener (modern subscription pattern)
+      this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
 
       // Check initial permissions and prompt if needed
       const permissions = await this.checkPermissions();
@@ -653,12 +670,14 @@ class BackgroundLocationService {
       const journeyData = {
         id: this.currentJourneyId,
         endTime: Date.now(),
-        coordinates: this.locationHistory.map(loc => ({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          timestamp: loc.timestamp,
-          accuracy: loc.coords.accuracy
-        })),
+        coordinates: this.locationHistory
+          .filter(loc => loc && loc.coords && typeof loc.coords.latitude === 'number' && typeof loc.coords.longitude === 'number')
+          .map(loc => ({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            timestamp: loc.timestamp,
+            accuracy: loc.coords.accuracy
+          })),
         isActive: false
       };
 
@@ -777,13 +796,34 @@ class BackgroundLocationService {
   }
 
   handleLocationUpdate(locations) {
-    // Process each location
-    locations.forEach(location => {
-      const processedLocation = this.processLocationReading(location);
-      if (processedLocation && this.locationUpdateCallback) {
-        this.locationUpdateCallback(processedLocation);
+    try {
+      // Validate locations array
+      if (!Array.isArray(locations) || locations.length === 0) {
+        console.warn('Invalid locations array received:', locations);
+        return;
       }
-    });
+
+      // Process each location
+      locations.forEach(location => {
+        try {
+          const processedLocation = this.processLocationReading(location);
+          if (processedLocation && this.locationUpdateCallback) {
+            this.locationUpdateCallback(processedLocation);
+          }
+        } catch (error) {
+          console.error('Error processing individual location:', error, location);
+        }
+      });
+    } catch (error) {
+      console.error('Error in handleLocationUpdate:', error);
+      if (this.locationUpdateCallback) {
+        this.locationUpdateCallback({
+          type: 'error',
+          message: 'Failed to process location update',
+          error: error.message
+        });
+      }
+    }
   }
 
   /**
@@ -902,6 +942,13 @@ class BackgroundLocationService {
    */
   async configureBackgroundTracking(journeyId) {
     try {
+      // Check permissions first
+      const permissions = await this.checkPermissions();
+      if (!permissions.foreground || !permissions.background) {
+        console.error('Background location permissions not granted');
+        return false;
+      }
+
       // Check if background location is already running
       const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_LOCATION_TASK);
       
@@ -1000,12 +1047,14 @@ class BackgroundLocationService {
     try {
       const backupData = {
         journeyId: this.currentJourneyId,
-        coordinates: this.locationHistory.map(loc => ({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          timestamp: loc.timestamp,
-          accuracy: loc.coords.accuracy
-        })),
+        coordinates: this.locationHistory
+          .filter(loc => loc && loc.coords && typeof loc.coords.latitude === 'number' && typeof loc.coords.longitude === 'number')
+          .map(loc => ({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            timestamp: loc.timestamp,
+            accuracy: loc.coords.accuracy
+          })),
         startTime: this.locationHistory[0]?.timestamp || Date.now(),
         lastSaveTime: Date.now(),
         isActive: true
@@ -1133,8 +1182,11 @@ class BackgroundLocationService {
       // Stop periodic saving
       this.stopPeriodicSave();
 
-      // Remove event listeners
-      AppState.removeEventListener('change', this.handleAppStateChange);
+      // Remove event listeners (modern subscription pattern)
+      if (this.appStateSubscription) {
+        this.appStateSubscription.remove();
+        this.appStateSubscription = null;
+      }
 
       // Clear location subscription
       if (this.locationSubscription) {

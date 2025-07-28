@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import TrackingButton from './TrackingButton';
 import SavedRoutesToggle from './SavedRoutesToggle';
 import SavedPlacesToggle from './SavedPlacesToggle';
 import MapStyleButton from './MapStyleButton';
-import LocateButton from '../ui/LocateButton';
 
 /**
  * MapControls Component
@@ -39,11 +39,12 @@ const MapControls = ({
     <>
       {/* Top Right Controls */}
       <View style={styles.topRightControls}>
-        <LocateButton
-          onLocationFound={onLocateMe}
-          onError={(error) => console.warn('Locate error:', error)}
-          theme="light"
-        />
+        <TouchableOpacity
+          style={styles.locateButton}
+          onPress={onLocateMe}
+        >
+          <Ionicons name="locate" size={24} color="#007AFF" />
+        </TouchableOpacity>
         <MapStyleButton
           onPress={onToggleMapStyle}
           currentStyle={mapStyleState?.currentStyle}
@@ -95,6 +96,20 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'flex-end',
   },
+  locateButton: {
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
   topRightToggles: {
     position: 'absolute',
     top: 120, // Below top controls
@@ -115,4 +130,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MapControls;
+export default React.memo(MapControls);

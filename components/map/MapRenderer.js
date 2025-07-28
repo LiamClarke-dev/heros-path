@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import MapView from 'react-native-maps';
 
@@ -11,21 +11,38 @@ const MapRenderer = ({
   style,
 }) => {
   const mapRef = useRef(null);
+  const lastAnimatedPosition = useRef(null);
 
-  // Simple region calculation with safe fallbacks
-  const region = {
+  // Memoize region calculation with safe fallbacks
+  const region = useMemo(() => ({
     latitude: mapState?.currentPosition?.latitude || 37.7749,
     longitude: mapState?.currentPosition?.longitude || -122.4194,
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
-  };
+  }), [mapState?.currentPosition?.latitude, mapState?.currentPosition?.longitude]);
 
-  const handleMapReady = () => {
-    console.log('Map ready, mapRef.current:', mapRef.current);
+  // Calculate distance between two coordinates
+  const calculateDistance = useCallback((pos1, pos2) => {
+    if (!pos1 || !pos2) return Infinity;
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (pos2.latitude - pos1.latitude) * Math.PI / 180;
+    const dLon = (pos2.longitude - pos1.longitude) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(pos1.latitude * Math.PI / 180) * Math.cos(pos2.latitude * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }, []);
+
+  // Note: Map animation is handled by the locate function and journey tracking
+  // We don't need to animate here to prevent conflicts
+
+  const handleMapReady = useCallback(() => {
+    console.log('Map ready');
     if (onMapReady && mapRef.current) {
       onMapReady({ ref: mapRef.current });
     }
-  };
+  }, [onMapReady]);
 
   // Check if MapView is available
   if (!MapView) {
@@ -40,7 +57,7 @@ const MapRenderer = ({
     );
   }
 
-  console.log('Rendering MapView with region:', region);
+
 
   return (
     <View style={styles.container}>
@@ -87,4 +104,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MapRenderer;
+export default React.memo(MapRenderer);

@@ -55,7 +55,7 @@ const useLocationTracking = () => {
   const initializeLocationService = useCallback(async () => {
     try {
       if (!locationServiceRef.current) {
-        locationServiceRef.current = new BackgroundLocationService();
+        locationServiceRef.current = BackgroundLocationService; // Use singleton instance
       }
 
       const result = await locationServiceRef.current.initialize({

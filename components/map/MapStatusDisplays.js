@@ -102,4 +102,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MapStatusDisplays;
+export default React.memo(MapStatusDisplays);

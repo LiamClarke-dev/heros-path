@@ -80,4 +80,4 @@ const MapModals = ({
   );
 };
 
-export default MapModals;
+export default React.memo(MapModals);

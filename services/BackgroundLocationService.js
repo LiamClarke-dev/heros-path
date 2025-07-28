@@ -466,90 +466,53 @@ class BackgroundLocationService {
    */
   async requestPermissions(options = { showPrompts: true }) {
     try {
+      // Use the centralized permission utility to avoid duplicate dialogs
+      const { requestLocationPermissions } = require('../utils/locationUtils');
+      
       // Check current permissions first
       const currentPermissions = await this.checkPermissions();
       
-      // If foreground permission not granted, request it
-      if (!currentPermissions.foreground) {
-        // Requirement 1.5: Prompt user with clear explanation
-        if (options.showPrompts && this.permissionPromptCallback) {
-          this.permissionPromptCallback({
-            type: 'foreground_permission_needed',
-            title: 'Location Permission Required',
-            message: 'Hero\'s Path needs access to your location to track your walking routes and discover interesting places along your journey.',
-            permissions: currentPermissions
-          });
-        }
-
-        const foregroundResult = await Location.requestForegroundPermissionsAsync();
-        
-        if (foregroundResult.status !== 'granted') {
-          const result = {
-            success: false,
-            foreground: false,
-            background: false,
-            message: 'Location permission is required for journey tracking',
-            canAskAgain: foregroundResult.canAskAgain
-          };
-
-          if (options.showPrompts && this.permissionPromptCallback) {
-            this.permissionPromptCallback({
-              type: 'permission_denied',
-              title: 'Permission Required',
-              message: 'Location access is essential for tracking your journeys. Please enable it in your device settings.',
-              result: result
-            });
-          }
-
-          return result;
-        }
+      // If permissions are already granted, return success
+      if (currentPermissions.foreground && currentPermissions.background) {
+        return {
+          success: true,
+          foreground: true,
+          background: true,
+          message: 'All location permissions are already granted'
+        };
       }
 
-      // If background permission not granted, request it
-      const updatedPermissions = await this.checkPermissions();
-      if (!updatedPermissions.background) {
-        // Requirement 1.5: Prompt user with clear explanation for background permission
-        if (options.showPrompts && this.permissionPromptCallback) {
-          this.permissionPromptCallback({
-            type: 'background_permission_request',
-            title: 'Background Location Access',
-            message: 'To ensure your complete journey is recorded even when the app is minimized or your device is locked, Hero\'s Path needs background location access. This allows continuous tracking without interruption.',
-            permissions: updatedPermissions
-          });
-        }
-
-        const backgroundResult = await Location.requestBackgroundPermissionsAsync();
-        
-        const finalResult = {
-          success: backgroundResult.status === 'granted',
+      // Use centralized permission request
+      const permissionResult = await requestLocationPermissions(true); // Request background permission
+      
+      if (permissionResult.granted) {
+        return {
+          success: true,
           foreground: true,
-          background: backgroundResult.status === 'granted',
-          message: backgroundResult.status === 'granted' 
-            ? 'All location permissions granted successfully' 
-            : 'Background permission not granted - tracking may pause when app is backgrounded',
-          canAskAgain: backgroundResult.canAskAgain
+          background: true,
+          message: 'All location permissions granted successfully'
+        };
+      } else {
+        const result = {
+          success: false,
+          foreground: currentPermissions.foreground,
+          background: false,
+          message: permissionResult.error || 'Location permission is required for journey tracking',
+          canAskAgain: permissionResult.canAskAgain
         };
 
-        // Requirement 1.5: Inform user about background permission impact
-        if (options.showPrompts && this.permissionPromptCallback && backgroundResult.status !== 'granted') {
+        // Show user prompt if enabled
+        if (options.showPrompts && this.permissionPromptCallback) {
           this.permissionPromptCallback({
-            type: 'background_permission_denied',
-            title: 'Limited Tracking Available',
-            message: 'Without background location access, journey tracking will pause when you minimize the app or lock your device. You can enable this later in your device settings for uninterrupted tracking.',
-            result: finalResult
+            type: 'permission_denied',
+            title: 'Permission Required',
+            message: permissionResult.error || 'Location access is essential for tracking your journeys. Please enable it in your device settings.',
+            result: result
           });
         }
 
-        return finalResult;
+        return result;
       }
-
-      // All permissions already granted
-      return {
-        success: true,
-        foreground: true,
-        background: true,
-        message: 'All location permissions are already granted'
-      };
     } catch (error) {
       console.error('Failed to request permissions:', error);
       const errorResult = {

@@ -166,7 +166,14 @@ const useMapPermissions = () => {
   const openSettings = useCallback(async () => {
     try {
       if (Platform.OS === 'ios') {
-        await Linking.openURL('app-settings:');
+        // For iOS, use the correct URL scheme
+        const canOpen = await Linking.canOpenURL('app-settings:');
+        if (canOpen) {
+          await Linking.openURL('app-settings:');
+        } else {
+          // Fallback to general settings
+          await Linking.openSettings();
+        }
       } else {
         await Linking.openSettings();
       }
@@ -174,7 +181,7 @@ const useMapPermissions = () => {
       console.error('Error opening settings:', error);
       Alert.alert(
         'Settings Error',
-        'Unable to open settings. Please manually enable location permissions for this app.',
+        'Unable to open settings. Please manually enable location permissions for this app in your device settings.',
         [{ text: 'OK' }]
       );
     }

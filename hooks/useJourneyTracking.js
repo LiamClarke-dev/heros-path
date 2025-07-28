@@ -87,7 +87,20 @@ const useJourneyTracking = () => {
       // Generate unique journey ID
       const journeyId = `journey_${user.uid}_${Date.now()}`;
 
-      // Start location tracking
+      console.log('Journey state:', { 
+        isTracking, 
+        currentJourneyId, 
+        journeyId,
+        readyToStart: !isTracking && !currentJourneyId 
+      });
+
+      // Set tracking state immediately to prevent double-tap
+      setIsTracking(true);
+      setCurrentJourneyId(journeyId);
+      setJourneyStartTime(Date.now());
+      setPathToRender([]);
+
+      // Start location tracking with warm-up
       const success = await locationTrackingHook.startTracking(journeyId, {
         warmup: true,
         timeInterval: 2000, // 2 seconds
@@ -95,17 +108,24 @@ const useJourneyTracking = () => {
       });
 
       if (success) {
-        setIsTracking(true);
-        setCurrentJourneyId(journeyId);
-        setJourneyStartTime(Date.now());
-        setPathToRender([]);
-
         console.log('Journey tracking started:', journeyId);
       } else {
+        // Reset state if tracking failed
+        setIsTracking(false);
+        setCurrentJourneyId(null);
+        setJourneyStartTime(null);
+        setPathToRender([]);
         throw new Error('Failed to start location tracking');
       }
     } catch (error) {
       console.error('Error starting tracking:', error);
+      
+      // Reset state on error
+      setIsTracking(false);
+      setCurrentJourneyId(null);
+      setJourneyStartTime(null);
+      setPathToRender([]);
+      
       Alert.alert(
         'Start Tracking Error',
         'Failed to start journey tracking. Please check your location permissions.',
@@ -113,7 +133,7 @@ const useJourneyTracking = () => {
       );
       throw error;
     }
-  }, [user]);
+  }, [user, isTracking, currentJourneyId]);
 
   /**
    * Stop journey tracking

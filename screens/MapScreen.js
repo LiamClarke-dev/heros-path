@@ -107,6 +107,11 @@ const MapScreen = () => {
   }, []);
 
   const handleLocateMe = useCallback(async () => {
+    console.log('MapRef status:', {
+      mapRef: !!mapRef,
+      current: !!mapRef?.current,
+      ready: mapRef?.current ? 'ready' : 'not ready'
+    });
     await locationTracking.locateMe(mapRef);
   }, [locationTracking.locateMe]);
 

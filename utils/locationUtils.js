@@ -49,25 +49,39 @@ export const LOCATION_OPTIONS = {
  */
 export async function requestLocationPermissions(background = false) {
   try {
-    // Request foreground permission first
-    const foregroundResult = await Location.requestForegroundPermissionsAsync();
+    // Check current permissions first to avoid duplicate requests
+    const foregroundStatus = await Location.getForegroundPermissionsAsync();
+    
+    // Only request if not already granted
+    let foregroundResult = foregroundStatus;
+    if (foregroundStatus.status !== 'granted') {
+      foregroundResult = await Location.requestForegroundPermissionsAsync();
+    }
     
     if (foregroundResult.status !== 'granted') {
       return {
         granted: false,
         status: foregroundResult.status,
+        canAskAgain: foregroundResult.canAskAgain,
         error: 'Location permission is required to use this feature. Please enable location access in your device settings.',
       };
     }
 
     // If background permission is requested
     if (background) {
-      const backgroundResult = await Location.requestBackgroundPermissionsAsync();
+      const backgroundStatus = await Location.getBackgroundPermissionsAsync();
+      
+      // Only request if not already granted
+      let backgroundResult = backgroundStatus;
+      if (backgroundStatus.status !== 'granted') {
+        backgroundResult = await Location.requestBackgroundPermissionsAsync();
+      }
       
       if (backgroundResult.status !== 'granted') {
         return {
           granted: false,
           status: backgroundResult.status,
+          canAskAgain: backgroundResult.canAskAgain,
           error: 'Background location permission is required to track your journey when the app is not active. Please enable "Always" location access in your device settings.',
         };
       }
@@ -153,7 +167,10 @@ export async function getCurrentLocation(options = LOCATION_OPTIONS.LOCATE_ME) {
  * @returns {Promise<void>}
  */
 export async function animateToLocation(mapRef, location, duration = 1000) {
-  if (!mapRef?.current) {
+  // Handle both mapRef.current and direct mapRef cases
+  const actualMapRef = mapRef?.current || mapRef;
+  
+  if (!actualMapRef) {
     console.warn('Map reference not available for animation');
     return;
   }
@@ -169,17 +186,21 @@ export async function animateToLocation(mapRef, location, duration = 1000) {
     };
 
     // Animate to the new position
-    if (mapRef.current.animateCamera) {
-      await mapRef.current.animateCamera(cameraPosition, { duration });
-    } else if (mapRef.current.animateToRegion) {
+    if (actualMapRef.animateCamera) {
+      console.log('Using animateCamera for map animation');
+      await actualMapRef.animateCamera(cameraPosition, { duration });
+    } else if (actualMapRef.animateToRegion) {
       // Fallback for different map implementations
+      console.log('Using animateToRegion for map animation');
       const region = {
         latitude: location.latitude,
         longitude: location.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       };
-      await mapRef.current.animateToRegion(region, duration);
+      await actualMapRef.animateToRegion(region, duration);
+    } else {
+      console.warn('Map reference does not support animation methods');
     }
   } catch (error) {
     console.error('Error animating to location:', error);

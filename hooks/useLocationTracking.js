@@ -264,8 +264,13 @@ const useLocationTracking = () => {
         });
 
         // Animate map to the new location if mapRef is provided
-        if (mapRef && mapRef.current) {
-          await animateToLocation(mapRef.current, locationResult.location);
+        // Handle both mapRef.current and direct mapRef cases
+        const mapReference = mapRef?.current || mapRef;
+        if (mapReference) {
+          console.log('Animating to location with map reference');
+          await animateToLocation(mapReference, locationResult.location);
+        } else {
+          console.warn('Map reference not available for animation');
         }
 
         setGpsStatus({

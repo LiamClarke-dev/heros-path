@@ -28,8 +28,8 @@ const LocateButton = ({ onLocationFound, onError, style, theme = 'light' }) => {
     setIsLocating(true);
 
     try {
-      // Check if location services are enabled
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      // Check permission status without requesting (to avoid duplicate dialogs)
+      const { status } = await Location.getForegroundPermissionsAsync();
       
       if (status !== 'granted') {
         onError?.('Location permission not granted. Please enable location access in settings.');

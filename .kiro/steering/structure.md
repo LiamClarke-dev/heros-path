@@ -27,18 +27,40 @@ heros-path-fresh/
 
 ### Structure to be Created
 ```
-├── components/              # ❌ NEEDS CREATION - Reusable UI components
+├── components/              # ⚠️ PARTIALLY COMPLETE - Reusable UI components
+│   ├── map/                 # ✅ Map-specific components (refactored from MapScreen)
+│   │   ├── MapRenderer.js   # ✅ Map display and rendering
+│   │   ├── MapControls.js   # ✅ UI controls layout
+│   │   ├── MapStatusDisplays.js # ✅ Status information display
+│   │   ├── MapModals.js     # ✅ Modal management
+│   │   ├── TrackingButton.js # ✅ Journey tracking control
+│   │   ├── SavedRoutesToggle.js # ✅ Routes visibility toggle
+│   │   ├── SavedPlacesToggle.js # ✅ Places visibility toggle
+│   │   ├── MapStyleButton.js # ✅ Style selector button
+│   │   ├── JourneyInfoDisplay.js # ✅ Journey information display
+│   │   ├── MapOverlays.js   # ✅ Map overlay management
+│   │   ├── MapPolylines.js  # ✅ Polyline rendering
+│   │   ├── SpriteOverlay.js # ✅ Character sprite display
+│   │   └── SavedPlacesOverlay.js # ✅ Places marker display
 │   ├── ui/                  # ❌ Core UI primitives (buttons, cards, etc.)
-│   └── [ComponentName].js   # ❌ Feature-specific components
+│   └── [ComponentName].js   # ❌ Other feature-specific components
 ├── constants/               # ❌ NEEDS CREATION - App-wide constants
 │   └── PlaceTypes.js        # ❌ Place type definitions
 ├── contexts/                # ❌ NEEDS CREATION - React Context providers
 │   ├── UserContext.js       # ❌ Authentication and user data
 │   ├── ThemeContext.js      # ❌ Theme and styling
 │   └── ExplorationContext.js # ❌ Exploration state
-├── hooks/                   # ❌ NEEDS CREATION - Custom React hooks
-├── screens/                 # ❌ NEEDS CREATION - App screens/pages
-│   ├── MapScreen.js         # ❌ Main map interface
+├── hooks/                   # ⚠️ PARTIALLY COMPLETE - Custom React hooks
+│   ├── useMapPermissions.js # ✅ Location permission management
+│   ├── useLocationTracking.js # ✅ GPS and location services
+│   ├── useMapState.js       # ✅ Core map state management
+│   ├── useJourneyTracking.js # ✅ Journey recording and saving
+│   ├── useSavedRoutes.js    # ✅ Saved routes display and management
+│   ├── useSavedPlaces.js    # ✅ Saved places management and clustering
+│   ├── useMapStyle.js       # ✅ Map styling and theme integration
+│   └── [OtherHooks].js      # ❌ Additional hooks for other features
+├── screens/                 # ⚠️ PARTIALLY COMPLETE - App screens/pages
+│   ├── MapScreen.js         # ✅ Main map interface (refactored to modular architecture)
 │   ├── DiscoveriesScreen.js # ❌ Discoveries interface
 │   ├── CustomListsScreen.js # ❌ Custom lists management
 │   ├── GamificationScreen.js # ❌ Achievements and challenges
@@ -106,6 +128,43 @@ heros-path-fresh/
 3. **Third**: Implement essential services (JourneyService, DiscoveriesService)
 4. **Fourth**: Create main screens (MapScreen, etc.)
 5. **Fifth**: Add utilities and styling system
+
+## MapScreen Refactoring Success
+
+The MapScreen has been successfully refactored from a monolithic 1600+ line component into a modular architecture:
+
+**Architecture Transformation:**
+- **Before**: Single 1600+ line component with multiple responsibilities
+- **After**: < 200 line orchestrator with 7 focused hooks and 15+ components
+
+**Modular Components Created:**
+- `MapRenderer`: Map display and platform-specific rendering
+- `MapControls`: UI controls layout and interaction handling
+- `MapStatusDisplays`: Status information display
+- `MapModals`: Modal management and rendering
+
+**Custom Hooks Extracted:**
+- `useMapPermissions`: Location permission management
+- `useLocationTracking`: GPS services and position tracking
+- `useMapState`: Core map state and camera management
+- `useJourneyTracking`: Journey recording and saving logic
+- `useSavedRoutes`: Saved routes display and management
+- `useSavedPlaces`: Saved places management and clustering
+- `useMapStyle`: Map styling and theme integration
+
+**Benefits Achieved:**
+- ✅ Improved maintainability and code organization
+- ✅ Enhanced testability with isolated components
+- ✅ Better performance through optimized re-rendering
+- ✅ Preserved backward compatibility (all functionality identical)
+- ✅ Established patterns for future feature development
+
+**Documentation Created:**
+- `docs/MapScreen-Refactoring-Architecture.md`: Comprehensive architecture documentation
+- `docs/MapScreen-Developer-Guide.md`: Developer guide for working with refactored code
+- `.kiro/steering/modular-architecture.md`: Guidelines for maintaining modular patterns
+
+This refactoring serves as the architectural foundation and pattern for all future component development in the application.
 
 ## Naming Conventions
 

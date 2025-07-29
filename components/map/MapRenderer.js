@@ -3,7 +3,34 @@ import { View, StyleSheet, Text } from 'react-native';
 import MapView from 'react-native-maps';
 
 /**
- * MapRenderer Component - Minimal version to fix the ref error
+ * MapRenderer Component
+ * 
+ * Handles map display and platform-specific rendering logic.
+ * Extracted from the main MapScreen to isolate map rendering concerns.
+ * 
+ * Responsibilities:
+ * - Platform-specific MapView rendering
+ * - Map configuration and error handling
+ * - Region calculation with safe fallbacks
+ * - Map ready callback integration
+ * 
+ * Props:
+ * - mapState: Core map state from useMapState hook
+ * - onMapReady: Callback when map is ready for interaction
+ * - style: Optional style overrides
+ * 
+ * Performance:
+ * - Memoized with React.memo to prevent unnecessary re-renders
+ * - Safe fallback coordinates if position data unavailable
+ * - Optimized region calculations
+ * 
+ * Requirements Addressed:
+ * - 5.1: Map rendering isolation
+ * - 5.2: Platform-specific map view handling
+ * - 5.3: Map configuration and error handling
+ * 
+ * @see hooks/useMapState.js for state management
+ * @see docs/MapScreen-Developer-Guide.md for usage examples
  */
 const MapRenderer = ({
   mapState,
@@ -27,10 +54,10 @@ const MapRenderer = ({
     const R = 6371000; // Earth's radius in meters
     const dLat = (pos2.latitude - pos1.latitude) * Math.PI / 180;
     const dLon = (pos2.longitude - pos1.longitude) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(pos1.latitude * Math.PI / 180) * Math.cos(pos2.latitude * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(pos1.latitude * Math.PI / 180) * Math.cos(pos2.latitude * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }, []);
 

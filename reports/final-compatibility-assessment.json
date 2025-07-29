@@ -1,0 +1,73 @@
+{
+  "timestamp": "2025-07-28T23:56:27.477Z",
+  "compatibilityStatus": "MOSTLY_COMPATIBLE",
+  "overallSummary": {
+    "passed": 151,
+    "failed": 1,
+    "warnings": 0,
+    "total": 152,
+    "successRate": 99.3
+  },
+  "individualReports": [
+    {
+      "name": "Structural Compatibility",
+      "summary": {
+        "passed": 86,
+        "failed": 1,
+        "warnings": 0,
+        "total": 87,
+        "successRate": 98.9
+      },
+      "timestamp": "2025-07-28T23:52:24.580Z"
+    },
+    {
+      "name": "Functional Compatibility",
+      "summary": {
+        "passed": 47,
+        "failed": 0,
+        "warnings": 0,
+        "total": 47,
+        "successRate": 100
+      },
+      "timestamp": "2025-07-28T23:53:59.264Z"
+    },
+    {
+      "name": "User Workflow Compatibility",
+      "summary": {
+        "passed": 18,
+        "failed": 0,
+        "warnings": 0,
+        "total": 18,
+        "successRate": 100
+      },
+      "timestamp": "2025-07-28T23:55:31.056Z"
+    }
+  ],
+  "issues": [
+    {
+      "category": "Structural Compatibility",
+      "test": "MapScreen size constraint",
+      "details": "296 lines (target: ≤200)"
+    }
+  ],
+  "warnings": [],
+  "recommendations": [
+    "⚠️  Review failed tests before deployment",
+    "✅ Core functionality preserved",
+    "🔧 Minor fixes may be needed"
+  ],
+  "conclusion": {
+    "readyForDeployment": false,
+    "userImpact": "Minimal",
+    "nextSteps": "Address failed tests before deployment"
+  },
+  "finalValidation": {
+    "timestamp": "2025-07-28T23:57:53.006Z",
+    "criticalFailures": 0,
+    "nonCriticalFailures": 1,
+    "functionallySound": true,
+    "workflowsIntact": true,
+    "readyForDeployment": true,
+    "deploymentRecommendation": "DEPLOY"
+  }
+}

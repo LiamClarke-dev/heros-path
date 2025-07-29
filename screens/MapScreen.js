@@ -29,14 +29,45 @@ import { useTheme } from '../contexts/ThemeContext';
 /**
  * MapScreen - Refactored with modular architecture
  * 
- * This component orchestrates all map functionality through custom hooks and components:
- * - useMapPermissions: Location permission management
- * - useLocationTracking: GPS and location services
- * - useMapState: Map state and camera management
- * - useJourneyTracking: Journey recording and saving
- * - useSavedRoutes: Saved routes display and management
- * - useSavedPlaces: Saved places display and clustering
- * - useMapStyle: Map styling and theme integration
+ * This component serves as the main orchestrator for all map functionality.
+ * It has been refactored from a 1600+ line monolithic component into a modular
+ * architecture with focused custom hooks and components.
+ * 
+ * Architecture:
+ * - Main component: < 300 lines (orchestration only)
+ * - 7 Custom hooks: Focused state management
+ * - 4 Main components: Single responsibility rendering
+ * 
+ * Custom Hooks:
+ * - useMapPermissions: Location permission management and status
+ * - useLocationTracking: GPS services, position tracking, and location updates
+ * - useMapState: Core map state, camera position, and error handling
+ * - useJourneyTracking: Journey recording, path management, and saving
+ * - useSavedRoutes: Saved routes loading, display, and visibility management
+ * - useSavedPlaces: Saved places management, clustering, and interactions
+ * - useMapStyle: Map styling, theme integration, and style selection
+ * 
+ * Components:
+ * - MapRenderer: Map display and platform-specific rendering
+ * - MapControls: UI controls layout and interaction handling
+ * - MapStatusDisplays: Status information display (journey info, GPS status)
+ * - MapModals: Modal management (journey naming, place details, style selector)
+ * 
+ * Performance Optimizations:
+ * - Memoized components and callbacks to prevent unnecessary re-renders
+ * - Focused state management to minimize update scope
+ * - Proper cleanup and lifecycle management in all hooks
+ * 
+ * Requirements Addressed:
+ * - 1.1-1.4: Component decomposition and single responsibility
+ * - 2.1-2.4: Custom hooks extraction and state management
+ * - 4.1-4.4: UI controls separation and organization
+ * - 5.1-5.3: Map rendering isolation
+ * - 6.1-6.4: State management optimization and performance
+ * - 7.1-7.4: Backward compatibility preservation
+ * 
+ * @see docs/MapScreen-Refactoring-Architecture.md for detailed architecture documentation
+ * @see docs/MapScreen-Developer-Guide.md for development guidelines
  */
 const MapScreen = () => {
   // Context
@@ -56,7 +87,14 @@ const MapScreen = () => {
   const savedPlaces = useSavedPlaces();
   const mapStyle = useMapStyle();
 
-  // Helper function to calculate distance between two positions
+  /**
+   * Calculate distance between two GPS coordinates using Haversine formula
+   * Used to throttle position updates and prevent excessive re-renders
+   * 
+   * @param {Object} pos1 - First position {latitude, longitude}
+   * @param {Object} pos2 - Second position {latitude, longitude}
+   * @returns {number} Distance in meters, or Infinity if positions invalid
+   */
   const calculateDistance = useCallback((pos1, pos2) => {
     if (!pos1 || !pos2) return Infinity;
     const R = 6371000; // Earth's radius in meters
@@ -69,7 +107,19 @@ const MapScreen = () => {
     return R * c;
   }, []);
 
-  // Sync location data with map state (throttled to prevent excessive updates)
+  /**
+   * Coordinate location data between hooks with throttling
+   * 
+   * This effect synchronizes location data from useLocationTracking with other hooks:
+   * - Updates map state with current position (throttled to 5m intervals)
+   * - Adds positions to journey path when tracking is active
+   * - Prevents excessive re-renders from frequent GPS updates
+   * 
+   * Throttling Logic:
+   * - Only processes position updates if moved more than 5 meters
+   * - Reduces CPU usage and prevents UI jank from frequent updates
+   * - Maintains accuracy while optimizing performance
+   */
   useEffect(() => {
     if (locationTracking.currentPosition) {
       const currentPos = locationTracking.currentPosition;
@@ -78,18 +128,19 @@ const MapScreen = () => {
       // Only update if position changed significantly (more than 5 meters) or it's the first position
       const distance = calculateDistance(lastPos, currentPos);
       if (!lastPos || distance > 5) {
-        // Only update the position in map state, don't animate camera
+        // Update map state with new position (no camera animation here)
         mapState.updateCurrentPosition(currentPos);
 
-        // Add position to journey path if tracking
+        // Add position to journey path if actively tracking
         if (journeyTracking.state.isTracking) {
           journeyTracking.addToPath(currentPos);
         }
 
+        // Cache position to prevent redundant processing
         lastProcessedPosition.current = currentPos;
       }
     }
-  }, [locationTracking.currentPosition, calculateDistance]);
+  }, [locationTracking.currentPosition, calculateDistance, mapState, journeyTracking]);
 
   // Manual permission request function
   const handleRequestPermissions = async () => {

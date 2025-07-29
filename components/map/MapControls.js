@@ -10,12 +10,51 @@ import MapStyleButton from './MapStyleButton';
  * MapControls Component
  * 
  * Container component that manages the layout and positioning of all map control buttons.
- * Provides responsive control arrangement and handles control states and callbacks.
+ * Extracted from the main MapScreen to separate UI control logic from map rendering.
  * 
- * Requirements addressed:
+ * Responsibilities:
+ * - Layout and positioning of all map controls
+ * - Permission-based visibility management
+ * - Control state coordination and callback handling
+ * - Responsive control arrangement
+ * 
+ * Control Layout:
+ * - Top Right: Locate button, Map style button
+ * - Top Right (below): Saved routes toggle, Saved places toggle  
+ * - Bottom Center: Journey tracking button
+ * 
+ * Props:
+ * - trackingState: Journey tracking state and authentication
+ * - savedRoutesState: Routes visibility, loading, and data state
+ * - savedPlacesState: Places visibility, loading, and data state
+ * - mapStyleState: Current style and selector visibility
+ * - permissions: Location permission status
+ * - onLocateMe: Callback for locate button press
+ * - onToggleTracking: Callback for journey tracking toggle
+ * - onToggleSavedRoutes: Callback for routes visibility toggle
+ * - onToggleSavedPlaces: Callback for places visibility toggle
+ * - onToggleMapStyle: Callback for style selector toggle
+ * 
+ * Permission Handling:
+ * - Locate button always visible (allows permission requests)
+ * - Other controls hidden until permissions granted
+ * - Graceful degradation for permission-dependent features
+ * 
+ * Performance:
+ * - Memoized with React.memo to prevent unnecessary re-renders
+ * - Individual control components for focused updates
+ * - Conditional rendering based on permission state
+ * 
+ * Requirements Addressed:
  * - 4.1: Extract UI controls into separate components
  * - 4.2: Implement control positioning and interaction handling
  * - 4.3: Accept props for control states and callbacks
+ * - 4.4: Handle authentication checks and user feedback
+ * 
+ * @see components/map/TrackingButton.js for journey control
+ * @see components/map/SavedRoutesToggle.js for routes toggle
+ * @see components/map/SavedPlacesToggle.js for places toggle
+ * @see components/map/MapStyleButton.js for style selector
  */
 const MapControls = ({
   // Control states

@@ -1,0 +1,186 @@
+{
+  "timestamp": "2025-07-28T23:36:11.708Z",
+  "config": {
+    "testDuration": 30000,
+    "goals": {
+      "mapScreenSizeGoal": 200,
+      "averageRenderTimeGoal": 16,
+      "mapScreenReRenderGoal": 5,
+      "maxComponentReRenders": 10,
+      "hookEfficiencyGoal": 5
+    },
+    "scenarios": [
+      "initial_load",
+      "location_updates",
+      "journey_tracking",
+      "saved_places_toggle",
+      "map_style_change",
+      "permission_handling"
+    ]
+  },
+  "results": {
+    "codeMetrics": {
+      "mapScreen": {
+        "totalLines": 296,
+        "codeLines": 258,
+        "sizeGoalMet": false,
+        "fileSizeKB": "10.53"
+      },
+      "extractedComponents": [
+        {
+          "name": "index.js",
+          "codeLines": 10,
+          "fileSizeKB": "0.66"
+        },
+        {
+          "name": "JourneyInfoDisplay.js",
+          "codeLines": 262,
+          "fileSizeKB": "7.66"
+        },
+        {
+          "name": "MapControls.js",
+          "codeLines": 121,
+          "fileSizeKB": "3.87"
+        },
+        {
+          "name": "MapControls.test.js",
+          "codeLines": 85,
+          "fileSizeKB": "2.59"
+        },
+        {
+          "name": "MapModals.js",
+          "codeLines": 69,
+          "fileSizeKB": "2.19"
+        },
+        {
+          "name": "MapOverlays.js",
+          "codeLines": 51,
+          "fileSizeKB": "1.64"
+        },
+        {
+          "name": "MapPolylines.js",
+          "codeLines": 78,
+          "fileSizeKB": "2.54"
+        },
+        {
+          "name": "MapRenderer.js",
+          "codeLines": 90,
+          "fileSizeKB": "2.99"
+        },
+        {
+          "name": "MapRenderer.test.js",
+          "codeLines": 69,
+          "fileSizeKB": "2.06"
+        },
+        {
+          "name": "MapStatusDisplays.js",
+          "codeLines": 94,
+          "fileSizeKB": "3.23"
+        },
+        {
+          "name": "MapStyleButton.js",
+          "codeLines": 98,
+          "fileSizeKB": "2.57"
+        },
+        {
+          "name": "SavedPlacesOverlay.js",
+          "codeLines": 94,
+          "fileSizeKB": "2.86"
+        },
+        {
+          "name": "SavedPlacesToggle.js",
+          "codeLines": 159,
+          "fileSizeKB": "4.49"
+        },
+        {
+          "name": "SavedRoutesToggle.js",
+          "codeLines": 159,
+          "fileSizeKB": "4.47"
+        },
+        {
+          "name": "SpriteOverlay.js",
+          "codeLines": 51,
+          "fileSizeKB": "1.63"
+        },
+        {
+          "name": "TrackingButton.js",
+          "codeLines": 141,
+          "fileSizeKB": "3.95"
+        }
+      ],
+      "customHooks": [
+        {
+          "name": "useJourneyTracking.js",
+          "codeLines": 311,
+          "fileSizeKB": "11.73"
+        },
+        {
+          "name": "useLocationTracking.js",
+          "codeLines": 335,
+          "fileSizeKB": "11.58"
+        },
+        {
+          "name": "useMapPermissions.js",
+          "codeLines": 257,
+          "fileSizeKB": "9.35"
+        },
+        {
+          "name": "useMapState.js",
+          "codeLines": 92,
+          "fileSizeKB": "2.92"
+        },
+        {
+          "name": "useMapStyle.js",
+          "codeLines": 225,
+          "fileSizeKB": "8.21"
+        },
+        {
+          "name": "useSavedPlaces.js",
+          "codeLines": 322,
+          "fileSizeKB": "12.00"
+        },
+        {
+          "name": "useSavedRoutes.js",
+          "codeLines": 205,
+          "fileSizeKB": "7.41"
+        }
+      ],
+      "architectureCompliance": {
+        "mapScreenExists": true,
+        "mapRendererExists": true,
+        "mapControlsExists": true,
+        "mapStatusDisplaysExists": true,
+        "mapModalsExists": true,
+        "useMapStateExists": true,
+        "useLocationTrackingExists": true,
+        "useJourneyTrackingExists": true,
+        "useSavedRoutesExists": true,
+        "useSavedPlacesExists": true,
+        "useMapStyleExists": true,
+        "useMapPermissionsExists": true
+      },
+      "optimizations": {
+        "reactMemoUsage": 4,
+        "useMemoUsage": 7,
+        "useCallbackUsage": 6,
+        "contextSplitting": 0,
+        "propOptimization": 0
+      }
+    },
+    "performanceMetrics": {},
+    "optimizationGoals": {},
+    "recommendations": [
+      {
+        "type": "critical",
+        "category": "code_size",
+        "message": "MapScreen has 258 lines (goal: ≤200). Consider extracting more logic into hooks or components."
+      }
+    ],
+    "finalScore": {
+      "score": 85,
+      "maxScore": 100,
+      "percentage": 85,
+      "grade": "B"
+    }
+  }
+}

@@ -254,7 +254,7 @@
 
   - Remove unused imports and dead code
   - Organize remaining code and improve readability
-  - Ensure MapScreen is under 200 lines of code
+  - Ensure MapScreen is under 200 lines of code (hard limit, target 150 lines)
   - _Requirements: 1.4, 6.1, 6.2_
 
 - [x] 7. Add comprehensive testing
@@ -309,45 +309,48 @@
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
 - [x] 8.4 Update documentation and create development guidelines
-
-
-
-
-
   - Document the new component architecture
   - Update code comments and inline documentation
   - Create developer guide for the refactored structure
   - Create steering documentation for modular architecture patterns
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 10.1, 10.2, 10.3, 10.4, 10.5_
 
-- [ ] 9. Create future-proofing architecture extensions
+- [x] 9. Create future-proofing architecture extensions
+
+
   - Design extension points for upcoming features
   - Create integration patterns for new map functionality
   - Establish architectural guidelines for feature additions
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7_
 
-- [ ] 9.1 Design ping discovery integration points
+- [x] 9.1 Design ping discovery integration points
   - Create hooks extension points for ping functionality
   - Design map overlay system for ping animations and results
   - Plan credit system integration with existing state management
   - _Requirements: 9.1, 9.2_
 
-- [ ] 9.2 Design destination routing integration points
+- [x] 9.2 Design destination routing integration points
   - Create route rendering extension for MapPolylines component
   - Design navigation controls integration with MapControls
   - Plan turn-by-turn display integration with MapStatusDisplays
   - _Requirements: 9.1, 9.3_
 
-- [ ] 9.3 Design discovery consolidation integration points
+- [x] 9.3 Design discovery consolidation integration points
+
+
   - Create data flow patterns for consolidated discovery data
   - Design saved places hook extensions for consolidated results
   - Plan journey completion integration with journey tracking hooks
   - _Requirements: 9.1, 9.5_
 
+
+
 - [ ] 9.4 Design gamification integration points
   - Create achievement system integration with journey tracking
   - Design experience point tracking extensions for location hooks
   - Plan level progression integration with user context
+
+
   - _Requirements: 9.1, 9.4_
 
 - [ ] 9.5 Create modular architecture steering documentation

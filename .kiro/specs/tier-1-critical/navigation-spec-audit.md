@@ -112,7 +112,7 @@ Core app navigation flow supporting journey tracking from "Start Walk" through "
 #### Module 1: Home Navigation Hub
 **Purpose**: Central navigation entry point with quick access to core features
 **File Targets**: 
-- `screens/HomeScreen.js` (max 200 lines)
+- `screens/HomeScreen.js` (target 150 lines, max 200 lines)
 - `components/ui/QuickActionButton.js` (max 100 lines)
 
 **Existing Task Mapping**:
@@ -135,7 +135,7 @@ Core app navigation flow supporting journey tracking from "Start Walk" through "
 **File Targets**:
 - `screens/MapScreen.js` (max 400 lines - refactor existing)
 - `components/map/TrackingControls.js` (max 150 lines)
-- `components/map/RouteVisualization.js` (max 200 lines)
+- `components/map/RouteVisualization.js` (target 150 lines, max 200 lines)
 - `components/map/UserSprite.js` (max 100 lines)
 
 **Existing Task Mapping**:
@@ -200,7 +200,7 @@ Core app navigation flow supporting journey tracking from "Start Walk" through "
 #### Module 5: Navigation Framework
 **Purpose**: Screen navigation and state management
 **File Targets**:
-- `navigation/AppNavigator.js` (max 200 lines)
+- `navigation/AppNavigator.js` (target 150 lines, max 200 lines)
 - `contexts/NavigationContext.js` (max 100 lines)
 
 **Existing Task Mapping**:
@@ -224,7 +224,7 @@ Core app navigation flow supporting journey tracking from "Start Walk" through "
 - **Screen Components**: Max 400 lines (MapScreen exception due to complexity)
 - **UI Components**: Max 150 lines
 - **Utility Components**: Max 100 lines
-- **Service Integration**: Max 200 lines per service interface
+- **Service Integration**: Target 150 lines, max 200 lines per service interface
 
 #### Component Count Limits
 - **Per Module**: Max 5 components

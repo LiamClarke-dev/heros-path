@@ -15,7 +15,7 @@ The MapScreen component has grown to over 1600 lines of code and is handling mul
 1. WHEN the MapScreen is refactored THEN it SHALL be split into multiple focused components
 2. WHEN each component is created THEN it SHALL have a single, clear responsibility
 3. WHEN components are created THEN they SHALL follow React component best practices
-4. WHEN the refactoring is complete THEN the main MapScreen SHALL be under 200 lines of code
+4. WHEN the refactoring is complete THEN the main MapScreen SHALL be under 200 lines of code (hard limit, target 150 lines)
 
 ### Requirement 2: Custom Hooks Extraction
 

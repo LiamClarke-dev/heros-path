@@ -12,10 +12,12 @@
         "GOOGLE_MAPS_API_KEY_ANDROID": "$GOOGLE_MAPS_API_KEY_ANDROID"
       },
       "ios": {
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "autoIncrement": true
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "autoIncrement": true
       }
     },
     "preview": {
@@ -25,10 +27,12 @@
         "GOOGLE_MAPS_API_KEY_ANDROID": "$GOOGLE_MAPS_API_KEY_ANDROID"
       },
       "ios": {
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "autoIncrement": true
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "autoIncrement": true
       }
     },
     "production": {
@@ -38,6 +42,9 @@
       },
       "ios": {
         "resourceClass": "m-medium",
+        "autoIncrement": true
+      },
+      "android": {
         "autoIncrement": true
       }
     }

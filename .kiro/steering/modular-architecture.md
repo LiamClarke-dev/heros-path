@@ -2,554 +2,299 @@
 
 ## Overview
 
-This document establishes guidelines for maintaining and extending the modular architecture patterns established during the MapScreen refactoring. These guidelines ensure consistent, maintainable, and scalable code across the Hero's Path application.
+This document provides essential guidelines for maintaining the modular architecture patterns established during the MapScreen refactoring. All React Native components and hooks in Hero's Path must follow these patterns.
+
+**Last Updated**: January 2025  
+**Version**: 2.0
 
 ## Core Principles
 
 ### 1. Single Responsibility Principle
-Each component and hook should have one clear, well-defined responsibility:
+- Each component/hook has ONE clear responsibility
+- Extract hooks for complex state logic
+- Create child components for rendering sections
 
-**✅ Good Example:**
-```javascript
-// useLocationTracking - handles only location-related state and logic
-const useLocationTracking = () => {
-  // Location state management
-  // GPS status tracking
-  // Location service integration
-};
-```
+### 2. Size Limits with Warning System
 
-**❌ Bad Example:**
-```javascript
-// useMapEverything - handles too many responsibilities
-const useMapEverything = () => {
-  // Location tracking
-  // Journey management
-  // Saved places
-  // Map styling
-  // UI state
-};
-```
+**Target Limits (Green Zone - Ideal):**
+- **Screen Components**: 150 lines (orchestration only)
+- **Feature Components**: 100 lines  
+- **UI Components**: 75 lines
+- **Hooks**: 150 lines
 
-### 2. Component Size Limits
-Enforce strict size limits to prevent monolithic components:
+**Warning Zone (Yellow - Requires Justification):**
+- **Screen Components**: 150-200 lines
+- **Feature Components**: 100-150 lines
+- **UI Components**: 75-100 lines  
+- **Hooks**: 150-200 lines
 
-- **Main Screen Components**: Maximum 200 lines
-- **Feature Components**: Maximum 150 lines
-- **UI Components**: Maximum 100 lines
-- **Utility Components**: Maximum 50 lines
+**Maximum Limits (Red Zone - Must Refactor):**
+- **Screen Components**: 200 lines (HARD LIMIT)
+- **Feature Components**: 150 lines (HARD LIMIT)
+- **UI Components**: 100 lines (HARD LIMIT)
+- **Hooks**: 200 lines (HARD LIMIT)
 
-### 3. Hook-Based State Management
-Use custom hooks for all complex state logic:
+**Yellow Zone Requirements:**
+- Must include justification comment in PR
+- Must have refactoring plan documented
+- Cannot merge without architectural review
+- Must demonstrate single responsibility maintained
 
-```javascript
-// Extract state logic into focused hooks
-const MyComponent = () => {
-  const dataState = useDataManagement();
-  const uiState = useUIState();
-  const serviceIntegration = useServiceIntegration();
-  
-  // Component focuses only on rendering and coordination
-  return <View>{/* Render logic */}</View>;
-};
-```
+### 3. Hook-Based Architecture
+- ALL business logic goes in custom hooks
+- Components are presentation-only
+- Never call services directly from components
 
-## Component Architecture Patterns
+### 4. Size Limit Rationale
+**Why These Limits Work:**
+- MapScreen: Reduced from 1600+ lines to <200 lines (all functionality preserved)
+- Cognitive load research: Comprehension drops after ~150-200 lines
+- Prevents "just one more feature" architectural decay
+- Forces better design decisions from the start
 
-### Container-Presentation Pattern
+**The Goal**: Better architecture, not arbitrary constraints
 
-**Container Components** (Smart Components):
-- Manage state through custom hooks
-- Handle business logic coordination
-- Pass data and callbacks to presentation components
-- Maximum 200 lines
-
-**Presentation Components** (Dumb Components):
-- Receive all data through props
-- Focus purely on rendering
-- No direct service calls or complex state
-- Easily testable with mock props
-
-```javascript
-// Container Component
-const MapScreenContainer = () => {
-  const locationTracking = useLocationTracking();
-  const journeyTracking = useJourneyTracking();
-  
-  return (
-    <MapScreenPresentation
-      currentPosition={locationTracking.currentPosition}
-      onStartJourney={journeyTracking.startJourney}
-      // ... other props
-    />
-  );
-};
-
-// Presentation Component
-const MapScreenPresentation = ({ currentPosition, onStartJourney }) => {
-  return (
-    <View>
-      <MapView region={currentPosition} />
-      <Button onPress={onStartJourney} title="Start Journey" />
-    </View>
-  );
-};
-```
-
-### Hook Composition Pattern
-
-Create focused hooks that can be composed together:
-
-```javascript
-// Focused hooks
-const useLocationData = () => { /* location logic */ };
-const useLocationPermissions = () => { /* permission logic */ };
-const useLocationTracking = () => { /* tracking logic */ };
-
-// Composed hook (when needed)
-const useLocationFeatures = () => {
-  const data = useLocationData();
-  const permissions = useLocationPermissions();
-  const tracking = useLocationTracking();
-  
-  return { data, permissions, tracking };
-};
-```
-
-## Custom Hook Guidelines
-
-### Hook Naming Convention
-- Always start with `use` prefix
-- Use descriptive, specific names
-- Indicate the domain or feature area
-
-```javascript
-// ✅ Good hook names
-useMapState()
-useLocationTracking()
-useJourneyManagement()
-useSavedPlaces()
-
-// ❌ Bad hook names
-useMap() // Too generic
-useStuff() // Not descriptive
-mapHook() // Missing 'use' prefix
-```
+## Required Patterns
 
 ### Hook Structure Template
-
 ```javascript
 /**
  * Custom hook for [specific responsibility]
- * 
- * Handles:
- * - [Responsibility 1]
- * - [Responsibility 2]
- * - [Responsibility 3]
- * 
  * Requirements: [Reference to requirements]
  */
-const useFeatureName = (initialConfig = {}) => {
+const useFeatureName = () => {
   // 1. State declarations
-  const [state1, setState1] = useState(initialValue);
-  const [state2, setState2] = useState(initialValue);
+  const [state, setState] = useState(initialValue);
   
-  // 2. Refs for persistent values
+  // 2. Service integration
   const serviceRef = useRef(null);
   
-  // 3. Effect hooks for initialization and cleanup
+  // 3. Memoized actions
+  const action = useCallback(async () => {
+    try {
+      const result = await serviceRef.current.performAction();
+      setState(result);
+    } catch (error) {
+      console.error('Action failed:', error);
+      throw error;
+    }
+  }, []);
+  
+  // 4. Cleanup
   useEffect(() => {
-    initialize();
-    return cleanup;
+    serviceRef.current = new Service();
+    return () => serviceRef.current?.cleanup();
   }, []);
   
-  // 4. Memoized callbacks
-  const action1 = useCallback(() => {
-    // Implementation
-  }, [dependencies]);
-  
-  const action2 = useCallback(() => {
-    // Implementation
-  }, [dependencies]);
-  
-  // 5. Cleanup function
-  const cleanup = useCallback(() => {
-    // Cleanup logic
-  }, []);
-  
-  // 6. Return object with clear interface
-  return {
-    // State (read-only)
-    state1,
-    state2,
-    
-    // Actions
-    action1,
-    action2,
-    
-    // Utilities (if needed)
-    cleanup,
-  };
+  return { state, action };
 };
 ```
 
-### Hook Dependencies and Communication
-
-**Direct Communication** (Preferred):
+### Component Structure Template
 ```javascript
-const MyComponent = () => {
+/**
+ * Component documentation
+ * Responsibility: [Clear description]
+ */
+const MyComponent = React.memo(({ prop1, prop2 }) => {
+  // 1. Custom hooks only
+  const featureState = useFeatureHook();
+  
+  // 2. Memoized callbacks
+  const handleAction = useCallback(() => {
+    featureState.performAction();
+  }, [featureState.performAction]);
+  
+  // 3. Render
+  return (
+    <View style={styles.container}>
+      <ChildComponent onAction={handleAction} />
+    </View>
+  );
+});
+```
+
+### Integration Pattern (MapScreen Example)
+```javascript
+const MapScreen = () => {
+  // All state through hooks
   const locationTracking = useLocationTracking();
   const journeyTracking = useJourneyTracking();
+  const savedPlaces = useSavedPlaces();
   
-  // Coordinate between hooks in component
+  // Simple coordination
   useEffect(() => {
     if (locationTracking.currentPosition && journeyTracking.isTracking) {
       journeyTracking.addToPath(locationTracking.currentPosition);
     }
   }, [locationTracking.currentPosition, journeyTracking.isTracking]);
-};
-```
-
-**Shared Context** (When needed):
-```javascript
-// For truly global state that multiple hooks need
-const LocationContext = createContext();
-
-const useLocationTracking = () => {
-  const context = useContext(LocationContext);
-  // Hook implementation
-};
-```
-
-## Component Guidelines
-
-### Component File Structure
-
-```javascript
-// 1. Imports (grouped and sorted)
-import React, { useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
-
-// Custom hooks
-import useFeatureHook from '../hooks/useFeatureHook';
-
-// Child components
-import ChildComponent from './ChildComponent';
-
-/**
- * Component documentation
- * 
- * Responsibility: [Clear description]
- * 
- * Props:
- * - prop1: Description
- * - prop2: Description
- * 
- * Requirements: [Reference to requirements]
- */
-const MyComponent = ({ prop1, prop2 }) => {
-  // 2. Custom hooks
-  const featureState = useFeatureHook();
   
-  // 3. Local state (minimal)
-  const [localState, setLocalState] = useState(null);
-  
-  // 4. Memoized values
-  const memoizedValue = useMemo(() => {
-    return expensiveCalculation(prop1);
-  }, [prop1]);
-  
-  // 5. Callbacks
-  const handleAction = useCallback(() => {
-    // Implementation
-  }, [dependencies]);
-  
-  // 6. Render
+  // Component composition
   return (
-    <View style={styles.container}>
-      <ChildComponent
-        data={memoizedValue}
-        onAction={handleAction}
-      />
+    <View>
+      <MapRenderer {...mapProps} />
+      <MapControls {...controlProps} />
     </View>
   );
 };
-
-// 7. Styles
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
-
-// 8. Memoization and export
-export default React.memo(MyComponent);
 ```
 
-### Performance Optimization Guidelines
+## AI Agent Rules (CRITICAL)
 
-**Memoization Rules:**
-- Use `React.memo` for all components
-- Use `useMemo` for expensive calculations
-- Use `useCallback` for functions passed as props
-- Avoid inline objects and functions in render
+### 1. Never Create Monolithic Components
+- **Green Zone**: Ideal size, continue development
+- **Yellow Zone**: Add justification, create refactoring plan
+- **Red Zone**: STOP - Must refactor before proceeding
+- Extract hooks for state logic
+- Create child components for rendering
 
+### 2. Always Use Hook Pattern
 ```javascript
-// ✅ Good - memoized callback
-const handlePress = useCallback(() => {
-  onAction(data.id);
-}, [onAction, data.id]);
-
-// ❌ Bad - inline function
-<Button onPress={() => onAction(data.id)} />
-
-// ✅ Good - memoized object
-const buttonProps = useMemo(() => ({
-  title: data.title,
-  disabled: data.loading
-}), [data.title, data.loading]);
-
-// ❌ Bad - inline object
-<Button {...{ title: data.title, disabled: data.loading }} />
-```
-
-## Service Integration Patterns
-
-### Hook-Service Integration
-
-Never call services directly from components. Always use hooks:
-
-```javascript
-// ✅ Good - service called through hook
-const useJourneyManagement = () => {
-  const saveJourney = useCallback(async (journeyData) => {
-    try {
-      const result = await JourneyService.saveJourney(journeyData);
-      return result;
-    } catch (error) {
-      console.error('Failed to save journey:', error);
-      throw error;
-    }
-  }, []);
-  
-  return { saveJourney };
-};
-
-// ❌ Bad - direct service call in component
+// ✅ CORRECT
+const useNewFeature = () => { /* logic */ };
 const MyComponent = () => {
-  const handleSave = async () => {
-    await JourneyService.saveJourney(data); // Don't do this
+  const feature = useNewFeature();
+  return <View>{/* render */}</View>;
+};
+
+// ❌ WRONG - Don't put logic in components
+const MyComponent = () => {
+  const [state, setState] = useState();
+  const handleAction = async () => {
+    const result = await SomeService.action(); // NO!
+    setState(result);
   };
 };
 ```
 
-### Error Handling in Hooks
+### 3. Follow MapScreen Integration Pattern
+- Study existing hooks: `useLocationTracking`, `useJourneyTracking`
+- Extend existing components through props
+- Coordinate hooks in main component only
 
-Implement consistent error handling patterns:
-
+### 4. Required Performance Optimizations
 ```javascript
-const useDataFetching = () => {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+// Always use these
+const MyComponent = React.memo(({ data, onAction }) => {
+  const memoizedValue = useMemo(() => expensive(data), [data]);
+  const handleAction = useCallback(() => onAction(data.id), [onAction, data.id]);
+  return <View />;
+});
+```
+
+### 5. Mandatory Testing
+- All hooks: Use `@testing-library/react-hooks`
+- All components: Mock hooks, test props/callbacks
+- Integration: Test hook coordination
+
+## Extension Points for New Features
+
+### Map Features
+1. Create focused hook (e.g., `usePingDiscovery`)
+2. Add component to `MapControls`
+3. Add overlay to `MapRenderer`
+4. Coordinate in `MapScreen`
+
+### Service Integration
+```javascript
+// Always abstract services through hooks
+const useServiceIntegration = () => {
+  const serviceRef = useRef(null);
   
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const result = await DataService.fetchData();
-      setData(result);
-    } catch (err) {
-      console.error('Data fetch error:', err);
-      setError(err.message || 'Failed to fetch data');
-    } finally {
-      setLoading(false);
-    }
+  const performAction = useCallback(async () => {
+    return await serviceRef.current.performAction();
   }, []);
   
-  return {
-    data,
-    loading,
-    error,
-    fetchData,
-    clearError: () => setError(null)
-  };
+  return { performAction };
 };
 ```
 
-## Testing Guidelines
+## Code Review Checklist
 
-### Hook Testing
+### Automatic Rejection (Red Zone)
+- [ ] Component exceeds HARD LIMITS (200/150/100/200 lines)
+- [ ] Direct service calls in components  
+- [ ] Missing React.memo/useCallback/useMemo
+- [ ] No tests for new code
+- [ ] Multiple responsibilities in one unit
 
-Test hooks in isolation using `@testing-library/react-hooks`:
+### Yellow Zone Requirements
+- [ ] Justification comment explaining why size is needed
+- [ ] Documented refactoring plan with timeline
+- [ ] Architectural review approval
+- [ ] Proof that single responsibility is maintained
+- [ ] No mixing of business concerns
 
+### Exception Cases (Require Architectural Review)
+- [ ] Complex form validation: +25 lines maximum
+- [ ] Platform-specific code: +30 lines maximum
+- [ ] Legacy integration: +20 lines maximum  
+- [ ] Performance-critical sections: +15 lines maximum
+
+### Required for All Approvals
+- [ ] Follows hook structure template
+- [ ] Has proper error handling
+- [ ] Includes cleanup functions
+- [ ] Has comprehensive tests
+- [ ] Maintains backward compatibility
+
+### Never Allowed (Even with Exceptions)
+- [ ] Multiple business concerns in one component
+- [ ] Direct service calls mixed with UI logic
+- [ ] Unrelated state management
+- [ ] Copy-pasted code instead of extraction
+
+## Quick Reference
+
+**Before implementing ANY feature:**
+1. Read `docs/MapScreen-Developer-Guide.md`
+2. Study existing hook patterns
+3. Plan hook structure following template
+4. Design component composition
+5. Write tests first
+
+**When extending existing features:**
+1. Identify the responsible hook/component
+2. Extend through props and composition
+3. Never modify existing component internals
+4. Test integration thoroughly
+
+**For detailed examples and comprehensive documentation:**
+- `docs/MapScreen-Refactoring-Architecture.md` - Complete architecture overview
+- `docs/MapScreen-Developer-Guide.md` - Development patterns and examples
+- `docs/future-proofing/` - Integration patterns for upcoming features
+
+---
+
+## Size Limit Enforcement Process
+
+### For Yellow Zone Components (Warning)
+1. **Add Justification Comment**: Explain why the size is necessary
+2. **Document Refactoring Plan**: Include timeline and approach
+3. **Request Architectural Review**: Cannot merge without approval
+4. **Demonstrate Single Responsibility**: Prove no mixed concerns
+
+### Example Yellow Zone Justification
 ```javascript
-import { renderHook, act } from '@testing-library/react-hooks';
-import useMyHook from '../hooks/useMyHook';
-
-describe('useMyHook', () => {
-  test('should initialize with default state', () => {
-    const { result } = renderHook(() => useMyHook());
-    
-    expect(result.current.data).toBeNull();
-    expect(result.current.loading).toBe(false);
-  });
-  
-  test('should handle actions correctly', async () => {
-    const { result } = renderHook(() => useMyHook());
-    
-    await act(async () => {
-      await result.current.performAction();
-    });
-    
-    expect(result.current.data).toBeDefined();
-  });
-});
+/**
+ * YELLOW ZONE JUSTIFICATION (180/150 lines)
+ * 
+ * Reason: Complex form validation with 15 interdependent fields
+ * Refactoring Plan: Extract validation logic to useFormValidation hook (Sprint 3)
+ * Single Responsibility: Only handles user profile form rendering
+ * Architectural Review: Approved by [reviewer] on [date]
+ */
+const UserProfileForm = () => {
+  // Implementation
+};
 ```
 
-### Component Testing
+### Red Zone Response
+- **STOP Development**: No new features until refactored
+- **Immediate Action Required**: Extract hooks/components
+- **No Exceptions**: Hard limits are non-negotiable
+- **Architectural Review**: Required before any changes
 
-Test components with mocked hooks and props:
+---
 
-```javascript
-import { render, fireEvent } from '@testing-library/react-native';
-import MyComponent from '../components/MyComponent';
-
-// Mock the hook
-jest.mock('../hooks/useMyHook', () => ({
-  __esModule: true,
-  default: () => ({
-    data: mockData,
-    loading: false,
-    performAction: mockPerformAction
-  })
-}));
-
-describe('MyComponent', () => {
-  test('should render correctly', () => {
-    const { getByText } = render(<MyComponent />);
-    expect(getByText('Expected Text')).toBeTruthy();
-  });
-  
-  test('should handle user interactions', () => {
-    const { getByTestId } = render(<MyComponent />);
-    
-    fireEvent.press(getByTestId('action-button'));
-    expect(mockPerformAction).toHaveBeenCalled();
-  });
-});
-```
-
-## Refactoring Triggers
-
-### When to Refactor a Component
-
-**Size Triggers:**
-- Component exceeds line limits (200 for screens, 150 for features, 100 for UI)
-- More than 10 useState calls
-- More than 15 useEffect calls
-
-**Complexity Triggers:**
-- Multiple responsibilities identified
-- Difficult to test in isolation
-- Changes frequently affect multiple concerns
-- New developers struggle to understand
-
-**Performance Triggers:**
-- Unnecessary re-renders detected
-- Performance profiling shows bottlenecks
-- Memory leaks identified
-
-### Refactoring Process
-
-1. **Identify Responsibilities**: List all the things the component does
-2. **Group Related Logic**: Find logical groupings of state and behavior
-3. **Extract Hooks**: Create custom hooks for each responsibility group
-4. **Create Child Components**: Extract rendering logic into focused components
-5. **Update Parent**: Simplify parent to orchestration only
-6. **Add Tests**: Ensure all extracted pieces are tested
-7. **Validate**: Confirm functionality is preserved
-
-## AI Agent Instructions
-
-### For AI Agents Working on This Codebase
-
-**CRITICAL RULES:**
-
-1. **Never create monolithic components**
-   - If a component approaches 200 lines, immediately refactor
-   - Extract hooks for complex state logic
-   - Create child components for rendering sections
-
-2. **Always use the hook pattern**
-   - Don't put business logic directly in components
-   - Create custom hooks for service integration
-   - Use the hook structure template provided
-
-3. **Follow the established patterns**
-   - Use the container-presentation pattern
-   - Implement proper memoization
-   - Follow the component file structure
-
-4. **Maintain backward compatibility**
-   - Preserve all existing functionality
-   - Don't change user-facing behavior
-   - Ensure performance improvements only
-
-5. **Test everything**
-   - Write tests for new hooks
-   - Test components in isolation
-   - Verify integration works correctly
-
-### Code Review Criteria
-
-**Automatic Rejection Criteria:**
-- Components over line limits without justification
-- Direct service calls in components
-- Missing memoization for expensive operations
-- No tests for new hooks or components
-- Breaking changes to existing functionality
-
-**Required Elements:**
-- Clear component/hook documentation
-- Proper error handling
-- Cleanup functions in hooks
-- Performance optimizations
-- Test coverage
-
-## Future Feature Integration
-
-### Extension Point Guidelines
-
-When adding new features, follow these patterns:
-
-**New Map Features:**
-- Create focused hooks (e.g., `usePingDiscovery`)
-- Extend existing components (e.g., add PingButton to MapControls)
-- Use overlay system for visual elements
-- Integrate through established data flow
-
-**New UI Features:**
-- Follow container-presentation pattern
-- Create reusable components in `components/ui/`
-- Use theme system for styling
-- Implement proper accessibility
-
-**New Services:**
-- Abstract through custom hooks
-- Implement consistent error handling
-- Use proper TypeScript interfaces
-- Add comprehensive tests
-
-## Conclusion
-
-These guidelines ensure that the modular architecture established during the MapScreen refactoring is maintained and extended consistently. By following these patterns, we can:
-
-- Keep components focused and maintainable
-- Ensure consistent code quality
-- Make testing easier and more comprehensive
-- Enable faster feature development
-- Prevent regression to monolithic patterns
-
-All developers and AI agents working on this codebase must follow these guidelines to maintain the architectural integrity and code quality standards.
+**Remember**: The MapScreen refactoring reduced 1600+ lines to <200 lines while maintaining all functionality. The size limits are a forcing function for better architecture, not arbitrary constraints.

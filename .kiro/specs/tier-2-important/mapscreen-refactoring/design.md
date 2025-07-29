@@ -9,7 +9,7 @@ This design outlines the refactoring of the monolithic MapScreen component into 
 ### Component Hierarchy
 
 ```
-MapScreen (< 200 lines)
+MapScreen (< 200 lines hard limit, target 150 lines)
 ├── MapRenderer
 │   ├── MapView (platform-specific)
 │   ├── MapOverlays

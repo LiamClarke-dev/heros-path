@@ -2,21 +2,16 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import LocationOptimizer from './location/LocationOptimizer';
+import LocationFilter from './location/LocationFilter';
+import LocationBackupManager from './location/LocationBackupManager';
 
-// Location filtering and smoothing constants
-const ACCURACY_THRESHOLD = 50; // meters - reject readings with accuracy worse than this
-const MIN_DISTANCE_THRESHOLD = 5; // meters - minimum distance between points
-const MAX_SPEED_THRESHOLD = 50; // m/s - maximum reasonable walking/running speed
-const SMOOTHING_WINDOW_SIZE = 3; // number of points to use for smoothing
+// GPS warmup constants
 const GPS_WARMUP_DURATION = 30000; // 30 seconds
 const GPS_WARMUP_READINGS = 5; // minimum readings during warmup
 
 // Background task name
 const BACKGROUND_LOCATION_TASK = 'background-location';
-
-// Periodic save constants
-const PERIODIC_SAVE_INTERVAL = 30000; // 30 seconds
-const STORAGE_KEY_JOURNEY_BACKUP = 'journey_backup_';
 
 // Define the background location task at module level to ensure it's available immediately
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, ({ data, error }) => {
@@ -53,19 +48,27 @@ class BackgroundLocationService {
     this.isTracking = false;
     this.currentJourneyId = null;
     this.locationUpdateCallback = null;
-    this.locationHistory = [];
     this.isWarmingUp = false;
     this.warmupStartTime = null;
     this.warmupReadings = 0;
-    this.periodicSaveInterval = null;
-    this.lastSaveTime = null;
     this.permissionPromptCallback = null;
     this.appStateSubscription = null;
+    this.locationSubscription = null;
+    
+    // Initialize modular components
+    this.locationOptimizer = new LocationOptimizer();
+    this.locationFilter = new LocationFilter();
+    this.backupManager = new LocationBackupManager();
+    
+    // Set up component callbacks
+    this.locationOptimizer.setOptimizationChangeCallback(this.handleOptimizationChange.bind(this));
+    this.backupManager.setBackupStatusCallback(this.handleBackupStatusChange.bind(this));
     
     // Bind methods to preserve context
     this.handleAppStateChange = this.handleAppStateChange.bind(this);
     this.handleLocationUpdate = this.handleLocationUpdate.bind(this);
-    this.periodicSave = this.periodicSave.bind(this);
+    this.handleOptimizationChange = this.handleOptimizationChange.bind(this);
+    this.handleBackupStatusChange = this.handleBackupStatusChange.bind(this);
     
     // Set singleton instance
     BackgroundLocationService._instance = this;
@@ -134,189 +137,78 @@ class BackgroundLocationService {
   }
 
   /**
-   * Check if a location reading is accurate enough to use
-   * @param {Object} location - Location object from expo-location
-   * @returns {boolean} - True if location is accurate enough
+   * Handle optimization changes from LocationOptimizer
+   * @param {Object} change - Optimization change event
    */
-  isLocationAccurate(location) {
-    if (!location || !location.coords) {
-      return false;
+  handleOptimizationChange(change) {
+    if (change.type === 'movement_change' || change.type === 'level_changed') {
+      this.updateTrackingWithOptions(change.options);
     }
-
-    const { accuracy, latitude, longitude } = location.coords;
-
-    // Check accuracy threshold
-    if (accuracy && accuracy > ACCURACY_THRESHOLD) {
-      console.log(`Location rejected: accuracy ${accuracy}m > ${ACCURACY_THRESHOLD}m threshold`);
-      return false;
+    
+    // Forward to location update callback
+    if (this.locationUpdateCallback) {
+      this.locationUpdateCallback(change);
     }
-
-    // Check for valid coordinates
-    if (!this.isValidCoordinate(latitude, longitude)) {
-      console.log('Location rejected: invalid coordinates');
-      return false;
-    }
-
-    return true;
   }
 
   /**
-   * Validate that coordinates are within reasonable bounds
-   * @param {number} latitude - Latitude coordinate
-   * @param {number} longitude - Longitude coordinate
-   * @returns {boolean} - True if coordinates are valid
+   * Handle backup status changes from LocationBackupManager
+   * @param {Object} status - Backup status event
    */
-  isValidCoordinate(latitude, longitude) {
-    return (
-      typeof latitude === 'number' &&
-      typeof longitude === 'number' &&
-      latitude >= -90 &&
-      latitude <= 90 &&
-      longitude >= -180 &&
-      longitude <= 180 &&
-      !isNaN(latitude) &&
-      !isNaN(longitude)
-    );
+  handleBackupStatusChange(status) {
+    // Forward to location update callback
+    if (this.locationUpdateCallback) {
+      this.locationUpdateCallback(status);
+    }
   }
 
   /**
-   * Apply smoothing algorithm to reduce GPS noise
-   * @param {Array} locations - Array of recent location objects
-   * @returns {Object} - Smoothed location object
+   * Update tracking with new options
+   * @param {Object} options - New tracking options
    */
-  smoothLocation(locations) {
-    if (!locations || locations.length === 0) {
-      return null;
+  async updateTrackingWithOptions(options) {
+    if (!this.isTracking || !options) {
+      return;
     }
 
-    // If we only have one location, return it as-is
-    if (locations.length === 1) {
-      return locations[0];
-    }
-
-    // Use the most recent location as base
-    const baseLocation = locations[locations.length - 1];
-    
-    // If we have fewer locations than the smoothing window, use all available
-    const smoothingLocations = locations.slice(-Math.min(SMOOTHING_WINDOW_SIZE, locations.length));
-    
-    // Calculate weighted average (more recent locations have higher weight)
-    let totalWeight = 0;
-    let weightedLat = 0;
-    let weightedLng = 0;
-
-    smoothingLocations.forEach((location, index) => {
-      // Weight increases with recency (index 0 is oldest, last index is newest)
-      const weight = index + 1;
-      totalWeight += weight;
-      weightedLat += location.coords.latitude * weight;
-      weightedLng += location.coords.longitude * weight;
-    });
-
-    // Create smoothed location
-    const smoothedLocation = {
-      ...baseLocation,
-      coords: {
-        ...baseLocation.coords,
-        latitude: weightedLat / totalWeight,
-        longitude: weightedLng / totalWeight
+    try {
+      // Stop current subscription
+      if (this.locationSubscription) {
+        this.locationSubscription.remove();
+        this.locationSubscription = null;
       }
-    };
 
-    return smoothedLocation;
-  }
-
-  /**
-   * Calculate distance between two coordinates using Haversine formula
-   * @param {Object} coord1 - First coordinate {latitude, longitude}
-   * @param {Object} coord2 - Second coordinate {latitude, longitude}
-   * @returns {number} - Distance in meters
-   */
-  calculateDistance(coord1, coord2) {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = this.toRadians(coord2.latitude - coord1.latitude);
-    const dLon = this.toRadians(coord2.longitude - coord1.longitude);
-    
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(coord1.latitude)) * 
-      Math.cos(this.toRadians(coord2.latitude)) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  /**
-   * Convert degrees to radians
-   * @param {number} degrees - Degrees to convert
-   * @returns {number} - Radians
-   */
-  toRadians(degrees) {
-    return degrees * (Math.PI / 180);
-  }
-
-  /**
-   * Check if location update represents reasonable movement
-   * @param {Object} newLocation - New location reading
-   * @param {Object} lastLocation - Previous location reading
-   * @returns {boolean} - True if movement is reasonable
-   */
-  isReasonableMovement(newLocation, lastLocation) {
-    if (!lastLocation) {
-      return true; // First location is always reasonable
-    }
-
-    const distance = this.calculateDistance(lastLocation.coords, newLocation.coords);
-    const timeDiff = (newLocation.timestamp - lastLocation.timestamp) / 1000; // seconds
-    
-    // Check minimum distance threshold
-    if (distance < MIN_DISTANCE_THRESHOLD) {
-      console.log(`Location rejected: distance ${distance.toFixed(2)}m < ${MIN_DISTANCE_THRESHOLD}m threshold`);
-      return false;
-    }
-
-    // Check maximum speed threshold
-    if (timeDiff > 0) {
-      const speed = distance / timeDiff; // m/s
-      if (speed > MAX_SPEED_THRESHOLD) {
-        console.log(`Location rejected: speed ${speed.toFixed(2)}m/s > ${MAX_SPEED_THRESHOLD}m/s threshold`);
-        return false;
+      // Convert string accuracy to Location constant
+      let accuracy = Location.Accuracy.BestForNavigation;
+      if (options.accuracy === 'High') {
+        accuracy = Location.Accuracy.High;
+      } else if (options.accuracy === 'Balanced') {
+        accuracy = Location.Accuracy.Balanced;
       }
+
+      // Start with new options
+      this.locationSubscription = await Location.watchPositionAsync(
+        {
+          accuracy: accuracy,
+          timeInterval: options.timeInterval,
+          distanceInterval: options.distanceInterval
+        },
+        (location) => {
+          // Let optimizer detect movement
+          this.locationOptimizer.detectMovement(location);
+          
+          // Process location through filter
+          const processedLocation = this.locationFilter.processLocationReading(location);
+          if (processedLocation && this.locationUpdateCallback) {
+            this.locationUpdateCallback(processedLocation);
+          }
+        }
+      );
+
+      console.log('Location tracking updated with new options:', options);
+    } catch (error) {
+      console.error('Failed to update location tracking:', error);
     }
-
-    return true;
-  }
-
-  /**
-   * Process and filter a new location reading
-   * @param {Object} location - Raw location from expo-location
-   * @returns {Object|null} - Processed location or null if rejected
-   */
-  processLocationReading(location) {
-    // Check basic accuracy
-    if (!this.isLocationAccurate(location)) {
-      return null;
-    }
-
-    // Check movement reasonableness
-    const lastLocation = this.locationHistory[this.locationHistory.length - 1];
-    if (!this.isReasonableMovement(location, lastLocation)) {
-      return null;
-    }
-
-    // Add to history for smoothing
-    this.locationHistory.push(location);
-    
-    // Keep only recent locations for smoothing
-    if (this.locationHistory.length > SMOOTHING_WINDOW_SIZE * 2) {
-      this.locationHistory = this.locationHistory.slice(-SMOOTHING_WINDOW_SIZE);
-    }
-
-    // Apply smoothing
-    const smoothedLocation = this.smoothLocation(this.locationHistory);
-    
-    return smoothedLocation;
   }
 
   /**
@@ -561,11 +453,12 @@ class BackgroundLocationService {
         await this.startGPSWarmup();
       }
 
-      // Configure tracking options
+      // Get initial tracking options from optimizer
+      const optimizedOptions = this.locationOptimizer.getCurrentTrackingOptions();
       const trackingOptions = {
         accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: options.timeInterval || 2000, // 2 seconds default
-        distanceInterval: options.distanceInterval || 5, // 5 meters default
+        timeInterval: optimizedOptions.timeInterval,
+        distanceInterval: optimizedOptions.distanceInterval,
         ...options
       };
 
@@ -573,7 +466,11 @@ class BackgroundLocationService {
       this.locationSubscription = await Location.watchPositionAsync(
         trackingOptions,
         (location) => {
-          const processedLocation = this.processLocationReading(location);
+          // Let optimizer detect movement for adaptive tracking
+          this.locationOptimizer.detectMovement(location);
+          
+          // Process location through filter
+          const processedLocation = this.locationFilter.processLocationReading(location);
           if (processedLocation && this.locationUpdateCallback) {
             this.locationUpdateCallback(processedLocation);
           }
@@ -599,7 +496,7 @@ class BackgroundLocationService {
       this.currentJourneyId = journeyId;
       
       // Requirement 5.4: Start periodic saving to prevent data loss
-      this.startPeriodicSave();
+      this.backupManager.startPeriodicSave(journeyId);
       
       console.log(`Location tracking started for journey: ${journeyId}`);
       return true;
@@ -629,11 +526,14 @@ class BackgroundLocationService {
       // Stop background tracking
       await this.stopBackgroundTracking();
 
+      // Get location history from filter
+      const locationHistory = this.locationFilter.getLocationHistory();
+
       // Prepare journey data
       const journeyData = {
         id: this.currentJourneyId,
         endTime: Date.now(),
-        coordinates: this.locationHistory
+        coordinates: locationHistory
           .filter(loc => loc && loc.coords && typeof loc.coords.latitude === 'number' && typeof loc.coords.longitude === 'number')
           .map(loc => ({
             latitude: loc.coords.latitude,
@@ -645,15 +545,19 @@ class BackgroundLocationService {
       };
 
       // Requirement 5.4: Stop periodic saving
-      this.stopPeriodicSave();
+      this.backupManager.stopPeriodicSave();
 
       // Reset tracking state
       this.isTracking = false;
+      const journeyIdToClean = this.currentJourneyId;
       this.currentJourneyId = null;
-      this.locationHistory = [];
+
+      // Reset modular components
+      this.locationFilter.reset();
+      this.locationOptimizer.reset();
 
       // Clean up backup data
-      await this.clearJourneyBackup(this.currentJourneyId);
+      await this.backupManager.clearJourneyBackup(journeyIdToClean);
 
       console.log('Location tracking stopped');
       return journeyData;
@@ -738,6 +642,30 @@ class BackgroundLocationService {
   }
 
   /**
+   * Set battery optimization level (Requirement 6.2)
+   * @param {string} level - 'HIGH_ACCURACY', 'BALANCED', or 'BATTERY_SAVER'
+   */
+  setBatteryOptimizationLevel(level) {
+    this.locationOptimizer.setBatteryOptimizationLevel(level);
+  }
+
+  /**
+   * Update battery level for optimization decisions (Requirement 6.2)
+   * @param {number} batteryLevel - Battery level from 0.0 to 1.0
+   */
+  updateBatteryLevel(batteryLevel) {
+    this.locationOptimizer.updateBatteryLevel(batteryLevel);
+  }
+
+  /**
+   * Enable or disable adaptive tracking based on movement and battery
+   * @param {boolean} enabled - Whether to enable adaptive tracking
+   */
+  setAdaptiveTrackingEnabled(enabled) {
+    this.locationOptimizer.setAdaptiveTrackingEnabled(enabled);
+  }
+
+  /**
    * Get current service status
    * @returns {Object} - Service status information
    */
@@ -746,10 +674,12 @@ class BackgroundLocationService {
       isInitialized: this.isInitialized,
       isTracking: this.isTracking,
       currentJourneyId: this.currentJourneyId,
-      locationHistoryCount: this.locationHistory.length,
+      locationHistoryCount: this.locationFilter.getLocationHistory().length,
       isWarmingUp: this.isWarmingUp,
       warmupStatus: this.getWarmupStatus(),
-      periodicSaveStatus: this.getPeriodicSaveStatus(),
+      backupStatus: this.backupManager.getBackupStatus(),
+      optimizationStatus: this.locationOptimizer.getOptimizationStatus(),
+      filterStatus: this.locationFilter.getFilterStatus(),
       hasPermissionPromptCallback: !!this.permissionPromptCallback
     };
   }
@@ -769,7 +699,11 @@ class BackgroundLocationService {
       // Process each location
       locations.forEach(location => {
         try {
-          const processedLocation = this.processLocationReading(location);
+          // Let optimizer detect movement
+          this.locationOptimizer.detectMovement(location);
+          
+          // Process location through filter
+          const processedLocation = this.locationFilter.processLocationReading(location);
           if (processedLocation && this.locationUpdateCallback) {
             this.locationUpdateCallback(processedLocation);
           }
@@ -777,6 +711,10 @@ class BackgroundLocationService {
           console.error('Error processing individual location:', error, location);
         }
       });
+
+      // Trigger periodic save with current location history
+      const locationHistory = this.locationFilter.getLocationHistory();
+      this.backupManager.performPeriodicSave(locationHistory);
     } catch (error) {
       console.error('Error in handleLocationUpdate:', error);
       if (this.locationUpdateCallback) {
@@ -976,121 +914,12 @@ class BackgroundLocationService {
   }
 
   /**
-   * Start periodic saving of journey data to prevent data loss (Requirement 5.4)
-   */
-  startPeriodicSave() {
-    if (this.periodicSaveInterval) {
-      clearInterval(this.periodicSaveInterval);
-    }
-
-    this.periodicSaveInterval = setInterval(this.periodicSave, PERIODIC_SAVE_INTERVAL);
-    this.lastSaveTime = Date.now();
-    console.log('Periodic save started for journey data backup');
-  }
-
-  /**
-   * Stop periodic saving
-   */
-  stopPeriodicSave() {
-    if (this.periodicSaveInterval) {
-      clearInterval(this.periodicSaveInterval);
-      this.periodicSaveInterval = null;
-      console.log('Periodic save stopped');
-    }
-  }
-
-  /**
-   * Perform periodic save of current journey data (Requirement 5.4)
-   */
-  async periodicSave() {
-    if (!this.isTracking || !this.currentJourneyId || this.locationHistory.length === 0) {
-      return;
-    }
-
-    try {
-      const backupData = {
-        journeyId: this.currentJourneyId,
-        coordinates: this.locationHistory
-          .filter(loc => loc && loc.coords && typeof loc.coords.latitude === 'number' && typeof loc.coords.longitude === 'number')
-          .map(loc => ({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            timestamp: loc.timestamp,
-            accuracy: loc.coords.accuracy
-          })),
-        startTime: this.locationHistory[0]?.timestamp || Date.now(),
-        lastSaveTime: Date.now(),
-        isActive: true
-      };
-
-      const backupKey = `${STORAGE_KEY_JOURNEY_BACKUP}${this.currentJourneyId}`;
-      await AsyncStorage.setItem(backupKey, JSON.stringify(backupData));
-      
-      this.lastSaveTime = Date.now();
-      console.log(`Journey data backed up: ${this.locationHistory.length} coordinates saved`);
-      
-      // Notify callback about successful backup
-      if (this.locationUpdateCallback) {
-        this.locationUpdateCallback({
-          type: 'backup_saved',
-          message: 'Journey data backed up successfully',
-          coordinateCount: this.locationHistory.length,
-          timestamp: this.lastSaveTime
-        });
-      }
-    } catch (error) {
-      console.error('Failed to save journey backup:', error);
-      
-      // Notify callback about backup failure
-      if (this.locationUpdateCallback) {
-        this.locationUpdateCallback({
-          type: 'backup_error',
-          message: 'Failed to backup journey data',
-          error: error.message
-        });
-      }
-    }
-  }
-
-  /**
    * Recover journey data from backup after app crash (Requirement 5.4)
    * @param {string} journeyId - Journey ID to recover
    * @returns {Promise<Object|null>} - Recovered journey data or null
    */
   async recoverJourneyFromBackup(journeyId) {
-    try {
-      const backupKey = `${STORAGE_KEY_JOURNEY_BACKUP}${journeyId}`;
-      const backupDataJson = await AsyncStorage.getItem(backupKey);
-      
-      if (!backupDataJson) {
-        console.log(`No backup found for journey: ${journeyId}`);
-        return null;
-      }
-
-      const backupData = JSON.parse(backupDataJson);
-      console.log(`Recovered journey backup: ${backupData.coordinates.length} coordinates`);
-      
-      return backupData;
-    } catch (error) {
-      console.error('Failed to recover journey backup:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Clear journey backup data
-   * @param {string} journeyId - Journey ID to clear backup for
-   */
-  async clearJourneyBackup(journeyId) {
-    try {
-      if (!journeyId) return;
-      
-      const backupKey = `${STORAGE_KEY_JOURNEY_BACKUP}${journeyId}`;
-      await AsyncStorage.removeItem(backupKey);
-      console.log(`Journey backup cleared for: ${journeyId}`);
-    } catch (error) {
-      console.error('Failed to clear journey backup:', error);
-    }
+    return await this.backupManager.recoverJourneyFromBackup(journeyId);
   }
 
   /**
@@ -1098,17 +927,7 @@ class BackgroundLocationService {
    * @returns {Promise<Array>} - Array of backup journey IDs
    */
   async getAvailableBackups() {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const backupKeys = keys.filter(key => key.startsWith(STORAGE_KEY_JOURNEY_BACKUP));
-      const journeyIds = backupKeys.map(key => key.replace(STORAGE_KEY_JOURNEY_BACKUP, ''));
-      
-      console.log(`Found ${journeyIds.length} journey backups`);
-      return journeyIds;
-    } catch (error) {
-      console.error('Failed to get available backups:', error);
-      return [];
-    }
+    return await this.backupManager.getAvailableBackups();
   }
 
   /**
@@ -1119,18 +938,7 @@ class BackgroundLocationService {
     this.permissionPromptCallback = callback;
   }
 
-  /**
-   * Get periodic save status
-   * @returns {Object} - Save status information
-   */
-  getPeriodicSaveStatus() {
-    return {
-      isActive: !!this.periodicSaveInterval,
-      lastSaveTime: this.lastSaveTime,
-      timeSinceLastSave: this.lastSaveTime ? Date.now() - this.lastSaveTime : null,
-      saveInterval: PERIODIC_SAVE_INTERVAL
-    };
-  }
+
 
   /**
    * Clean up service resources and stop all tracking
@@ -1141,9 +949,6 @@ class BackgroundLocationService {
       if (this.isTracking) {
         await this.stopTracking();
       }
-
-      // Stop periodic saving
-      this.stopPeriodicSave();
 
       // Remove event listeners (modern subscription pattern)
       if (this.appStateSubscription) {
@@ -1160,8 +965,12 @@ class BackgroundLocationService {
       // Stop background tracking
       await this.stopBackgroundTracking();
 
+      // Clean up modular components
+      this.backupManager.cleanup();
+      this.locationFilter.reset();
+      this.locationOptimizer.reset();
+
       // Clear state
-      this.locationHistory = [];
       this.locationUpdateCallback = null;
       this.permissionPromptCallback = null;
       this.isInitialized = false;
@@ -1170,7 +979,6 @@ class BackgroundLocationService {
       this.isWarmingUp = false;
       this.warmupStartTime = null;
       this.warmupReadings = 0;
-      this.lastSaveTime = null;
 
       console.log('BackgroundLocationService cleaned up');
     } catch (error) {

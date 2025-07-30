@@ -7,6 +7,7 @@ import BackgroundLocationService from '../services/BackgroundLocationService';
 // Utilities
 import {
     getCurrentLocation,
+    getCurrentLocationFast,
     animateToLocation,
     requestLocationPermissions,
     LOCATION_OPTIONS
@@ -259,7 +260,7 @@ const useLocationTracking = () => {
     }, []);
 
     /**
-     * Handle locate me button press
+     * Handle locate me button press - optimized for fast response
      * Implements locate functionality as per requirement 2.1
      */
     const locateMe = useCallback(async (mapRef) => {
@@ -272,8 +273,10 @@ const useLocationTracking = () => {
 
         try {
             setIsLocating(true);
+            console.log('Starting optimized locate me...');
 
-            const locationResult = await getCurrentLocation(LOCATION_OPTIONS.LOCATE_ME);
+            // Use the optimized fast location function
+            const locationResult = await getCurrentLocationFast();
 
             if (locationResult.success) {
                 const newPosition = {
@@ -301,8 +304,11 @@ const useLocationTracking = () => {
 
                 setGpsStatus({
                     indicator: 'GOOD',
-                    message: 'Location found successfully'
+                    message: 'Location found successfully',
+                    accuracy: locationResult.location.accuracy
                 });
+
+                console.log('Locate me completed successfully');
             } else {
                 throw new Error(locationResult.error || 'Failed to get current location');
             }

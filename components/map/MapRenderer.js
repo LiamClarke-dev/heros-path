@@ -2,38 +2,54 @@ import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import MapView from 'react-native-maps';
 
+// Map components
+import MapPolylines from './MapPolylines';
+
 /**
  * MapRenderer Component
  * 
- * Handles map display and platform-specific rendering logic.
+ * Handles map display, route visualization, and platform-specific rendering logic.
  * Extracted from the main MapScreen to isolate map rendering concerns.
  * 
  * Responsibilities:
  * - Platform-specific MapView rendering
+ * - Route visualization with polylines
  * - Map configuration and error handling
  * - Region calculation with safe fallbacks
  * - Map ready callback integration
  * 
  * Props:
  * - mapState: Core map state from useMapState hook
+ * - locationTracking: Location tracking state and data
+ * - journeyTracking: Journey tracking state and path data
+ * - savedRoutes: Saved routes data and visibility state
+ * - mapStyle: Map styling configuration
  * - onMapReady: Callback when map is ready for interaction
  * - style: Optional style overrides
  * 
  * Performance:
  * - Memoized with React.memo to prevent unnecessary re-renders
  * - Safe fallback coordinates if position data unavailable
- * - Optimized region calculations
+ * - Optimized region calculations and polyline rendering
  * 
  * Requirements Addressed:
+ * - 1.2: Real-time route visualization with glowing polylines
+ * - 3.4: Saved routes display with distinct visual styling
+ * - 3.5: Route visualization that doesn't interfere with current journey
  * - 5.1: Map rendering isolation
  * - 5.2: Platform-specific map view handling
  * - 5.3: Map configuration and error handling
  * 
  * @see hooks/useMapState.js for state management
+ * @see components/map/MapPolylines.js for route visualization
  * @see docs/MapScreen-Developer-Guide.md for usage examples
  */
 const MapRenderer = ({
   mapState,
+  locationTracking,
+  journeyTracking,
+  savedRoutes,
+  mapStyle,
   onMapReady,
   style,
 }) => {
@@ -114,7 +130,19 @@ const MapRenderer = ({
         onError={(error) => {
           console.error('MapView error:', error);
         }}
-      />
+        // Apply map style configuration
+        mapType={mapStyle?.mapConfig?.mapType || 'standard'}
+        customMapStyle={mapStyle?.mapConfig?.customMapStyle}
+      >
+        {/* Route visualization with polylines */}
+        <MapPolylines
+          currentPath={journeyTracking?.pathToRender || []}
+          savedRoutes={savedRoutes?.visibleRoutes || []}
+          styleConfig={mapStyle?.styleConfig || {}}
+          showSavedRoutes={savedRoutes?.visible || false}
+          isTracking={journeyTracking?.state?.isTracking || false}
+        />
+      </MapView>
     </View>
   );
 };

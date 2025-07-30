@@ -64,6 +64,7 @@ const MapControls = ({
   savedPlacesState,
   mapStyleState,
   permissions,
+  isLocating,
   
   // Control callbacks
   onLocateMe,
@@ -90,10 +91,15 @@ const MapControls = ({
       {/* Top Right Controls */}
       <View style={styles.topRightControls}>
         <TouchableOpacity
-          style={styles.locateButton}
+          style={[styles.locateButton, isLocating && styles.locateButtonActive]}
           onPress={onLocateMe}
+          disabled={isLocating}
         >
-          <Ionicons name="locate" size={24} color="#007AFF" />
+          <Ionicons 
+            name={isLocating ? "hourglass" : "locate"} 
+            size={24} 
+            color={isLocating ? "#FF9500" : "#007AFF"} 
+          />
         </TouchableOpacity>
         <MapStyleButton
           onPress={onToggleMapStyle}
@@ -162,6 +168,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  locateButtonActive: {
+    backgroundColor: '#FFF3E0', // Light orange background when locating
+  },
   topRightToggles: {
     position: 'absolute',
     top: 120, // Below top controls
@@ -170,6 +179,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'flex-end',
   },
+
   bottomControls: {
     position: 'absolute',
     bottom: 100, // Above tab bar

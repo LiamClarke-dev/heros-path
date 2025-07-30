@@ -21,11 +21,17 @@ export const LOCATION_ACCURACY = {
  * Default location options for different use cases
  */
 export const LOCATION_OPTIONS = {
-  // For locate me functionality - high accuracy, reasonable timeout
+  // For locate me functionality - fast response with reasonable accuracy
   LOCATE_ME: {
-    accuracy: LOCATION_ACCURACY.HIGH,
-    timeout: 10000,
-    maximumAge: 5000,
+    accuracy: LOCATION_ACCURACY.BALANCED, // Changed from HIGH to BALANCED for faster response
+    timeout: 3000, // Reduced from 10000 to 3000 for quicker response
+    maximumAge: 10000, // Increased to accept slightly older cached location
+  },
+  // For locate me fallback - even faster with lower accuracy
+  LOCATE_ME_FAST: {
+    accuracy: LOCATION_ACCURACY.LOW,
+    timeout: 1500, // Very fast timeout
+    maximumAge: 30000, // Accept older cached location
   },
   // For tracking - balanced accuracy, longer timeout
   TRACKING: {
@@ -57,13 +63,13 @@ export async function requestLocationPermissions(background = false) {
   try {
     // Check current permissions first to avoid duplicate requests
     const foregroundStatus = await Location.getForegroundPermissionsAsync();
-    
+
     // Only request if not already granted
     let foregroundResult = foregroundStatus;
     if (foregroundStatus.status !== 'granted') {
       foregroundResult = await Location.requestForegroundPermissionsAsync();
     }
-    
+
     if (foregroundResult.status !== 'granted') {
       return {
         granted: false,
@@ -76,13 +82,13 @@ export async function requestLocationPermissions(background = false) {
     // If background permission is requested
     if (background) {
       const backgroundStatus = await Location.getBackgroundPermissionsAsync();
-      
+
       // Only request if not already granted
       let backgroundResult = backgroundStatus;
       if (backgroundStatus.status !== 'granted') {
         backgroundResult = await Location.requestBackgroundPermissionsAsync();
       }
-      
+
       if (backgroundResult.status !== 'granted') {
         return {
           granted: false,
@@ -117,7 +123,7 @@ export async function getCurrentLocation(options = LOCATION_OPTIONS.LOCATE_ME) {
   try {
     // Check permissions first
     const { status } = await Location.getForegroundPermissionsAsync();
-    
+
     if (status !== 'granted') {
       return {
         success: false,
@@ -142,10 +148,10 @@ export async function getCurrentLocation(options = LOCATION_OPTIONS.LOCATE_ME) {
     };
   } catch (error) {
     console.error('Error getting current location:', error);
-    
+
     // Provide user-friendly error messages
     let errorMessage = 'Unable to get your location. ';
-    
+
     if (error.code === 'E_LOCATION_TIMEOUT') {
       errorMessage += 'Location request timed out. Please try again.';
     } else if (error.code === 'E_LOCATION_UNAVAILABLE') {
@@ -155,7 +161,94 @@ export async function getCurrentLocation(options = LOCATION_OPTIONS.LOCATE_ME) {
     } else {
       errorMessage += 'Please check your location settings and try again.';
     }
-    
+
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+/**
+ * Gets current location with fast response optimization
+ * Tries fast location first, then falls back to more accurate location
+ * 
+ * @returns {Promise<{success: boolean, location?: object, error?: string}>}
+ */
+export async function getCurrentLocationFast() {
+  try {
+    // Check permissions first
+    const { status } = await Location.getForegroundPermissionsAsync();
+
+    if (status !== 'granted') {
+      return {
+        success: false,
+        error: 'Location permission not granted. Please enable location access in settings.',
+      };
+    }
+
+    // Try fast location first
+    try {
+      console.log('Attempting fast location lookup...');
+      const fastLocation = await Location.getCurrentPositionAsync(LOCATION_OPTIONS.LOCATE_ME_FAST);
+      
+      console.log('Fast location found:', {
+        accuracy: fastLocation.coords.accuracy,
+        age: Date.now() - fastLocation.timestamp
+      });
+
+      return {
+        success: true,
+        location: {
+          latitude: fastLocation.coords.latitude,
+          longitude: fastLocation.coords.longitude,
+          accuracy: fastLocation.coords.accuracy,
+          altitude: fastLocation.coords.altitude,
+          heading: fastLocation.coords.heading,
+          speed: fastLocation.coords.speed,
+          timestamp: fastLocation.timestamp,
+        },
+      };
+    } catch (fastError) {
+      console.log('Fast location failed, trying standard location...', fastError.message);
+      
+      // Fallback to standard location options
+      const location = await Location.getCurrentPositionAsync(LOCATION_OPTIONS.LOCATE_ME);
+      
+      console.log('Standard location found:', {
+        accuracy: location.coords.accuracy,
+        age: Date.now() - location.timestamp
+      });
+
+      return {
+        success: true,
+        location: {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          accuracy: location.coords.accuracy,
+          altitude: location.coords.altitude,
+          heading: location.coords.heading,
+          speed: location.coords.speed,
+          timestamp: location.timestamp,
+        },
+      };
+    }
+  } catch (error) {
+    console.error('Error getting current location (fast):', error);
+
+    // Provide user-friendly error messages
+    let errorMessage = 'Unable to get your location. ';
+
+    if (error.code === 'E_LOCATION_TIMEOUT') {
+      errorMessage += 'Location request timed out. Please try again.';
+    } else if (error.code === 'E_LOCATION_UNAVAILABLE') {
+      errorMessage += 'Location services are not available.';
+    } else if (error.code === 'E_LOCATION_SETTINGS_UNSATISFIED') {
+      errorMessage += 'Please enable location services in your device settings.';
+    } else {
+      errorMessage += 'Please check your location settings and try again.';
+    }
+
     return {
       success: false,
       error: errorMessage,
@@ -175,7 +268,7 @@ export async function getCurrentLocation(options = LOCATION_OPTIONS.LOCATE_ME) {
 export async function animateToLocation(mapRef, location, duration = 1000) {
   // Handle both mapRef.current and direct mapRef cases
   const actualMapRef = mapRef?.current || mapRef;
-  
+
   if (!actualMapRef) {
     console.warn('Map reference not available for animation');
     return;

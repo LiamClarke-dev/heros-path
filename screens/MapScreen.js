@@ -216,6 +216,7 @@ const MapScreen = () => {
           selectorVisible: mapStyle.selector.visible
         }), [mapStyle.currentStyleName, mapStyle.selector.visible])}
         permissions={permissions}
+        isLocating={locationTracking.isLocating}
         onLocateMe={handleLocateMe}
         onToggleTracking={useCallback(() => journeyTracking.toggleTracking(locationTracking), [journeyTracking.toggleTracking, locationTracking])}
         onToggleSavedRoutes={savedRoutes.toggleVisibility}

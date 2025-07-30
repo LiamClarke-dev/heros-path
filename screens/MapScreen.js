@@ -77,6 +77,7 @@ const MapScreen = () => {
   // Refs
   const mapRef = useRef(null);
   const lastProcessedPosition = useRef(null);
+  const hasInitiallyLocated = useRef(false);
 
   // All hooks integrated - permissions + location tracking + map state + journey tracking + saved routes + saved places + map style
   const permissions = useMapPermissions();
@@ -108,10 +109,11 @@ const MapScreen = () => {
   }, []);
 
   /**
-   * Coordinate location data between hooks with throttling
+   * Coordinate location data between hooks with throttling and automatic centering
    * 
    * This effect synchronizes location data from useLocationTracking with other hooks:
    * - Updates map state with current position (throttled to 5m intervals)
+   * - Automatically centers map on first location detection
    * - Adds positions to journey path when tracking is active
    * - Prevents excessive re-renders from frequent GPS updates
    * 
@@ -119,6 +121,11 @@ const MapScreen = () => {
    * - Only processes position updates if moved more than 5 meters
    * - Reduces CPU usage and prevents UI jank from frequent updates
    * - Maintains accuracy while optimizing performance
+   * 
+   * Auto-centering Logic:
+   * - Centers map immediately when first GPS location is detected
+   * - Prevents the frustrating default San Francisco location issue
+   * - Only centers once to avoid disrupting user map interactions
    */
   useEffect(() => {
     if (locationTracking.currentPosition) {
@@ -128,8 +135,20 @@ const MapScreen = () => {
       // Only update if position changed significantly (more than 5 meters) or it's the first position
       const distance = calculateDistance(lastPos, currentPos);
       if (!lastPos || distance > 5) {
-        // Update map state with new position (no camera animation here)
+        // Update map state with new position
         mapState.updateCurrentPosition(currentPos);
+
+        // Automatically center map on first location detection
+        if (!hasInitiallyLocated.current && mapRef.current) {
+          console.log('First GPS location detected - centering map automatically');
+          hasInitiallyLocated.current = true;
+          
+          // Use the animateToLocation utility for smooth centering
+          const { animateToLocation } = require('../utils/locationUtils');
+          animateToLocation(mapRef, currentPos, 1500).catch(error => {
+            console.warn('Failed to animate to initial location:', error);
+          });
+        }
 
         // Add position to journey path if actively tracking
         if (journeyTracking.state.isTracking) {
@@ -142,15 +161,7 @@ const MapScreen = () => {
     }
   }, [locationTracking.currentPosition, calculateDistance, mapState, journeyTracking]);
 
-  // Manual permission request function
-  const handleRequestPermissions = async () => {
-    try {
-      console.log('Manually requesting location permissions...');
-      await permissions.requestPermissions();
-    } catch (error) {
-      console.error('Error requesting permissions:', error);
-    }
-  };
+  // Permission handling is now centralized through useMapPermissions hook
 
   const handleMapReady = useCallback((mapInterface) => {
     mapRef.current = mapInterface.ref;
@@ -186,8 +197,10 @@ const MapScreen = () => {
         trackingState={useMemo(() => ({
           isTracking: journeyTracking.state.isTracking,
           isAuthenticated: journeyTracking.state.isAuthenticated,
-          journeyStartTime: journeyTracking.currentJourney?.startTime
-        }), [journeyTracking.state.isTracking, journeyTracking.state.isAuthenticated, journeyTracking.currentJourney?.startTime])}
+          journeyStartTime: journeyTracking.currentJourney?.startTime,
+          trackingStatus: journeyTracking.state.trackingStatus,
+          metrics: journeyTracking.metrics
+        }), [journeyTracking.state.isTracking, journeyTracking.state.isAuthenticated, journeyTracking.currentJourney?.startTime, journeyTracking.state.trackingStatus, journeyTracking.metrics])}
         savedRoutesState={useMemo(() => ({
           isVisible: savedRoutes.visible,
           isLoading: savedRoutes.loading,
@@ -244,38 +257,7 @@ const MapScreen = () => {
         isAuthenticated={isAuthenticated}
       />
 
-      {/* Permission prompt overlay */}
-      {!permissions.granted && (
-        <View style={styles.permissionOverlay}>
-          <View style={styles.permissionPrompt}>
-            <Text style={styles.permissionTitle}>Location Access Required</Text>
-            <Text style={styles.permissionText}>
-              Location access is needed to show your position on the map and track your journeys.
-            </Text>
-            <Text style={styles.permissionSubtext}>
-              Status: {permissions.statusMessage}
-            </Text>
-            <Text style={styles.permissionSubtext}>
-              User: {isAuthenticated ? 'Authenticated' : 'Not authenticated'}
-            </Text>
-            {permissions.canAskAgain && (
-              <>
-                <Text style={styles.permissionSubtext}>
-                  Tap the button below to request location access.
-                </Text>
-                <TouchableOpacity
-                  style={styles.permissionButton}
-                  onPress={handleRequestPermissions}
-                >
-                  <Text style={styles.permissionButtonText}>
-                    Request Location Access
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      )}
+      {/* Centralized permission handling through useMapPermissions hook - no duplicate UI needed */}
     </View>
   );
 };
@@ -285,62 +267,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  permissionOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 2000,
-  },
-  permissionPrompt: {
-    backgroundColor: '#fff',
-    margin: 20,
-    padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  permissionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  permissionText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 12,
-  },
-  permissionSubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  permissionButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  permissionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
+  // Permission UI styles removed - handled by centralized permission system
 
 });
 

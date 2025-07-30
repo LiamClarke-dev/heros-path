@@ -277,6 +277,21 @@ class BackgroundLocationService {
   }
 
   /**
+   * Check if location reading is accurate enough
+   * @param {Object} location - Location reading to check
+   * @returns {boolean} - True if location is accurate enough
+   */
+  isLocationAccurate(location) {
+    if (!location || !location.coords) {
+      return false;
+    }
+
+    // Consider location accurate if accuracy is better than 20 meters
+    const accuracy = location.coords.accuracy;
+    return accuracy && accuracy <= 20;
+  }
+
+  /**
    * Check if GPS warm-up is complete
    * @returns {boolean} - True if warm-up conditions are met
    */

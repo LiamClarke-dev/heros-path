@@ -40,13 +40,29 @@ const MapRenderer = ({
   const mapRef = useRef(null);
   const lastAnimatedPosition = useRef(null);
 
-  // Memoize region calculation with safe fallbacks
-  const region = useMemo(() => ({
-    latitude: mapState?.currentPosition?.latitude || 37.7749,
-    longitude: mapState?.currentPosition?.longitude || -122.4194,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  }), [mapState?.currentPosition?.latitude, mapState?.currentPosition?.longitude]);
+  // Memoize initial region - only set once when component mounts
+  // This prevents the map from jumping to San Francisco on every render
+  const initialRegion = useMemo(() => {
+    // If we have a current position, use it for initial region
+    if (mapState?.currentPosition?.latitude && mapState?.currentPosition?.longitude) {
+      return {
+        latitude: mapState.currentPosition.latitude,
+        longitude: mapState.currentPosition.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+    }
+    
+    // Otherwise use a reasonable default that will be quickly replaced
+    // when location is detected and auto-centering kicks in
+    // Using a moderate zoom level instead of showing the entire globe
+    return {
+      latitude: 35.6762, // Tokyo center as neutral location
+      longitude: 139.6503,
+      latitudeDelta: 0.05, // Reasonable city-level zoom
+      longitudeDelta: 0.05,
+    };
+  }, []); // Empty dependency array - only calculate once on mount
 
   // Calculate distance between two coordinates
   const calculateDistance = useCallback((pos1, pos2) => {
@@ -91,7 +107,7 @@ const MapRenderer = ({
       <MapView
         ref={mapRef}
         style={[styles.map, style]}
-        initialRegion={region}
+        initialRegion={initialRegion}
         showsUserLocation={true}
         showsMyLocationButton={false}
         onMapReady={handleMapReady}

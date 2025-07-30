@@ -19,11 +19,13 @@ const TrackingButton = ({
   isTracking = false,
   isAuthenticated = false,
   journeyStartTime = null,
+  trackingStatus = 'idle', // 'idle', 'starting', 'active', 'stopping', 'error'
+  metrics = null, // tracking metrics object
 }) => {
   const { theme } = useTheme();
 
   /**
-   * Handle button press with authentication check
+   * Handle button press with authentication check and status validation
    */
   const handlePress = () => {
     if (!isAuthenticated) {
@@ -35,41 +37,84 @@ const TrackingButton = ({
       return;
     }
 
+    // Prevent interaction during transitional states
+    if (trackingStatus === 'starting' || trackingStatus === 'stopping') {
+      console.log('Button press ignored - tracking in transitional state:', trackingStatus);
+      return;
+    }
+
     onPress();
   };
 
   /**
-   * Get button text based on tracking state
+   * Get button text based on tracking state and status
    */
   const getButtonText = () => {
-    if (isTracking) {
-      return 'Stop';
+    switch (trackingStatus) {
+      case 'starting':
+        return 'Starting...';
+      case 'stopping':
+        return 'Stopping...';
+      case 'active':
+        return 'Stop';
+      case 'error':
+        return 'Error';
+      case 'idle':
+      default:
+        return isTracking ? 'Stop' : 'Start';
     }
-    return 'Start';
   };
 
   /**
-   * Get button icon based on tracking state
+   * Get button icon based on tracking state and status
    */
   const getButtonIcon = () => {
-    if (isTracking) {
-      return 'stop';
+    switch (trackingStatus) {
+      case 'starting':
+        return 'hourglass-outline';
+      case 'stopping':
+        return 'hourglass-outline';
+      case 'error':
+        return 'warning-outline';
+      case 'active':
+        return 'stop';
+      case 'idle':
+      default:
+        return isTracking ? 'stop' : 'play';
     }
-    return 'play';
   };
 
   /**
-   * Get button styles based on tracking state and theme
+   * Get button styles based on tracking state, status, and theme
    */
   const getButtonStyles = () => {
     const baseStyle = [styles.trackingButton];
     
-    if (isTracking) {
-      baseStyle.push(styles.trackingButtonActive);
-      baseStyle.push({ backgroundColor: theme.colors.error });
-    } else {
-      baseStyle.push(styles.trackingButtonInactive);
-      baseStyle.push({ backgroundColor: theme.colors.primary });
+    // Handle different tracking statuses
+    switch (trackingStatus) {
+      case 'starting':
+      case 'stopping':
+        baseStyle.push(styles.trackingButtonTransitional);
+        baseStyle.push({ backgroundColor: theme.colors.warning || '#FF9800' });
+        break;
+      case 'error':
+        baseStyle.push(styles.trackingButtonError);
+        baseStyle.push({ backgroundColor: theme.colors.error });
+        break;
+      case 'active':
+        baseStyle.push(styles.trackingButtonActive);
+        baseStyle.push({ backgroundColor: theme.colors.error });
+        break;
+      case 'idle':
+      default:
+        if (isTracking) {
+          baseStyle.push(styles.trackingButtonActive);
+          baseStyle.push({ backgroundColor: theme.colors.error });
+        } else {
+          baseStyle.push(styles.trackingButtonInactive);
+          baseStyle.push({ backgroundColor: theme.colors.primary });
+        }
+        break;
     }
 
     if (!isAuthenticated) {
@@ -109,7 +154,7 @@ const TrackingButton = ({
       style={getButtonStyles()}
       onPress={handlePress}
       activeOpacity={0.7}
-      disabled={!isAuthenticated}
+      disabled={!isAuthenticated || trackingStatus === 'starting' || trackingStatus === 'stopping'}
     >
       <Ionicons
         name={getButtonIcon()}
@@ -147,6 +192,12 @@ const styles = StyleSheet.create({
   },
   trackingButtonInactive: {
     // Inactive state styles applied via theme colors
+  },
+  trackingButtonTransitional: {
+    // Transitional state styles (starting/stopping)
+  },
+  trackingButtonError: {
+    // Error state styles
   },
   trackingButtonDisabled: {
     opacity: 0.6,

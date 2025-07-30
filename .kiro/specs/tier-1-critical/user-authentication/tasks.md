@@ -14,12 +14,6 @@
     - _Requirements: 1.3, 1.4, 1.5, 5.3_
 
   - [x] 2.2 Implement Google authentication integration
-
-
-
-
-
-
     - Set up Google OAuth configuration with proper client IDs
     - Create Google sign-in function with Firebase integration
     - Handle platform-specific requirements (iOS, Android)
@@ -69,11 +63,11 @@
 
 
   - [-] 5.2 Implement EmailAuthScreen component
-
     - Create form for email/password input
     - Add sign-up and sign-in functionality
     - Implement form validation
     - Add error handling and user feedback
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.3, 1.4, 1.5, 1.8, 5.3_
 
 - [ ] 6. Integrate authentication with navigation
@@ -81,11 +75,13 @@
     - Create conditional navigation based on authentication state
     - Implement protected routes for authenticated users
     - Add public routes for unauthenticated users
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 4.1, 4.2, 4.3_
 
   - [ ] 6.2 Add loading states during authentication checks
     - Implement loading indicators during authentication
     - Handle transition between authentication states
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 4.3, 5.1_
 
 - [ ] 7. Implement comprehensive error handling
@@ -93,12 +89,14 @@
     - Detect and handle offline status
     - Provide appropriate error messages
     - Implement retry mechanisms
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 5.1, 5.2, 5.5_
 
   - [ ] 7.2 Implement authentication failure handling
     - Create specific error messages for different failure types
     - Add user-friendly error display
     - Suggest recovery actions for common issues
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.7, 5.3, 5.4_
 
 - [ ] 8. Write unit tests for authentication functionality
@@ -106,12 +104,14 @@
     - Test email/password authentication
     - Test Google authentication
     - Test error handling
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.2, 1.4, 1.5, 5.3_
 
   - [ ] 8.2 Create tests for UserContext
     - Test authentication state management
     - Test profile creation and updates
     - Test error handling
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.1, 3.3, 3.4, 4.3, 4.5_
 
 - [ ] 9. Write integration tests for authentication flows
@@ -119,12 +119,14 @@
     - Test Google authentication flow
     - Test email/password authentication flow
     - Test session persistence
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.2, 1.5, 2.2, 4.1_
 
   - [ ] 9.2 Test error scenarios
     - Test network failure handling
     - Test invalid credential handling
     - Test service unavailability
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
 - [ ] 10. Implement social features foundation
@@ -132,18 +134,21 @@
     - Implement social profile interface with social links
     - Add followers/following arrays
     - Include public profile settings
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 7.1, 7.2, 7.5_
 
   - [ ] 10.2 Implement social profile management functions
     - Add updateSocialProfile function to UserContext
     - Implement social profile validation
     - Add privacy controls for social data
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 7.2, 7.4, 7.5_
 
   - [ ] 10.3 Add third-party auth provider support framework
     - Create AuthProvider interface
     - Implement provider management functions
     - Add account linking/unlinking capabilities
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 7.3, 7.5_
 
 - [ ] 11. Integrate developer tools support
@@ -151,18 +156,21 @@
     - Implement enableDevMode/disableDevMode functions
     - Add dev mode state management
     - Include dev mode indicators in UI
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.1, 8.4, 8.5_
 
   - [ ] 11.2 Implement mock profile data injection
     - Create mock user profile generation
     - Add mock data validation
     - Implement realistic mock scenarios
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.2, 8.4_
 
   - [ ] 11.3 Add auth scenario simulation capabilities
     - Implement network issue simulation
     - Add auth failure simulation
     - Create testing scenario management
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.3, 8.4_
 
 - [ ] 12. Implement data migration framework
@@ -170,18 +178,21 @@
     - Implement schemaVersion field
     - Add migration history tracking
     - Include lastMigrationAt timestamp
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.1, 9.2, 9.5_
 
   - [ ] 12.2 Implement profile migration functions
     - Create migrateProfile function
     - Add migration path management
     - Implement rollback capabilities
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.1, 9.2, 9.3_
 
   - [ ] 12.3 Add migration error handling and recovery
     - Implement migration failure detection
     - Add error recovery mechanisms
     - Create user-friendly error messages
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.3, 9.4_
 
 - [ ] 13. Add performance optimizations
@@ -189,18 +200,21 @@
     - Add profile data caching
     - Implement cache invalidation
     - Add cache key management
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.1, 10.3_
 
   - [ ] 13.2 Add optimistic profile updates
     - Implement updateProfileOptimistically function
     - Add background sync capabilities
     - Include conflict resolution
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.2, 10.5_
 
   - [ ] 13.3 Optimize authentication network requests
     - Minimize profile loading requests
     - Implement efficient token refresh
     - Add request batching where appropriate
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.3, 10.4_
 
 - [ ] 14. Write tests for new features
@@ -208,22 +222,26 @@
     - Test social profile management
     - Test third-party auth integration
     - Test privacy controls
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
   - [ ] 14.2 Test developer tools integration
     - Test authentication bypass
     - Test mock data injection
     - Test scenario simulation
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
   - [ ] 14.3 Test migration functionality
     - Test profile migration scenarios
     - Test migration error handling
     - Test rollback capabilities
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
 
   - [ ] 14.4 Test performance optimizations
     - Test caching strategies
     - Test optimistic updates
     - Test network request optimization
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_

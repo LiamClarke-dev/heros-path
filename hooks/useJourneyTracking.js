@@ -29,6 +29,15 @@ const useJourneyTracking = () => {
   const [currentJourneyId, setCurrentJourneyId] = useState(null);
   const [journeyStartTime, setJourneyStartTime] = useState(null);
   const [pathToRender, setPathToRender] = useState([]);
+  
+  // Enhanced tracking state indicators
+  const [trackingStatus, setTrackingStatus] = useState('idle'); // 'idle', 'starting', 'active', 'stopping', 'error'
+  const [lastError, setLastError] = useState(null);
+  const [trackingMetrics, setTrackingMetrics] = useState({
+    pointsRecorded: 0,
+    lastUpdate: null,
+    gpsAccuracy: null
+  });
 
   // Journey saving state
   const [namingModal, setNamingModal] = useState({ 
@@ -40,33 +49,39 @@ const useJourneyTracking = () => {
   /**
    * Toggle journey tracking on/off
    * Implements journey start/stop functionality as per requirement 2.1
+   * Enhanced with better state management and error handling
    */
   const toggleTracking = useCallback(async (locationTrackingHook) => {
     try {
+      // Authentication check
       if (!isAuthenticated) {
         Alert.alert(
           'Authentication Required',
           'Please sign in to track your journeys.',
           [{ text: 'OK' }]
         );
-        return;
+        return { success: false, reason: 'not_authenticated' };
       }
 
+      // Service availability check
       if (!locationTrackingHook) {
         Alert.alert(
           'Service Error',
           'Location service is not available. Please restart the app.',
           [{ text: 'OK' }]
         );
-        return;
+        return { success: false, reason: 'service_unavailable' };
       }
 
+      // Prevent double-tap issues
       if (isTracking) {
         // Stop tracking
-        await stopTracking(locationTrackingHook);
+        const result = await stopTracking(locationTrackingHook);
+        return { success: true, action: 'stopped', result };
       } else {
         // Start tracking
-        await startTracking(locationTrackingHook);
+        const result = await startTracking(locationTrackingHook);
+        return { success: result, action: 'started' };
       }
     } catch (error) {
       console.error('Error toggling tracking:', error);
@@ -75,15 +90,21 @@ const useJourneyTracking = () => {
         'Failed to toggle tracking. Please try again.',
         [{ text: 'OK' }]
       );
+      return { success: false, reason: 'error', error: error.message };
     }
   }, [isAuthenticated, isTracking]);
 
   /**
    * Start journey tracking
    * Implements journey start functionality as per requirement 2.1
+   * Enhanced with better state management and error handling
    */
   const startTracking = useCallback(async (locationTrackingHook) => {
     try {
+      // Set starting state
+      setTrackingStatus('starting');
+      setLastError(null);
+
       // Generate unique journey ID
       const journeyId = `journey_${user.uid}_${Date.now()}`;
 
@@ -99,6 +120,11 @@ const useJourneyTracking = () => {
       setCurrentJourneyId(journeyId);
       setJourneyStartTime(Date.now());
       setPathToRender([]);
+      setTrackingMetrics({
+        pointsRecorded: 0,
+        lastUpdate: Date.now(),
+        gpsAccuracy: null
+      });
 
       // Start location tracking with warm-up
       const success = await locationTrackingHook.startTracking(journeyId, {
@@ -108,39 +134,42 @@ const useJourneyTracking = () => {
       });
 
       if (success) {
+        setTrackingStatus('active');
         console.log('Journey tracking started:', journeyId);
+        return true;
       } else {
         // Reset state if tracking failed
-        setIsTracking(false);
-        setCurrentJourneyId(null);
-        setJourneyStartTime(null);
-        setPathToRender([]);
+        resetTrackingState();
         throw new Error('Failed to start location tracking');
       }
     } catch (error) {
       console.error('Error starting tracking:', error);
       
       // Reset state on error
-      setIsTracking(false);
-      setCurrentJourneyId(null);
-      setJourneyStartTime(null);
-      setPathToRender([]);
+      resetTrackingState();
+      setTrackingStatus('error');
+      setLastError(error.message);
       
       Alert.alert(
         'Start Tracking Error',
         'Failed to start journey tracking. Please check your location permissions.',
         [{ text: 'OK' }]
       );
-      throw error;
+      return false;
     }
   }, [user, isTracking, currentJourneyId]);
 
   /**
    * Stop journey tracking
    * Implements journey stop functionality and path management as per requirement 2.1
+   * Enhanced with better state management and error handling
    */
   const stopTracking = useCallback(async (locationTrackingHook) => {
     try {
+      // Set stopping state
+      setTrackingStatus('stopping');
+      setLastError(null);
+
       // Stop location tracking and get journey data
       const journeyData = await locationTrackingHook.stopTracking();
 
@@ -148,8 +177,16 @@ const useJourneyTracking = () => {
         // Calculate journey distance
         const distance = calculateJourneyDistance(journeyData.coordinates);
 
+        // Update final metrics
+        setTrackingMetrics(prev => ({
+          ...prev,
+          pointsRecorded: journeyData.coordinates.length,
+          lastUpdate: Date.now()
+        }));
+
         // Check minimum distance requirement
         if (distance < VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE) {
+          setTrackingStatus('idle');
           Alert.alert(
             'Journey Too Short',
             `Your journey is only ${Math.round(distance)} meters. Journeys should be at least ${VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE} meters to be saved.`,
@@ -160,23 +197,31 @@ const useJourneyTracking = () => {
           );
         } else {
           // Journey is long enough, prompt to save
+          setTrackingStatus('idle');
           promptSaveJourney(journeyData, distance);
         }
+        return journeyData;
       } else {
         // No valid journey data
+        setTrackingStatus('error');
+        setLastError('No location data recorded');
         Alert.alert(
           'No Journey Data',
           'No location data was recorded during this journey.',
           [{ text: 'OK', onPress: () => discardJourney() }]
         );
+        return null;
       }
     } catch (error) {
       console.error('Error stopping tracking:', error);
+      setTrackingStatus('error');
+      setLastError(error.message);
       Alert.alert(
         'Stop Tracking Error',
         'Failed to stop journey tracking properly.',
         [{ text: 'OK', onPress: () => discardJourney() }]
       );
+      return null;
     }
   }, [currentJourneyId, journeyStartTime, user]);
 
@@ -330,24 +375,47 @@ const useJourneyTracking = () => {
   }, []);
 
   /**
-   * Discard current journey and reset state
-   * Implements journey state cleanup as per requirement 2.2
+   * Reset tracking state to initial values
+   * Helper function for consistent state cleanup
    */
-  const discardJourney = useCallback(() => {
+  const resetTrackingState = useCallback(() => {
     setIsTracking(false);
     setCurrentJourneyId(null);
     setJourneyStartTime(null);
     setPathToRender([]);
-    setNamingModal({ visible: false, journey: null });
+    setTrackingStatus('idle');
+    setLastError(null);
+    setTrackingMetrics({
+      pointsRecorded: 0,
+      lastUpdate: null,
+      gpsAccuracy: null
+    });
   }, []);
+
+  /**
+   * Discard current journey and reset state
+   * Implements journey state cleanup as per requirement 2.2
+   */
+  const discardJourney = useCallback(() => {
+    resetTrackingState();
+    setNamingModal({ visible: false, journey: null });
+  }, [resetTrackingState]);
 
   /**
    * Add position to current journey path
    * Implements path management as per requirement 2.1
+   * Enhanced with metrics tracking
    */
   const addToPath = useCallback((position) => {
     if (isTracking && currentJourneyId) {
       setPathToRender(prevPath => [...prevPath, position]);
+      
+      // Update tracking metrics
+      setTrackingMetrics(prev => ({
+        pointsRecorded: prev.pointsRecorded + 1,
+        lastUpdate: Date.now(),
+        gpsAccuracy: position.accuracy || prev.gpsAccuracy
+      }));
     }
   }, [isTracking, currentJourneyId]);
 
@@ -379,6 +447,8 @@ const useJourneyTracking = () => {
       isTracking,
       currentJourneyId,
       isAuthenticated,
+      trackingStatus,
+      lastError,
     },
     
     // Current journey info
@@ -386,6 +456,9 @@ const useJourneyTracking = () => {
     
     // Path data
     pathToRender,
+    
+    // Tracking metrics
+    metrics: trackingMetrics,
     
     // Modal state
     namingModal,
@@ -397,6 +470,7 @@ const useJourneyTracking = () => {
     cancelSave,
     discardJourney,
     addToPath,
+    resetTrackingState,
   };
 };
 

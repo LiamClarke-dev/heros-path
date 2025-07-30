@@ -60,12 +60,16 @@
     - Create cleanup for journey-related discoveries
     - _Requirements: 3.3, 3.6, 4.3, 4.4_
 
-- [ ] 4. Implement journey tracking UI in MapScreen
-  - [ ] 4.1 Create tracking controls and state management
+- [-] 4. Implement journey tracking UI in MapScreen
+
+
+  - [x] 4.1 Create tracking controls and state management
+
+
     - Implement toggleTracking() function for start/stop
     - Add tracking state indicators
-    - Cleanup duplicate location permission UI flows
-    - Cleanup duplicate background permission warnings
+    - Cleanup duplicate location permission UI flows across the codebase
+    - Cleanup duplicate background permission warnings across the codebase
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.1, 1.5, 1.6_
 

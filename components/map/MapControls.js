@@ -5,6 +5,7 @@ import TrackingButton from './TrackingButton';
 import SavedRoutesToggle from './SavedRoutesToggle';
 import SavedPlacesToggle from './SavedPlacesToggle';
 import MapStyleButton from './MapStyleButton';
+import TrackingStatusIndicator from './TrackingStatusIndicator';
 
 /**
  * MapControls Component
@@ -76,6 +77,16 @@ const MapControls = ({
 
   return (
     <>
+      {/* Tracking Status Indicator - only show if permissions granted */}
+      {permissions?.granted && (
+        <TrackingStatusIndicator
+          trackingStatus={trackingState?.trackingStatus}
+          metrics={trackingState?.metrics}
+          isVisible={trackingState?.isTracking || trackingState?.trackingStatus !== 'idle'}
+          compact={false}
+        />
+      )}
+
       {/* Top Right Controls */}
       <View style={styles.topRightControls}>
         <TouchableOpacity
@@ -119,6 +130,8 @@ const MapControls = ({
             isTracking={trackingState?.isTracking}
             isAuthenticated={trackingState?.isAuthenticated}
             journeyStartTime={trackingState?.journeyStartTime}
+            trackingStatus={trackingState?.trackingStatus}
+            metrics={trackingState?.metrics}
           />
         </View>
       )}

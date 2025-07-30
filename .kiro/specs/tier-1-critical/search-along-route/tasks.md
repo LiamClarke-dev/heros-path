@@ -5,6 +5,7 @@
   - Create utility functions for converting GPS coordinates to Google's encoded polyline format
   - Implement validation for coordinates to ensure they are within valid ranges
   - Write tests for encoding various route patterns and edge cases
+  - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
 - [ ] 2. Implement route analysis utilities
@@ -14,12 +15,14 @@
     - Implement distance calculation between coordinates
     - Add validation to check if route is long enough for SAR (>50m)
     - Write tests for various route lengths and patterns
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.6, 3.4_
 
   - [ ] 2.2 Implement center point calculation
     - Create function to find the geographic center of a route
     - Ensure it works with routes of varying complexity
     - Write tests for different route patterns
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.2, 3.4_
 
 - [ ] 3. Create Search Along Route service
@@ -30,6 +33,7 @@
     - Add support for user preferences and place types filtering
     - Implement error handling for API responses
     - Write tests for API integration
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.1, 1.3, 6.1, 6.2, 6.3_
 
   - [ ] 3.2 Add preference filtering to SAR
@@ -37,6 +41,7 @@
     - Filter place types based on user selections
     - Implement minimum rating filtering
     - Write tests for preference filtering
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.4, 6.1, 6.2, 6.3, 6.4, 6.5_
 
 - [ ] 4. Implement fallback center-point search
@@ -46,6 +51,7 @@
   - Add support for searching each enabled place type separately
   - Implement logging for fallback operations
   - Write tests for fallback mechanism
+  - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
 - [ ] 5. Develop results processing system
@@ -55,6 +61,7 @@
     - Implement function to deduplicate results by place_id
     - Ensure it handles large result sets efficiently
     - Write tests for deduplication logic
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.5, 5.2_
 
   - [ ] 5.2 Implement category-based processing
@@ -62,6 +69,7 @@
     - Ensure balanced representation of categories in results
     - Classify places according to their primary category
     - Write tests for category mapping and balancing
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 7.2, 7.3, 7.4, 7.5_
 
 - [ ] 6. Create discovery storage system
@@ -72,6 +80,7 @@
   - Implement filtering for previously saved or dismissed places
   - Handle potential duplicates between SAR and ping-based discoveries
   - Write tests for storage functionality
+  - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
 - [ ] 7. Integrate SAR with journey completion flow
@@ -80,6 +89,7 @@
   - Add performance optimizations for API calls
   - Implement efficient coordinate processing for large routes
   - Write integration tests for the complete flow
+  - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 1.1, 5.1, 5.2, 5.3, 5.4_
 
 - [ ] 8. Implement comprehensive error handling
@@ -88,6 +98,7 @@
   - Implement logging system for debugging
   - Create recovery mechanisms for various failure scenarios
   - Write tests for error handling and recovery
+  - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 2.1, 2.5, 5.5_
 
 - [ ] 9. Create discovery display components
@@ -96,6 +107,7 @@
   - Organize discoveries by categories
   - Add visual indicators for discovery source (SAR vs. center-point)
   - Write tests for UI components
+  - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 7.4_
 
 - [ ] 10. Optimize performance and resource usage
@@ -103,6 +115,7 @@
   - Optimize API calls to reduce data transfer
   - Add caching mechanisms for frequent operations
   - Conduct performance testing with large routes and result sets
+  - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
 - [ ] 11. Implement preference-based filtering enhancements
@@ -111,6 +124,7 @@
     - Add behavioral pattern analysis for preference learning
     - Create preference-based result ranking algorithms
     - Implement real-time preference application to discovery operations
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
   - [ ] 11.2 Add preference-based categorization
@@ -118,6 +132,7 @@
     - Create preference-aware result organization
     - Add dynamic preference weighting for discovery results
     - Implement preference-based result filtering and sorting
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.4, 8.5_
 
   - [ ] 11.3 Create preference learning system
@@ -125,6 +140,7 @@
     - Add preference adaptation based on discovery feedback
     - Create preference prediction for new discovery scenarios
     - Implement preference optimization for better discovery results
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.2, 8.3_
 
 - [ ] 12. Implement enhanced places integration
@@ -133,6 +149,7 @@
     - Add support for rich place metadata and recommendations
     - Create enhanced place data storage and retrieval
     - Implement enhanced place data processing pipelines
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.1, 9.3, 9.4_
 
   - [ ] 12.2 Add recommendation algorithm integration
@@ -140,6 +157,7 @@
     - Create recommendation-based result ranking and filtering
     - Add recommendation algorithm performance monitoring
     - Implement recommendation algorithm customization and optimization
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.2, 9.5_
 
   - [ ] 12.3 Create enhanced discovery metadata
@@ -147,6 +165,7 @@
     - Add rich place information support for discovery results
     - Create metadata-based discovery analysis and insights
     - Implement metadata-driven discovery optimization
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.3, 9.4_
 
 - [ ] 13. Develop comprehensive developer tools
@@ -155,6 +174,7 @@
     - Add predefined discovery scenarios for testing
     - Create custom discovery scenario generation
     - Implement simulation controls for various conditions
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.1, 10.2, 10.5_
 
   - [ ] 13.2 Implement debugging and analytics tools
@@ -162,6 +182,7 @@
     - Create discovery performance monitoring and profiling
     - Implement discovery data validation and error detection
     - Add discovery workflow visualization and debugging
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.3, 10.4_
 
   - [ ] 13.3 Create testing and development utilities
@@ -169,6 +190,7 @@
     - Add discovery data export/import tools for development
     - Create automated testing scenarios for discovery features
     - Implement development mode features for discovery testing
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.2, 10.4_
 
 - [ ] 14. Implement performance optimization and scalability
@@ -177,6 +199,7 @@
     - Add intelligent caching strategies to minimize API calls
     - Create optimized storage strategies for discovery data
     - Implement batch operations for discovery processing
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
   - [ ] 14.2 Add performance monitoring and optimization
@@ -184,6 +207,7 @@
     - Create performance metrics collection and analysis
     - Add performance optimization suggestions and automation
     - Implement adaptive performance tuning based on usage patterns
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 11.5_
 
   - [ ] 14.3 Implement scalability features
@@ -191,6 +215,7 @@
     - Add efficient data synchronization algorithms
     - Implement resource optimization for complex discovery operations
     - Create load balancing and distribution for discovery processing
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 11.1, 11.4, 11.5_
 
 - [ ] 15. Create integration testing and validation
@@ -199,6 +224,7 @@
     - Validate integration with discovery preferences and user settings
     - Test cross-device synchronization for discovery data
     - Create end-to-end discovery workflow validation
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: All_
 
   - [ ] 15.2 Create performance and stress testing
@@ -206,6 +232,7 @@
     - Add stress testing for complex discovery scenarios
     - Create performance benchmarking for discovery algorithms
     - Implement network and API response simulation testing
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.1-8.5, 11.1-11.5_
 
   - [ ] 15.3 Implement security and data integrity testing
@@ -213,4 +240,5 @@
     - Validate secure storage and transmission of discovery data
     - Create data integrity validation for discovery operations
     - Implement access control and permission testing for discovery features
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.1-9.5, 10.1-10.5_

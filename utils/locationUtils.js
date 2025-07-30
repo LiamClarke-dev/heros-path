@@ -39,6 +39,12 @@ export const LOCATION_OPTIONS = {
     timeout: 5000,
     maximumAge: 30000,
   },
+  // For initial app load - fast location with cached data acceptable
+  INITIAL_LOAD: {
+    accuracy: LOCATION_ACCURACY.BALANCED,
+    timeout: 8000,
+    maximumAge: 60000, // Accept cached location up to 1 minute old
+  },
 };
 
 /**

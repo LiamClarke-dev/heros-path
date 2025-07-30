@@ -4,6 +4,7 @@
   - Create the service class with constructor and basic properties
   - Define constants for accuracy thresholds and GPS warm-up
   - Implement initialization method with permission checking
+  - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 1.1, 2.1, 2.2_
 
 - [ ] 2. Implement permission management
@@ -11,12 +12,14 @@
     - Implement checkPermissions method to verify foreground and background permissions
     - Add showPermissionDeniedAlert method with privacy information
     - Create openDeviceSettings method with platform-specific handling
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.1, 2.2, 2.6, 5.1, 5.2, 5.3_
 
   - [ ] 2.2 Implement permission request workflow
     - Add permission request methods for foreground and background
     - Create clear permission explanation dialogs
     - Implement platform-specific permission handling
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.1, 2.2, 2.6, 6.1, 6.2, 6.3_
 
 - [ ] 3. Implement location data quality features
@@ -24,18 +27,21 @@
     - Implement isLocationAccurate method to filter by accuracy
     - Add isValidLocationCoordinates method to validate coordinates
     - Create calculateDistance method for distance calculations
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.1, 3.4, 3.5_
 
   - [ ] 3.2 Implement location smoothing algorithm
     - Create smoothLocation method to reduce GPS noise
     - Implement weighted smoothing based on accuracy
     - Add recent locations tracking for smoothing calculations
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.2, 3.4_
 
   - [ ] 3.3 Implement GPS warm-up mechanism
     - Create startGPSWarmup method for better initial accuracy
     - Add completeGPSWarmup method to clean up warm-up resources
     - Implement warm-up completion criteria
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.3_
 
 - [ ] 4. Implement core tracking functionality
@@ -43,29 +49,34 @@
     - Implement startTracking method with journey initialization
     - Add stopTracking method with journey completion
     - Create handleLocationUpdate method for processing updates
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.1, 1.2, 1.5, 4.1, 4.2_
 
   - [ ] 4.2 Implement background tracking support
     - Add foreground service configuration for Android
     - Configure iOS background tracking settings
     - Implement platform-specific optimizations
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.3, 6.1, 6.2_
 
   - [ ] 4.3 Add pause and resume functionality
     - Implement pauseTracking method
     - Create resumeTracking method with state restoration
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.1, 1.2, 4.1_
 
 - [ ] 5. Implement app lifecycle management
   - [ ] 5.1 Create app state monitoring
     - Implement initializeAppStateMonitoring method
     - Add handleAppStateChange method for state transitions
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.4, 7.3_
 
   - [ ] 5.2 Implement foreground/background transitions
     - Create handleAppForeground method
     - Add handleAppBackground method
     - Implement seamless tracking continuation
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.4, 4.3, 4.4_
 
 - [ ] 6. Implement data storage and retrieval
@@ -73,12 +84,14 @@
     - Implement storeLocationData method using AsyncStorage
     - Add getStoredLocationData method for retrieval
     - Create clearStoredLocationData method for cleanup
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.5, 5.3, 5.5_
 
   - [ ] 6.2 Implement callback system
     - Add setLocationUpdateCallback method
     - Create setJourneyCompleteCallback method
     - Implement getStatus method for status reporting
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 5.4_
 
 - [ ] 7. Implement error handling and recovery
@@ -86,18 +99,21 @@
     - Implement graceful handling of permission denials
     - Add recovery instructions for permission issues
     - Create user-friendly error messages
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.6, 7.2_
 
   - [ ] 7.2 Implement location error handling
     - Add recovery mechanisms for temporary GPS issues
     - Implement fallback strategies for location failures
     - Create logging for debugging location problems
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 7.1, 7.3_
 
   - [ ] 7.3 Add service cleanup and resource management
     - Implement cleanup method to release resources
     - Add proper subscription management
     - Create state reset functionality
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.5, 5.5, 7.4_
 
 - [ ] 8. Integrate with MapScreen
@@ -105,18 +121,21 @@
     - Implement BackgroundLocationService initialization
     - Set up location update callback
     - Add initial location retrieval
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.1, 2.1, 3.3_
 
   - [ ] 8.2 Implement tracking controls
     - Create toggleTracking method
     - Add journey saving workflow
     - Implement tracking status indicators
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.1, 1.5, 5.4, 5.5_
 
   - [ ] 8.3 Add permission warning banner
     - Implement background permission warning banner
     - Create checkBackgroundPermissions method
     - Add showBackgroundPermissionWarning method
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.3, 2.4, 2.5_
 
 - [ ] 9. Implement battery optimization
@@ -124,12 +143,14 @@
     - Set appropriate timeInterval and distanceInterval values
     - Implement different settings for foreground and background
     - Add accuracy level configuration
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
   - [ ] 9.2 Add platform-specific optimizations
     - Configure iOS-specific parameters
     - Implement Android-specific optimizations
     - Add battery-aware settings
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 4.1, 4.2, 6.1, 6.2_
 
 - [ ] 10. Add comprehensive testing
@@ -137,18 +158,21 @@
     - Test location filtering and validation
     - Test smoothing algorithm
     - Test distance calculation
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.1, 3.2, 3.4_
 
   - [ ] 10.2 Implement integration tests
     - Test permission flow
     - Test tracking lifecycle
     - Test app state transitions
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.4, 2.5, 7.4_
 
   - [ ] 10.3 Add platform-specific tests
     - Test iOS background tracking
     - Test Android foreground service
     - Test platform-specific permission flows
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
 - [ ] 11. Implement different tracking modes
@@ -157,6 +181,7 @@
     - Add continuous tracking mode with standard parameters
     - Create destination tracking mode for navigation
     - Implement optimized tracking mode with adaptive parameters
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.1, 8.2, 8.3, 8.4_
 
   - [ ] 11.2 Implement destination tracking features
@@ -164,6 +189,7 @@
     - Create arrival detection and notifications
     - Implement automatic parameter adjustment for destination mode
     - Add radius-based tracking for destination proximity
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.1, 8.5_
 
   - [ ] 11.3 Add mode transition handling
@@ -171,6 +197,7 @@
     - Create mode-specific parameter optimization
     - Add mode validation and error handling
     - Implement mode persistence across app restarts
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.4_
 
 - [ ] 12. Implement enhanced accuracy tracking
@@ -179,6 +206,7 @@
     - Add accuracy distribution calculation (high/medium/low)
     - Create average accuracy computation
     - Implement accuracy trend analysis
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.1, 9.3, 9.4_
 
   - [ ] 12.2 Implement street coverage calculation
@@ -186,6 +214,7 @@
     - Add street coverage percentage computation
     - Implement coverage quality assessment
     - Create coverage improvement recommendations
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.2, 9.5_
 
   - [ ] 12.3 Add accuracy reporting and analysis
@@ -193,6 +222,7 @@
     - Implement accuracy debugging tools
     - Add accuracy visualization for development
     - Create accuracy-based filtering improvements
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 9.4, 9.5_
 
 - [ ] 13. Develop comprehensive developer tools
@@ -201,6 +231,7 @@
     - Add predefined tracking scenarios (walking, driving, stationary)
     - Create custom coordinate sequence generation
     - Implement simulation speed and accuracy controls
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.1, 10.2, 10.5_
 
   - [ ] 13.2 Implement debugging and analytics tools
@@ -208,6 +239,7 @@
     - Create error logging and analysis tools
     - Implement location data validation tools
     - Add performance monitoring and profiling
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.3, 10.4_
 
   - [ ] 13.3 Create testing and development utilities
@@ -215,6 +247,7 @@
     - Add location data export/import tools
     - Create automated testing scenarios
     - Implement development mode features
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 10.2, 10.4_
 
 - [ ] 14. Implement performance optimization and scalability
@@ -223,6 +256,7 @@
     - Add intelligent caching strategies for location data
     - Create optimized storage strategies to minimize memory usage
     - Implement batch operations for data synchronization
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
   - [ ] 14.2 Implement adaptive optimization
@@ -230,6 +264,7 @@
     - Add battery level-aware parameter adjustment
     - Implement movement pattern-based optimization
     - Create real-time performance monitoring
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 11.1, 11.5_
 
   - [ ] 14.3 Add performance monitoring and metrics
@@ -237,6 +272,7 @@
     - Create battery impact monitoring and reporting
     - Add performance alerting and optimization suggestions
     - Implement performance benchmarking tools
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 11.5_
 
 - [ ] 15. Create integration testing and validation
@@ -245,6 +281,7 @@
     - Validate integration with search along route features
     - Test cross-device synchronization scenarios
     - Create end-to-end tracking workflow validation
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: All_
 
   - [ ] 15.2 Create performance and stress testing
@@ -252,6 +289,7 @@
     - Add battery usage testing for various tracking modes
     - Create memory usage optimization testing
     - Implement network connectivity testing
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 8.1-8.5, 11.1-11.5_
 
   - [ ] 15.3 Implement security and privacy testing
@@ -259,4 +297,5 @@
     - Validate secure storage and transmission
     - Create permission and access control testing
     - Implement data integrity validation
+    - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 5.1-5.5, 9.1-9.5_

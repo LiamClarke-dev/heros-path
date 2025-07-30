@@ -57,21 +57,73 @@ class LocationBackupManager {
    * @param {Array} locationHistory - Current location history to backup
    */
   async performPeriodicSave(locationHistory = []) {
-    if (!this.currentJourneyId || locationHistory.length === 0) {
+    if (!this.currentJourneyId) {
       return;
     }
 
+    // If no location history provided, skip this save cycle
+    if (!locationHistory || locationHistory.length === 0) {
+      console.log('No location history to backup');
+      return;
+    }
+
+    // Debug logging
+    console.log(`Backup attempt: ${locationHistory.length} locations, first location:`, locationHistory[0]);
+
     try {
+      // Validate and filter location data more carefully
+      const validCoordinates = locationHistory
+        .filter((loc, index) => {
+          // Check if location object exists
+          if (!loc) {
+            console.warn(`Location at index ${index} is null/undefined:`, loc);
+            return false;
+          }
+          
+          // Check if location has coords property
+          if (!loc.coords) {
+            console.warn(`Location at index ${index} missing coords:`, loc);
+            return false;
+          }
+          
+          // Check if coordinates are valid numbers
+          const { latitude, longitude } = loc.coords;
+          if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+            console.warn(`Invalid coordinates at index ${index}:`, { latitude, longitude, loc });
+            return false;
+          }
+          
+          // Check if coordinates are within valid ranges
+          if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            console.warn(`Coordinates out of range at index ${index}:`, { latitude, longitude });
+            return false;
+          }
+          
+          return true;
+        })
+        .map((loc, index) => {
+          try {
+            return {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              timestamp: loc.timestamp || Date.now(),
+              accuracy: loc.coords.accuracy || null
+            };
+          } catch (error) {
+            console.error(`Error mapping location at index ${index}:`, error, loc);
+            return null;
+          }
+        })
+        .filter(coord => coord !== null);
+
+      if (validCoordinates.length === 0) {
+        console.warn('No valid coordinates to backup');
+        return;
+      }
+
       const backupData = {
         journeyId: this.currentJourneyId,
-        coordinates: locationHistory
-          .filter(loc => loc && loc.coords && typeof loc.coords.latitude === 'number' && typeof loc.coords.longitude === 'number')
-          .map(loc => ({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            timestamp: loc.timestamp,
-            accuracy: loc.coords.accuracy
-          })),
+        coordinates: validCoordinates,
         startTime: locationHistory[0]?.timestamp || Date.now(),
         lastSaveTime: Date.now(),
         isActive: true

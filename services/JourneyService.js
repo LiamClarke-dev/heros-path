@@ -334,6 +334,91 @@ class JourneyService {
     return result;
   }
 
+  /**
+   * Calculate journey statistics from coordinates
+   * @param {Array} coordinates - Array of location coordinates
+   * @returns {Object} Journey statistics
+   */
+  static calculateJourneyStats(coordinates) {
+    if (!coordinates || coordinates.length < 2) {
+      return {
+        distance: 0,
+        duration: 0,
+        averageSpeed: 0,
+        maxSpeed: 0,
+        elevationGain: 0,
+        pointCount: coordinates?.length || 0
+      };
+    }
+
+    let totalDistance = 0;
+    let maxSpeed = 0;
+    let elevationGain = 0;
+    let previousElevation = null;
+
+    // Calculate distance and other metrics
+    for (let i = 1; i < coordinates.length; i++) {
+      const prev = coordinates[i - 1];
+      const curr = coordinates[i];
+
+      // Calculate distance between points
+      const distance = this.calculateDistance(prev, curr);
+      totalDistance += distance;
+
+      // Track max speed
+      if (curr.speed && curr.speed > maxSpeed) {
+        maxSpeed = curr.speed;
+      }
+
+      // Calculate elevation gain
+      if (curr.altitude && previousElevation !== null) {
+        const elevationDiff = curr.altitude - previousElevation;
+        if (elevationDiff > 0) {
+          elevationGain += elevationDiff;
+        }
+      }
+      previousElevation = curr.altitude;
+    }
+
+    // Calculate duration
+    const startTime = coordinates[0].timestamp;
+    const endTime = coordinates[coordinates.length - 1].timestamp;
+    const duration = endTime - startTime;
+
+    // Calculate average speed
+    const averageSpeed = duration > 0 ? (totalDistance / (duration / 1000)) : 0;
+
+    return {
+      distance: Math.round(totalDistance),
+      duration: duration,
+      averageSpeed: Math.round(averageSpeed * 100) / 100,
+      maxSpeed: Math.round(maxSpeed * 100) / 100,
+      elevationGain: Math.round(elevationGain),
+      pointCount: coordinates.length
+    };
+  }
+
+  /**
+   * Calculate distance between two coordinates using Haversine formula
+   * @param {Object} coord1 - First coordinate {latitude, longitude}
+   * @param {Object} coord2 - Second coordinate {latitude, longitude}
+   * @returns {number} Distance in meters
+   */
+  static calculateDistance(coord1, coord2) {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (coord2.latitude - coord1.latitude) * Math.PI / 180;
+    const dLon = (coord2.longitude - coord1.longitude) * Math.PI / 180;
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(coord1.latitude * Math.PI / 180) *
+      Math.cos(coord2.latitude * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
 
 }
 

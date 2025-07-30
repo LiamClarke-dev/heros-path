@@ -57,7 +57,7 @@ const useSavedRoutes = () => {
       setLoading(true);
       setError(null);
 
-      const routes = await JourneyService.loadUserJourneys(user.uid, {
+      const routes = await JourneyService.getUserJourneys(user.uid, {
         limit: 20, // Load last 20 journeys
         orderBy: 'createdAt',
         orderDirection: 'desc',

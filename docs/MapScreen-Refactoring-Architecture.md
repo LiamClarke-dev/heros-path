@@ -14,7 +14,7 @@ The MapScreen component has been successfully refactored from a monolithic 1600+
 - **Performance Issues**: Unnecessary re-renders
 
 ### After Refactoring
-- **Main Component**: < 200 lines (orchestration only)
+- **Main Component**: < 300 lines (orchestration only)
 - **7 Custom Hooks**: Focused state management
 - **15+ Components**: Single responsibility components
 - **Testable**: Isolated, mockable units
@@ -23,7 +23,7 @@ The MapScreen component has been successfully refactored from a monolithic 1600+
 
 ## Component Architecture
 
-### Main MapScreen Component (< 200 lines)
+### Main MapScreen Component (< 300 lines)
 
 The refactored MapScreen serves as an orchestrator that:
 - Integrates all custom hooks for state management
@@ -56,7 +56,7 @@ const MapScreen = () => {
 ### Component Hierarchy
 
 ```
-MapScreen (< 200 lines)
+MapScreen (< 300 lines)
 ├── MapRenderer
 │   ├── MapView (react-native-maps)
 │   ├── MapOverlays
@@ -313,7 +313,7 @@ test('should integrate all hooks and components correctly', () => {
 ## Migration Benefits Achieved
 
 ### Code Quality
-- **Reduced Complexity**: From 1600+ lines to < 200 lines main component
+- **Reduced Complexity**: From 1600+ lines to < 300 lines main component
 - **Single Responsibility**: Each component/hook has one clear purpose
 - **Improved Readability**: Clear separation of concerns
 - **Better Maintainability**: Changes isolated to specific domains

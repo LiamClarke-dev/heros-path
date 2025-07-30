@@ -9,7 +9,7 @@ This guide helps developers understand and work with the refactored MapScreen ar
 ### Main Components
 
 ```
-MapScreen (< 200 lines) - Orchestrator
+MapScreen (< 300 lines) - Orchestrator
 ├── MapRenderer - Map display and rendering
 ├── MapControls - UI controls and buttons
 ├── MapStatusDisplays - Status information
@@ -714,7 +714,7 @@ const MapScreen = () => {
 
 - **File Structure**: Code split across multiple files
 - **State Management**: Moved from component state to custom hooks
-- **Component Size**: Main component reduced from 1600+ to < 200 lines
+- **Component Size**: Main component reduced from 1600+ to < 300 lines
 - **Testing**: Each piece can now be tested in isolation
 - **Performance**: Optimized re-rendering and memory usage
 

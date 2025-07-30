@@ -2,7 +2,7 @@
   "expo": {
     "name": "heros-path-fresh",
     "slug": "heros-path",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "assetBundlePatterns": [
       "assets/**/*.gif"
     ],
@@ -27,6 +27,14 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location to track your journey and show nearby places.",
         "UIBackgroundModes": [
           "location"
+        ],
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "com.liamclarke.herospath",
+            "CFBundleURLSchemes": [
+              "com.liamclarke.herospath"
+            ]
+          }
         ]
       },
       "config": {
@@ -46,6 +54,20 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "com.liamclarke.herospath"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {

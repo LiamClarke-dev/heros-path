@@ -1,413 +1,340 @@
+/**
+ * JourneyService - Core service for journey data management
+ * 
+ * Single Responsibility: Journey CRUD operations and data management
+ * Requirements: 2.2, 2.3, 3.1, 4.3, 5.1
+ */
+
 import { 
   collection, 
   doc, 
   addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDocs, 
   getDoc, 
+  getDocs, 
+  updateDoc, 
   query, 
   where, 
   orderBy, 
-  limit,
-  serverTimestamp 
+  serverTimestamp,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { DEFAULT_JOURNEY_VALUES, VALIDATION_CONSTANTS } from '../constants/JourneyModels';
-import Logger from '../utils/Logger';
+import { DOCUMENT_PATHS } from '../constants/FirestoreSchema';
+import { 
+  DEFAULT_JOURNEY_VALUES, 
+  JOURNEY_SCHEMA_VERSION
+} from '../constants/JourneyModels';
+
+// Modular services
+import JourneyValidationService from './journey/JourneyValidationService';
+import JourneyStatsService from './journey/JourneyStatsService';
+import JourneyDiscoveryService from './journey/JourneyDiscoveryService';
+import JourneyCacheService from './journey/JourneyCacheService';
 
 /**
- * JourneyService handles all journey-related operations including
- * saving, loading, updating, and deleting journey data in Firestore.
- * 
- * Requirements addressed:
- * - 2.3: Save journey with name and metadata
- * - 2.4: Store route data with timestamps, distance, and duration
- * - 2.5: Load and display saved routes
- * - 2.6: Journey data structure with metadata
+ * JourneyService class handles core journey CRUD operations
  */
-
 class JourneyService {
-  constructor() {
-    this.collectionName = 'journeys';
-  }
 
   /**
-   * Save a new journey to Firestore
-   * @param {Object} journeyData - Journey data to save
-   * @param {string} journeyData.userId - User ID
-   * @param {string} journeyData.name - Journey name
-   * @param {Array} journeyData.route - Array of coordinates
-   * @param {number} journeyData.distance - Distance in meters
-   * @param {number} journeyData.duration - Duration in milliseconds
-   * @param {number} journeyData.startTime - Start timestamp
-   * @param {number} journeyData.endTime - End timestamp
-   * @returns {Promise<Object>} Saved journey with Firestore ID
+   * Create a new journey record
+   * @param {string} userId - User ID
+   * @param {Object} journeyData - Journey data from tracking session
+   * @returns {Promise<Object>} Created journey with ID
    */
-  async saveJourney(journeyData) {
+  async createJourney(userId, journeyData) {
     try {
-      // Validate required fields
-      this.validateJourneyData(journeyData);
+      if (!userId || !journeyData) {
+        throw new Error('User ID and journey data are required');
+      }
 
-      // Create journey object with defaults
-      const journey = {
+      // Validate journey data
+      JourneyValidationService.validateJourneyData(journeyData);
+
+      // Calculate distance and duration if not provided
+      const distance = journeyData.distance || JourneyStatsService.calculateDistance(journeyData.coordinates);
+      const duration = journeyData.duration || (journeyData.endTime - journeyData.startTime);
+
+      // Prepare journey document
+      const journeyDoc = {
         ...DEFAULT_JOURNEY_VALUES,
-        ...journeyData,
+        userId,
+        name: journeyData.name || this.generateDefaultName(journeyData.startTime),
+        startTime: journeyData.startTime,
+        endTime: journeyData.endTime,
+        route: journeyData.coordinates || [],
+        distance,
+        duration,
+        status: 'completed',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastUpdated: new Date().toISOString(),
+        schemaVersion: JOURNEY_SCHEMA_VERSION
       };
 
-      Logger.info('Saving journey to Firestore:', journey.name);
+      // Add to Firestore
+      const journeysCollection = collection(db, DOCUMENT_PATHS.userJourneys(userId));
+      const docRef = await addDoc(journeysCollection, journeyDoc);
 
-      // Save to Firestore
-      const docRef = await addDoc(collection(db, this.collectionName), journey);
-      
-      // Return journey with Firestore ID
-      const savedJourney = {
-        ...journey,
+      // Update document with its ID
+      await updateDoc(docRef, { id: docRef.id });
+
+      const createdJourney = {
+        ...journeyDoc,
         id: docRef.id,
-        createdAt: new Date(), // Convert serverTimestamp for immediate use
-        updatedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date()
       };
 
-      Logger.info('Journey saved successfully:', docRef.id);
-      return savedJourney;
+      // Cache the created journey
+      JourneyCacheService.setCacheItem(`journey_${userId}_${docRef.id}`, createdJourney);
+
+      console.log(`Journey created successfully: ${docRef.id}`);
+      return createdJourney;
 
     } catch (error) {
-      Logger.error('Failed to save journey:', error);
-      throw new Error(`Failed to save journey: ${error.message}`);
+      console.error('Failed to create journey:', error);
+      throw new Error(`Failed to create journey: ${error.message}`);
     }
   }
 
   /**
-   * Load all journeys for a specific user
+   * Get a specific journey by ID
+   * @param {string} userId - User ID
+   * @param {string} journeyId - Journey ID
+   * @returns {Promise<Object|null>} Journey data or null if not found
+   */
+  async getJourney(userId, journeyId) {
+    try {
+      if (!userId || !journeyId) {
+        throw new Error('User ID and journey ID are required');
+      }
+
+      // Check cache first
+      const cacheKey = `journey_${userId}_${journeyId}`;
+      const cachedJourney = JourneyCacheService.getCacheItem(cacheKey);
+      if (cachedJourney) {
+        return cachedJourney;
+      }
+
+      // Get from Firestore
+      const journeyDocRef = doc(db, DOCUMENT_PATHS.userJourney(userId, journeyId));
+      const journeyDoc = await getDoc(journeyDocRef);
+
+      if (!journeyDoc.exists()) {
+        return null;
+      }
+
+      const journeyData = {
+        id: journeyDoc.id,
+        ...journeyDoc.data(),
+        createdAt: journeyDoc.data().createdAt?.toDate(),
+        updatedAt: journeyDoc.data().updatedAt?.toDate()
+      };
+
+      // Cache the journey
+      JourneyCacheService.setCacheItem(cacheKey, journeyData);
+
+      return journeyData;
+
+    } catch (error) {
+      console.error('Failed to get journey:', error);
+      throw new Error(`Failed to get journey: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get all journeys for a user
    * @param {string} userId - User ID
    * @param {Object} options - Query options
-   * @param {number} options.limit - Maximum number of journeys to load
-   * @param {string} options.orderBy - Field to order by
-   * @param {string} options.orderDirection - Order direction ('asc' or 'desc')
-   * @returns {Promise<Array>} Array of user journeys
+   * @returns {Promise<Array>} Array of journey objects
    */
-  async loadUserJourneys(userId, options = {}) {
+  async getUserJourneys(userId, options = {}) {
     try {
-      const {
-        limit: queryLimit = 50,
-        orderBy: orderField = 'createdAt',
-        orderDirection = 'desc'
-      } = options;
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
 
-      Logger.info('Loading journeys for user:', userId);
+      // Check cache first
+      const cacheKey = `user_journeys_${userId}`;
+      const cachedJourneys = JourneyCacheService.getCacheItem(cacheKey);
+      if (cachedJourneys && !options.forceRefresh) {
+        return cachedJourneys;
+      }
 
       // Build query
+      const journeysCollection = collection(db, DOCUMENT_PATHS.userJourneys(userId));
       let journeyQuery = query(
-        collection(db, this.collectionName),
-        where('userId', '==', userId),
-        orderBy(orderField, orderDirection)
+        journeysCollection,
+        orderBy('createdAt', 'desc')
       );
 
-      // Add limit if specified
-      if (queryLimit) {
-        journeyQuery = query(journeyQuery, limit(queryLimit));
+      // Add status filter if specified
+      if (options.status) {
+        journeyQuery = query(
+          journeysCollection,
+          where('status', '==', options.status),
+          orderBy('createdAt', 'desc')
+        );
       }
 
       // Execute query
       const querySnapshot = await getDocs(journeyQuery);
-      
-      // Convert to array of journey objects
       const journeys = [];
+
       querySnapshot.forEach((doc) => {
-        const journeyData = doc.data();
-        journeys.push({
-          ...journeyData,
+        const journeyData = {
           id: doc.id,
-          // Convert Firestore timestamps to JavaScript dates
-          createdAt: journeyData.createdAt?.toDate() || new Date(),
-          updatedAt: journeyData.updatedAt?.toDate() || new Date(),
-        });
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          updatedAt: doc.data().updatedAt?.toDate()
+        };
+        journeys.push(journeyData);
       });
 
-      Logger.info(`Loaded ${journeys.length} journeys for user`);
+      // Cache the results
+      JourneyCacheService.setCacheItem(cacheKey, journeys);
+
       return journeys;
 
     } catch (error) {
-      Logger.error('Failed to load user journeys:', error);
-      throw new Error(`Failed to load journeys: ${error.message}`);
+      console.error('Failed to get user journeys:', error);
+      throw new Error(`Failed to get user journeys: ${error.message}`);
     }
   }
 
   /**
-   * Load a specific journey by ID
+   * Update journey information
+   * @param {string} userId - User ID
    * @param {string} journeyId - Journey ID
-   * @returns {Promise<Object|null>} Journey object or null if not found
+   * @param {Object} updates - Updates to apply
+   * @returns {Promise<Object>} Updated journey data
    */
-  async loadJourney(journeyId) {
+  async updateJourney(userId, journeyId, updates) {
     try {
-      Logger.info('Loading journey:', journeyId);
-
-      const docRef = doc(db, this.collectionName, journeyId);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const journeyData = docSnap.data();
-        const journey = {
-          ...journeyData,
-          id: docSnap.id,
-          createdAt: journeyData.createdAt?.toDate() || new Date(),
-          updatedAt: journeyData.updatedAt?.toDate() || new Date(),
-        };
-
-        Logger.info('Journey loaded successfully');
-        return journey;
-      } else {
-        Logger.warn('Journey not found:', journeyId);
-        return null;
+      if (!userId || !journeyId || !updates) {
+        throw new Error('User ID, journey ID, and updates are required');
       }
 
-    } catch (error) {
-      Logger.error('Failed to load journey:', error);
-      throw new Error(`Failed to load journey: ${error.message}`);
-    }
-  }
+      // Validate updates
+      JourneyValidationService.validateJourneyUpdates(updates);
 
-  /**
-   * Update an existing journey
-   * @param {string} journeyId - Journey ID
-   * @param {Object} updates - Fields to update
-   * @returns {Promise<Object>} Updated journey
-   */
-  async updateJourney(journeyId, updates) {
-    try {
-      Logger.info('Updating journey:', journeyId);
-
-      const updateData = {
+      // Prepare update document
+      const updateDoc = {
         ...updates,
         updatedAt: serverTimestamp(),
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: new Date().toISOString()
       };
 
-      const docRef = doc(db, this.collectionName, journeyId);
-      await updateDoc(docRef, updateData);
+      // Update in Firestore
+      const journeyDocRef = doc(db, DOCUMENT_PATHS.userJourney(userId, journeyId));
+      await updateDoc(journeyDocRef, updateDoc);
 
-      // Load and return updated journey
-      const updatedJourney = await this.loadJourney(journeyId);
-      
-      Logger.info('Journey updated successfully');
+      // Get updated journey
+      const updatedJourney = await this.getJourney(userId, journeyId);
+
+      // Clear related cache entries
+      JourneyCacheService.clearCacheForUser(userId);
+
+      console.log(`Journey updated successfully: ${journeyId}`);
       return updatedJourney;
 
     } catch (error) {
-      Logger.error('Failed to update journey:', error);
+      console.error('Failed to update journey:', error);
       throw new Error(`Failed to update journey: ${error.message}`);
     }
   }
 
   /**
-   * Delete a journey
+   * Delete a journey and associated data
+   * @param {string} userId - User ID
    * @param {string} journeyId - Journey ID
-   * @returns {Promise<void>}
+   * @returns {Promise<boolean>} True if deletion was successful
    */
-  async deleteJourney(journeyId) {
+  async deleteJourney(userId, journeyId) {
     try {
-      Logger.info('Deleting journey:', journeyId);
+      if (!userId || !journeyId) {
+        throw new Error('User ID and journey ID are required');
+      }
 
-      const docRef = doc(db, this.collectionName, journeyId);
-      await deleteDoc(docRef);
+      // Get journey data before deletion for cleanup
+      const journey = await this.getJourney(userId, journeyId);
+      if (!journey) {
+        throw new Error('Journey not found');
+      }
 
-      Logger.info('Journey deleted successfully');
+      // Use batch operation for comprehensive cleanup
+      const batch = writeBatch(db);
+
+      // Delete main journey document
+      const journeyDocRef = doc(db, DOCUMENT_PATHS.userJourney(userId, journeyId));
+      batch.delete(journeyDocRef);
+
+      // Delete associated journey data if exists
+      const journeyDataCollection = collection(db, DOCUMENT_PATHS.userJourneyDataCollection(userId));
+      const journeyDataQuery = query(journeyDataCollection, where('id', '==', journeyId));
+      const journeyDataSnapshot = await getDocs(journeyDataQuery);
+      
+      journeyDataSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      // Requirement 4.3: Remove non-saved discoveries, maintain saved ones
+      await JourneyDiscoveryService.cleanupJourneyDiscoveries(userId, journeyId);
+
+      // Commit batch operation
+      await batch.commit();
+
+      // Clear cache
+      JourneyCacheService.clearCacheForUser(userId);
+
+      console.log(`Journey deleted successfully: ${journeyId}`);
+      return true;
 
     } catch (error) {
-      Logger.error('Failed to delete journey:', error);
+      console.error('Failed to delete journey:', error);
       throw new Error(`Failed to delete journey: ${error.message}`);
     }
   }
 
   /**
-   * Calculate journey statistics
-   * @param {Array} coordinates - Array of coordinates
-   * @returns {Object} Journey statistics
-   */
-  calculateJourneyStats(coordinates) {
-    if (!coordinates || coordinates.length < 2) {
-      return {
-        distance: 0,
-        duration: 0,
-        averageSpeed: 0,
-        maxSpeed: 0,
-      };
-    }
-
-    let totalDistance = 0;
-    let maxSpeed = 0;
-    const startTime = coordinates[0].timestamp;
-    const endTime = coordinates[coordinates.length - 1].timestamp;
-    const duration = endTime - startTime;
-
-    // Calculate distance and speed
-    for (let i = 1; i < coordinates.length; i++) {
-      const prev = coordinates[i - 1];
-      const curr = coordinates[i];
-      
-      // Calculate distance between points
-      const distance = this.calculateDistance(prev, curr);
-      totalDistance += distance;
-
-      // Calculate speed for this segment
-      const timeDiff = (curr.timestamp - prev.timestamp) / 1000; // seconds
-      if (timeDiff > 0) {
-        const speed = distance / timeDiff; // m/s
-        maxSpeed = Math.max(maxSpeed, speed);
-      }
-    }
-
-    const averageSpeed = duration > 0 ? totalDistance / (duration / 1000) : 0;
-
-    return {
-      distance: Math.round(totalDistance),
-      duration,
-      averageSpeed: Math.round(averageSpeed * 100) / 100, // Round to 2 decimal places
-      maxSpeed: Math.round(maxSpeed * 100) / 100,
-    };
-  }
-
-  /**
-   * Calculate distance between two coordinates using Haversine formula
-   * @param {Object} coord1 - First coordinate
-   * @param {Object} coord2 - Second coordinate
-   * @returns {number} Distance in meters
-   */
-  calculateDistance(coord1, coord2) {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = this.toRadians(coord2.latitude - coord1.latitude);
-    const dLon = this.toRadians(coord2.longitude - coord1.longitude);
-    
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(coord1.latitude)) * 
-      Math.cos(this.toRadians(coord2.latitude)) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  /**
-   * Convert degrees to radians
-   * @param {number} degrees - Degrees to convert
-   * @returns {number} Radians
-   */
-  toRadians(degrees) {
-    return degrees * (Math.PI / 180);
-  }
-
-  /**
-   * Validate journey data before saving
-   * @param {Object} journeyData - Journey data to validate
-   * @throws {Error} If validation fails
-   */
-  validateJourneyData(journeyData) {
-    const { userId, name, route, distance, duration } = journeyData;
-
-    if (!userId) {
-      throw new Error('User ID is required');
-    }
-
-    if (!name || name.trim().length === 0) {
-      throw new Error('Journey name is required');
-    }
-
-    if (name.length > VALIDATION_CONSTANTS.MAX_JOURNEY_NAME_LENGTH) {
-      throw new Error(`Journey name must be less than ${VALIDATION_CONSTANTS.MAX_JOURNEY_NAME_LENGTH} characters`);
-    }
-
-    if (!route || !Array.isArray(route)) {
-      throw new Error('Journey route is required and must be an array');
-    }
-
-    if (route.length < VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY) {
-      throw new Error(`Journey must have at least ${VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY} coordinates`);
-    }
-
-    if (typeof distance !== 'number' || distance < 0) {
-      throw new Error('Journey distance must be a positive number');
-    }
-
-    if (typeof duration !== 'number' || duration < 0) {
-      throw new Error('Journey duration must be a positive number');
-    }
-
-    // Validate coordinates
-    route.forEach((coord, index) => {
-      if (!coord.latitude || !coord.longitude || !coord.timestamp) {
-        throw new Error(`Invalid coordinate at index ${index}: latitude, longitude, and timestamp are required`);
-      }
-
-      if (typeof coord.latitude !== 'number' || typeof coord.longitude !== 'number') {
-        throw new Error(`Invalid coordinate at index ${index}: latitude and longitude must be numbers`);
-      }
-
-      if (coord.latitude < -90 || coord.latitude > 90) {
-        throw new Error(`Invalid latitude at index ${index}: must be between -90 and 90`);
-      }
-
-      if (coord.longitude < -180 || coord.longitude > 180) {
-        throw new Error(`Invalid longitude at index ${index}: must be between -180 and 180`);
-      }
-    });
-  }
-
-  /**
-   * Generate a default journey name based on date and time
+   * Generate default name for journey
+   * @param {number} startTime - Journey start timestamp
    * @returns {string} Default journey name
    */
-  generateDefaultJourneyName() {
-    const now = new Date();
-    const date = now.toLocaleDateString();
-    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return `Journey ${date} ${time}`;
+  generateDefaultName(startTime) {
+    const date = new Date(startTime);
+    const dateStr = date.toLocaleDateString();
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `Journey on ${dateStr} at ${timeStr}`;
   }
 
   /**
-   * Check if a journey name is unique for a user
-   * @param {string} userId - User ID
-   * @param {string} name - Journey name to check
-   * @returns {Promise<boolean>} True if name is unique
+   * Delegate to JourneyStatsService for statistics
    */
-  async isJourneyNameUnique(userId, name) {
-    try {
-      const q = query(
-        collection(db, this.collectionName),
-        where('userId', '==', userId),
-        where('name', '==', name),
-        limit(1)
-      );
-
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.empty;
-
-    } catch (error) {
-      Logger.error('Failed to check journey name uniqueness:', error);
-      // If we can't check, assume it's not unique to be safe
-      return false;
-    }
+  async getJourneyStats(userId) {
+    const journeys = await this.getUserJourneys(userId);
+    return JourneyStatsService.calculateJourneyStatistics(journeys);
   }
 
   /**
-   * Generate a unique journey name for a user
-   * @param {string} userId - User ID
-   * @param {string} baseName - Base name to make unique
-   * @returns {Promise<string>} Unique journey name
+   * Delegate to JourneyDiscoveryService for discovery consolidation
    */
-  async generateUniqueJourneyName(userId, baseName) {
-    let name = baseName;
-    let counter = 1;
+  async consolidateJourneyDiscoveries(userId, journeyId, routeCoords) {
+    const result = await JourneyDiscoveryService.consolidateJourneyDiscoveries(userId, journeyId, routeCoords);
+    
+    // Update journey with discovery counts
+    await this.updateJourney(userId, journeyId, {
+      totalDiscoveriesCount: result.totalDiscoveries,
+      reviewedDiscoveriesCount: result.reviewedDiscoveries,
+      completionPercentage: result.completionPercentage,
+      isCompleted: result.completionPercentage === 100
+    });
 
-    while (!(await this.isJourneyNameUnique(userId, name))) {
-      name = `${baseName} (${counter})`;
-      counter++;
-    }
-
-    return name;
+    return result;
   }
+
+
 }
 
 // Export singleton instance

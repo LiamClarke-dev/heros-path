@@ -23,12 +23,17 @@ import {
   FIREBASE_MESSAGING_SENDER_ID,
   FIREBASE_APP_ID,
   FIREBASE_MEASUREMENT_ID,
-  GOOGLE_WEB_CLIENT_ID,
-  GOOGLE_IOS_CLIENT_ID,
-  GOOGLE_ANDROID_CLIENT_ID,
 } from "./config";
 
 import Logger from './utils/Logger';
+import {
+  validateGoogleOAuthConfig,
+  getAuthCodeFlowConfig,
+  getImplicitFlowConfig,
+  getGoogleOAuthEndpoints,
+  troubleshootGoogleOAuthError,
+  logOAuthDebugInfo,
+} from './utils/GoogleOAuthConfig';
 
 /**
  * Firebase Configuration and Authentication Setup
@@ -227,83 +232,113 @@ const signInWithGoogle = async () => {
     }
 
     // Validate Google OAuth configuration
-    const webClientId = GOOGLE_WEB_CLIENT_ID;
-    const iosClientId = GOOGLE_IOS_CLIENT_ID;
-    const androidClientId = GOOGLE_ANDROID_CLIENT_ID;
-
-    if (!webClientId) {
-      throw new Error('Google Web Client ID is not configured. Please check your environment variables.');
-    }
-
-    // Platform-specific client ID selection
-    let clientId = webClientId;
-    if (Platform.OS === 'ios' && iosClientId) {
-      clientId = iosClientId;
-    } else if (Platform.OS === 'android' && androidClientId) {
-      clientId = androidClientId;
-    }
+    validateGoogleOAuthConfig();
 
     Logger.info('Initiating Google OAuth flow for platform:', Platform.OS);
-    Logger.debug('Using client ID:', clientId ? 'SET' : 'EMPTY');
+    logOAuthDebugInfo();
 
-    // Configure the OAuth request
-    const request = new AuthSession.AuthRequest({
-      clientId: clientId,
-      scopes: ['openid', 'profile', 'email'],
-      redirectUri: AuthSession.makeRedirectUri({
-        scheme: 'com.liamclarke.herospath', // This matches the app's scheme from app.json
-        useProxy: true,
-      }),
-      responseType: AuthSession.ResponseType.IdToken,
-      additionalParameters: {},
-      extraParams: {},
-    });
+    const endpoints = getGoogleOAuthEndpoints();
 
-    // Perform the authentication request
-    const result = await request.promptAsync({
-      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-    });
-
-    Logger.debug('Google OAuth result:', result.type);
-
-    if (result.type === 'success') {
-      const { id_token } = result.params;
+    // Try the authorization code flow first (more reliable)
+    try {
+      Logger.debug('Attempting authorization code flow');
       
-      if (!id_token) {
-        throw new Error('No ID token received from Google OAuth');
+      const authConfig = getAuthCodeFlowConfig();
+      const request = new AuthSession.AuthRequest(authConfig);
+
+      const result = await request.promptAsync({
+        authorizationEndpoint: endpoints.authorizationEndpoint,
+      });
+
+      Logger.debug('Authorization code flow result:', result.type);
+
+      if (result.type === 'success') {
+        const { code } = result.params;
+        
+        if (!code) {
+          throw new Error('No authorization code received');
+        }
+
+        // Exchange code for tokens
+        const tokenResult = await AuthSession.exchangeCodeAsync(
+          {
+            clientId: authConfig.clientId,
+            code: code,
+            redirectUri: authConfig.redirectUri,
+            extraParams: {},
+          },
+          {
+            tokenEndpoint: endpoints.tokenEndpoint,
+          }
+        );
+
+        if (tokenResult.idToken) {
+          Logger.info('Authorization code flow successful, creating Firebase credential');
+          
+          // Create a Google credential with the ID token
+          const credential = GoogleAuthProvider.credential(tokenResult.idToken);
+          
+          // Sign in to Firebase with the Google credential
+          const userCredential = await signInWithCredential(auth, credential);
+          Logger.info('Google sign-in successful:', userCredential.user.uid);
+          
+          return userCredential;
+        } else {
+          throw new Error('No ID token received from token exchange');
+        }
+      } else if (result.type === 'cancel') {
+        Logger.info('Google sign-in cancelled by user');
+        throw new Error('Google sign-in was cancelled');
+      } else {
+        throw new Error(result.error?.message || 'Authorization failed');
       }
+      
+    } catch (codeFlowError) {
+      Logger.warn('Authorization code flow failed, trying implicit flow:', codeFlowError.message);
+      
+      // Fallback to implicit flow for ID token
+      const implicitConfig = getImplicitFlowConfig();
+      const implicitRequest = new AuthSession.AuthRequest(implicitConfig);
 
-      Logger.info('Google OAuth successful, creating Firebase credential');
+      const implicitResult = await implicitRequest.promptAsync({
+        authorizationEndpoint: endpoints.authorizationEndpoint,
+      });
 
-      // Create a Google credential with the token
-      const credential = GoogleAuthProvider.credential(id_token);
+      Logger.debug('Implicit flow result:', implicitResult.type);
 
-      // Sign in to Firebase with the Google credential
-      const userCredential = await signInWithCredential(auth, credential);
-      Logger.info('Google sign-in successful:', userCredential.user.uid);
+      if (implicitResult.type === 'success') {
+        const { id_token } = implicitResult.params;
+        
+        if (!id_token) {
+          Logger.error('OAuth result params:', implicitResult.params);
+          throw new Error('No ID token received from Google OAuth');
+        }
 
-      return userCredential;
-    } else if (result.type === 'cancel') {
-      Logger.info('Google sign-in cancelled by user');
-      throw new Error('Google sign-in was cancelled');
-    } else {
-      Logger.error('Google OAuth failed:', result.error);
-      throw new Error(result.error?.message || 'Google sign-in failed');
+        Logger.info('Implicit flow successful, creating Firebase credential');
+
+        // Create a Google credential with the token
+        const credential = GoogleAuthProvider.credential(id_token);
+
+        // Sign in to Firebase with the Google credential
+        const userCredential = await signInWithCredential(auth, credential);
+        Logger.info('Google sign-in successful:', userCredential.user.uid);
+
+        return userCredential;
+      } else if (implicitResult.type === 'cancel') {
+        Logger.info('Google sign-in cancelled by user');
+        throw new Error('Google sign-in was cancelled');
+      } else {
+        Logger.error('Implicit flow failed:', implicitResult.error);
+        throw new Error(implicitResult.error?.message || 'Google sign-in failed');
+      }
     }
 
   } catch (error) {
     Logger.error('Google sign-in failed:', error.message);
     
-    // Provide user-friendly error messages
-    if (error.message.includes('cancelled')) {
-      throw new Error('Google sign-in was cancelled');
-    } else if (error.message.includes('network')) {
-      throw new Error('Network error. Please check your internet connection and try again.');
-    } else if (error.message.includes('configuration') || error.message.includes('Client ID')) {
-      throw new Error('Google sign-in is not properly configured. Please contact support.');
-    } else {
-      throw new Error(error.message || 'Failed to sign in with Google. Please try again.');
-    }
+    // Use the troubleshooting helper for user-friendly error messages
+    const userFriendlyMessage = troubleshootGoogleOAuthError(error);
+    throw new Error(userFriendlyMessage);
   }
 };
 

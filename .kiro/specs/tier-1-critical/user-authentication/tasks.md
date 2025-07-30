@@ -13,10 +13,15 @@
     - Add proper error handling and validation
     - _Requirements: 1.3, 1.4, 1.5, 5.3_
 
-  - [x] 2.2 Implement Google authentication integration
+  - [ ] 2.2 Implement Google authentication integration
+
+
+
+
     - Set up Google OAuth configuration with proper client IDs
     - Create Google sign-in function with Firebase integration
     - Handle platform-specific requirements (iOS, Android)
+    - Work with user to fix error 400 invalid URI
     - _Requirements: 1.2, 5.1, 6.3_
 
 - [x] 3. Create UserContext for authentication state management

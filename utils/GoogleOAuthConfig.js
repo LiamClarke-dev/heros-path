@@ -21,15 +21,29 @@ export const getGoogleClientId = () => {
   const iosClientId = GOOGLE_IOS_CLIENT_ID;
   const androidClientId = GOOGLE_ANDROID_CLIENT_ID;
 
-  // Platform-specific client ID selection
-  let clientId = webClientId;
+  // For Expo development builds, use platform-specific client IDs
+  // This follows Expo's recommended approach for Google authentication
+  let clientId;
+  
   if (Platform.OS === 'ios' && iosClientId) {
     clientId = iosClientId;
+    Logger.debug('Using iOS client ID for development build');
   } else if (Platform.OS === 'android' && androidClientId) {
     clientId = androidClientId;
+    Logger.debug('Using Android client ID for development build');
+  } else {
+    // Fallback to web client ID
+    clientId = webClientId;
+    Logger.debug('Using web client ID as fallback');
   }
 
   Logger.debug('Selected Google Client ID for platform:', Platform.OS, clientId ? 'SET' : 'EMPTY');
+  Logger.debug('Available client IDs:', {
+    web: webClientId ? 'SET' : 'EMPTY',
+    ios: iosClientId ? 'SET' : 'EMPTY',
+    android: androidClientId ? 'SET' : 'EMPTY',
+  });
+
   return clientId;
 };
 
@@ -38,10 +52,23 @@ export const getGoogleClientId = () => {
  * @returns {string} Redirect URI
  */
 export const getGoogleRedirectUri = () => {
-  const redirectUri = AuthSession.makeRedirectUri({
-    scheme: 'com.liamclarke.herospath',
-    useProxy: true,
-  });
+  // For development builds with platform-specific client IDs,
+  // use the custom scheme redirect URI
+  let redirectUri;
+  
+  try {
+    // Use the custom scheme for development builds
+    redirectUri = AuthSession.makeRedirectUri({
+      scheme: 'com.liamclarke.herospath',
+      useProxy: false, // Don't use proxy for platform-specific client IDs
+    });
+    
+    Logger.debug('Using custom scheme redirect URI for development build');
+  } catch (error) {
+    Logger.warn('Failed to generate custom scheme redirect URI:', error);
+    // Fallback to the custom scheme manually
+    redirectUri = 'com.liamclarke.herospath://';
+  }
 
   Logger.debug('Generated redirect URI:', redirectUri);
   return redirectUri;
@@ -53,13 +80,13 @@ export const getGoogleRedirectUri = () => {
  */
 export const validateGoogleOAuthConfig = () => {
   const clientId = getGoogleClientId();
-  
+
   if (!clientId) {
     const missingIds = [];
     if (!GOOGLE_WEB_CLIENT_ID) missingIds.push('GOOGLE_WEB_CLIENT_ID');
     if (!GOOGLE_IOS_CLIENT_ID && Platform.OS === 'ios') missingIds.push('GOOGLE_IOS_CLIENT_ID');
     if (!GOOGLE_ANDROID_CLIENT_ID && Platform.OS === 'android') missingIds.push('GOOGLE_ANDROID_CLIENT_ID');
-    
+
     throw new Error(`Missing Google OAuth configuration: ${missingIds.join(', ')}`);
   }
 
@@ -80,7 +107,7 @@ export const getAuthCodeFlowConfig = () => {
     scopes: ['openid', 'profile', 'email'],
     redirectUri,
     responseType: AuthSession.ResponseType.Code,
-    usePKCE: true,
+    usePKCE: false, // Disable PKCE for iOS client to avoid code verifier issues
     additionalParameters: {
       'access_type': 'offline',
       'prompt': 'select_account', // Always show account selection
@@ -105,6 +132,8 @@ export const getImplicitFlowConfig = () => {
     additionalParameters: {
       'nonce': Math.random().toString(36).substring(2, 15),
       'prompt': 'select_account',
+      'include_granted_scopes': 'true',
+      'response_mode': 'fragment',
     },
   };
 };
@@ -137,6 +166,14 @@ export const troubleshootGoogleOAuthError = (error) => {
   });
 
   // Common error patterns and solutions
+  if (errorMessage.includes('Custom scheme URIs are not allowed')) {
+    return 'OAuth client configuration error. The web client ID cannot be used with custom schemes. Please ensure iOS/Android client IDs are configured.';
+  }
+
+  if (errorMessage.includes('unsupported_response_type')) {
+    return 'OAuth response type not supported. This may be a configuration issue with the Google OAuth client.';
+  }
+
   if (errorMessage.includes('invalid_request') || errorMessage.includes('400')) {
     return 'OAuth configuration error. The redirect URI may not be properly configured in Google Console. Please contact support.';
   }
@@ -159,6 +196,10 @@ export const troubleshootGoogleOAuthError = (error) => {
 
   if (errorMessage.includes('cancelled')) {
     return 'Google sign-in was cancelled';
+  }
+
+  if (errorMessage.includes('code verifier') || errorMessage.includes('PKCE')) {
+    return 'OAuth code verification error. This is a configuration issue that needs to be resolved.';
   }
 
   // Generic error with troubleshooting info

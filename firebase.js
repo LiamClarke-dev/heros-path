@@ -239,98 +239,78 @@ const signInWithGoogle = async () => {
 
     const endpoints = getGoogleOAuthEndpoints();
 
-    // Try the authorization code flow first (more reliable)
-    try {
-      Logger.debug('Attempting authorization code flow');
-      
-      const authConfig = getAuthCodeFlowConfig();
-      const request = new AuthSession.AuthRequest(authConfig);
+    // Try authorization code flow first (more reliable than implicit flow)
+    Logger.debug('Using authorization code OAuth flow for Google authentication');
+    
+    const authConfig = getAuthCodeFlowConfig();
+    
+    // Create the OAuth request using the authorization code flow
+    const request = new AuthSession.AuthRequest(authConfig);
 
-      const result = await request.promptAsync({
-        authorizationEndpoint: endpoints.authorizationEndpoint,
+    Logger.debug('Making OAuth request with config:', {
+      clientId: authConfig.clientId ? 'SET' : 'EMPTY',
+      redirectUri: authConfig.redirectUri,
+      responseType: 'code',
+      usePKCE: false,
+    });
+
+    const result = await request.promptAsync({
+      authorizationEndpoint: endpoints.authorizationEndpoint,
+    });
+
+    Logger.debug('OAuth flow result:', result.type);
+
+    if (result.type === 'success') {
+      Logger.debug('OAuth success, checking for params:', Object.keys(result.params));
+      
+      const { code } = result.params;
+      
+      if (!code) {
+        Logger.error('No authorization code in OAuth result. Available params:', result.params);
+        throw new Error('No authorization code received from Google OAuth');
+      }
+
+      Logger.info('Authorization code received, exchanging for tokens');
+
+      // Exchange the authorization code for tokens
+      const tokenResult = await AuthSession.exchangeCodeAsync(
+        {
+          clientId: authConfig.clientId,
+          code: code,
+          redirectUri: authConfig.redirectUri,
+          extraParams: {},
+        },
+        {
+          tokenEndpoint: endpoints.tokenEndpoint,
+        }
+      );
+
+      Logger.debug('Token exchange result:', {
+        hasIdToken: !!tokenResult.idToken,
+        hasAccessToken: !!tokenResult.accessToken,
       });
 
-      Logger.debug('Authorization code flow result:', result.type);
-
-      if (result.type === 'success') {
-        const { code } = result.params;
-        
-        if (!code) {
-          throw new Error('No authorization code received');
-        }
-
-        // Exchange code for tokens
-        const tokenResult = await AuthSession.exchangeCodeAsync(
-          {
-            clientId: authConfig.clientId,
-            code: code,
-            redirectUri: authConfig.redirectUri,
-            extraParams: {},
-          },
-          {
-            tokenEndpoint: endpoints.tokenEndpoint,
-          }
-        );
-
-        if (tokenResult.idToken) {
-          Logger.info('Authorization code flow successful, creating Firebase credential');
-          
-          // Create a Google credential with the ID token
-          const credential = GoogleAuthProvider.credential(tokenResult.idToken);
-          
-          // Sign in to Firebase with the Google credential
-          const userCredential = await signInWithCredential(auth, credential);
-          Logger.info('Google sign-in successful:', userCredential.user.uid);
-          
-          return userCredential;
-        } else {
-          throw new Error('No ID token received from token exchange');
-        }
-      } else if (result.type === 'cancel') {
-        Logger.info('Google sign-in cancelled by user');
-        throw new Error('Google sign-in was cancelled');
-      } else {
-        throw new Error(result.error?.message || 'Authorization failed');
+      if (!tokenResult.idToken) {
+        Logger.error('No ID token received from token exchange');
+        throw new Error('No ID token received from token exchange');
       }
-      
-    } catch (codeFlowError) {
-      Logger.warn('Authorization code flow failed, trying implicit flow:', codeFlowError.message);
-      
-      // Fallback to implicit flow for ID token
-      const implicitConfig = getImplicitFlowConfig();
-      const implicitRequest = new AuthSession.AuthRequest(implicitConfig);
 
-      const implicitResult = await implicitRequest.promptAsync({
-        authorizationEndpoint: endpoints.authorizationEndpoint,
-      });
+      Logger.info('Token exchange successful, creating Firebase credential');
 
-      Logger.debug('Implicit flow result:', implicitResult.type);
+      // Create a Google credential with the ID token
+      const credential = GoogleAuthProvider.credential(tokenResult.idToken, tokenResult.accessToken);
 
-      if (implicitResult.type === 'success') {
-        const { id_token } = implicitResult.params;
-        
-        if (!id_token) {
-          Logger.error('OAuth result params:', implicitResult.params);
-          throw new Error('No ID token received from Google OAuth');
-        }
+      // Sign in to Firebase with the Google credential
+      const userCredential = await signInWithCredential(auth, credential);
+      Logger.info('Google sign-in successful:', userCredential.user.uid);
 
-        Logger.info('Implicit flow successful, creating Firebase credential');
-
-        // Create a Google credential with the token
-        const credential = GoogleAuthProvider.credential(id_token);
-
-        // Sign in to Firebase with the Google credential
-        const userCredential = await signInWithCredential(auth, credential);
-        Logger.info('Google sign-in successful:', userCredential.user.uid);
-
-        return userCredential;
-      } else if (implicitResult.type === 'cancel') {
-        Logger.info('Google sign-in cancelled by user');
-        throw new Error('Google sign-in was cancelled');
-      } else {
-        Logger.error('Implicit flow failed:', implicitResult.error);
-        throw new Error(implicitResult.error?.message || 'Google sign-in failed');
-      }
+      return userCredential;
+    } else if (result.type === 'cancel') {
+      Logger.info('Google sign-in cancelled by user');
+      throw new Error('Google sign-in was cancelled');
+    } else {
+      Logger.error('OAuth failed with result:', result);
+      throw new Error(result.error?.message || 'Google sign-in failed');
     }
 
   } catch (error) {

@@ -184,19 +184,42 @@ const useJourneyTracking = () => {
           lastUpdate: Date.now()
         }));
 
-        // Check minimum distance requirement
-        if (distance < VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE) {
+        // Enhanced journey validation
+        const validationResult = validateJourneyForSaving(journeyData, distance);
+        
+        if (!validationResult.isValid) {
           setTrackingStatus('idle');
-          Alert.alert(
-            'Journey Too Short',
-            `Your journey is only ${Math.round(distance)} meters. Journeys should be at least ${VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE} meters to be saved.`,
-            [
-              { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
-              { text: 'Save Anyway', onPress: () => promptSaveJourney(journeyData, distance) }
-            ]
-          );
+          
+          if (validationResult.type === 'too_short') {
+            Alert.alert(
+              'Journey Too Short',
+              `Your journey is only ${Math.round(distance)} meters. Journeys should be at least ${VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE} meters to be saved.`,
+              [
+                { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
+                { text: 'Save Anyway', onPress: () => promptSaveJourney(journeyData, distance) }
+              ]
+            );
+          } else if (validationResult.type === 'too_few_points') {
+            Alert.alert(
+              'Insufficient Location Data',
+              `Your journey has only ${journeyData.coordinates.length} location points. More data is needed for a meaningful journey.`,
+              [
+                { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
+                { text: 'Save Anyway', onPress: () => promptSaveJourney(journeyData, distance) }
+              ]
+            );
+          } else if (validationResult.type === 'too_short_duration') {
+            Alert.alert(
+              'Journey Too Brief',
+              `Your journey lasted only ${Math.round((journeyData.endTime - journeyData.startTime) / 1000)} seconds. Consider longer walks for better tracking.`,
+              [
+                { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
+                { text: 'Save Anyway', onPress: () => promptSaveJourney(journeyData, distance) }
+              ]
+            );
+          }
         } else {
-          // Journey is long enough, prompt to save
+          // Journey is valid, prompt to save
           setTrackingStatus('idle');
           promptSaveJourney(journeyData, distance);
         }
@@ -244,6 +267,59 @@ const useJourneyTracking = () => {
   }, []);
 
   /**
+   * Validate journey data before saving
+   * Implements comprehensive journey validation as per requirement 2.5, 2.6
+   * @param {Object} journeyData - Journey data to validate
+   * @param {number} distance - Calculated journey distance
+   * @returns {Object} Validation result with isValid flag and type
+   */
+  const validateJourneyForSaving = useCallback((journeyData, distance) => {
+    // Check minimum distance
+    if (distance < VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE) {
+      return {
+        isValid: false,
+        type: 'too_short',
+        message: `Journey distance (${Math.round(distance)}m) is below minimum (${VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE}m)`
+      };
+    }
+
+    // Check minimum coordinate count
+    if (!journeyData.coordinates || journeyData.coordinates.length < VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY) {
+      return {
+        isValid: false,
+        type: 'too_few_points',
+        message: `Journey has ${journeyData.coordinates?.length || 0} points, minimum is ${VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY}`
+      };
+    }
+
+    // Check minimum duration (30 seconds)
+    const duration = journeyData.endTime - journeyData.startTime;
+    if (duration < 30000) {
+      return {
+        isValid: false,
+        type: 'too_short_duration',
+        message: `Journey duration (${Math.round(duration / 1000)}s) is too brief`
+      };
+    }
+
+    // Check for valid timestamps
+    if (!journeyData.startTime || !journeyData.endTime || journeyData.endTime <= journeyData.startTime) {
+      return {
+        isValid: false,
+        type: 'invalid_timestamps',
+        message: 'Journey has invalid start or end times'
+      };
+    }
+
+    // All validations passed
+    return {
+      isValid: true,
+      type: 'valid',
+      message: 'Journey data is valid for saving'
+    };
+  }, []);
+
+  /**
    * Calculate distance between two coordinates using Haversine formula
    */
   const calculateDistance = useCallback((coord1, coord2) => {
@@ -269,12 +345,76 @@ const useJourneyTracking = () => {
   }, []);
 
   /**
+   * Calculate journey statistics from coordinates
+   * @param {Array} coordinates - Array of location coordinates
+   * @returns {Object} Journey statistics
+   */
+  const calculateJourneyStatistics = useCallback((coordinates) => {
+    if (!coordinates || coordinates.length < 2) {
+      return {
+        distance: 0,
+        duration: 0,
+        averageSpeed: 0,
+        maxSpeed: 0,
+        elevationGain: 0,
+        pointCount: coordinates?.length || 0
+      };
+    }
+
+    let totalDistance = 0;
+    let maxSpeed = 0;
+    let elevationGain = 0;
+    let previousElevation = null;
+
+    // Calculate distance and other metrics
+    for (let i = 1; i < coordinates.length; i++) {
+      const prev = coordinates[i - 1];
+      const curr = coordinates[i];
+
+      // Calculate distance between points
+      const distance = calculateDistance(prev, curr);
+      totalDistance += distance;
+
+      // Track max speed
+      if (curr.speed && curr.speed > maxSpeed) {
+        maxSpeed = curr.speed;
+      }
+
+      // Calculate elevation gain
+      if (curr.altitude && previousElevation !== null) {
+        const elevationDiff = curr.altitude - previousElevation;
+        if (elevationDiff > 0) {
+          elevationGain += elevationDiff;
+        }
+      }
+      previousElevation = curr.altitude;
+    }
+
+    // Calculate duration
+    const startTime = coordinates[0].timestamp;
+    const endTime = coordinates[coordinates.length - 1].timestamp;
+    const duration = endTime - startTime;
+
+    // Calculate average speed
+    const averageSpeed = duration > 0 ? (totalDistance / (duration / 1000)) : 0;
+
+    return {
+      distance: Math.round(totalDistance),
+      duration: duration,
+      averageSpeed: Math.round(averageSpeed * 100) / 100,
+      maxSpeed: Math.round(maxSpeed * 100) / 100,
+      elevationGain: Math.round(elevationGain),
+      pointCount: coordinates.length
+    };
+  }, [calculateDistance]);
+
+  /**
    * Prompt user to save journey with name
    * Implements journey saving modal state as per requirement 2.2
    */
   const promptSaveJourney = useCallback((journeyData, distance) => {
-    // Calculate journey statistics
-    const stats = JourneyService.calculateJourneyStats(journeyData.coordinates);
+    // Calculate journey statistics using the static method
+    const stats = calculateJourneyStatistics(journeyData.coordinates);
 
     // Prepare journey data for saving
     const journeyToSave = {
@@ -299,22 +439,47 @@ const useJourneyTracking = () => {
 
   /**
    * Handle journey save from naming modal
-   * Implements journey saving functionality as per requirement 2.2
+   * Implements journey saving functionality with enhanced error handling as per requirement 2.2
    */
   const saveJourney = useCallback(async (journeyName) => {
     if (!namingModal.journey) {
       console.error('No journey data to save');
+      Alert.alert(
+        'Save Error',
+        'No journey data available to save. Please try tracking a new journey.',
+        [{ text: 'OK' }]
+      );
       return;
     }
 
     try {
       setSavingJourney(true);
 
+      // Validate journey name
+      const trimmedName = journeyName?.trim();
+      if (!trimmedName || trimmedName.length === 0) {
+        throw new Error('Journey name cannot be empty');
+      }
+
+      if (trimmedName.length > VALIDATION_CONSTANTS.MAX_JOURNEY_NAME_LENGTH) {
+        throw new Error(`Journey name must be less than ${VALIDATION_CONSTANTS.MAX_JOURNEY_NAME_LENGTH} characters`);
+      }
+
       // Generate unique name if needed
       const uniqueName = await JourneyService.generateUniqueJourneyName(
         user.uid,
-        journeyName
+        trimmedName
       );
+
+      // Final validation of journey data before saving
+      const finalValidation = validateJourneyForSaving(
+        namingModal.journey, 
+        namingModal.journey.distance
+      );
+
+      if (!finalValidation.isValid) {
+        throw new Error(`Journey validation failed: ${finalValidation.message}`);
+      }
 
       // Save journey with the provided name
       const journeyData = {
@@ -322,31 +487,50 @@ const useJourneyTracking = () => {
         name: uniqueName
       };
 
-      const savedJourney = await JourneyService.saveJourney(journeyData);
+      const savedJourney = await JourneyService.createJourney(user.uid, journeyData);
 
       // Close modal and reset state
       setNamingModal({ visible: false, journey: null });
       discardJourney();
 
+      // Show success message with journey details
+      const distanceText = savedJourney.distance >= 1000 
+        ? `${(savedJourney.distance / 1000).toFixed(1)}km`
+        : `${Math.round(savedJourney.distance)}m`;
+
       Alert.alert(
-        'Journey Saved',
-        `Your journey "${savedJourney.name}" has been saved successfully!`,
-        [{ text: 'OK' }]
+        'Journey Saved Successfully!',
+        `"${savedJourney.name}" has been saved.\n\nDistance: ${distanceText}\nDuration: ${Math.round(savedJourney.duration / 60000)} minutes`,
+        [{ text: 'Great!' }]
       );
 
       return savedJourney;
     } catch (error) {
       console.error('Error saving journey:', error);
+      
+      // Provide specific error messages based on error type
+      let errorMessage = 'Failed to save your journey. Please try again.';
+      
+      if (error.message.includes('name')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('network') || error.message.includes('connection')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (error.message.includes('permission') || error.message.includes('auth')) {
+        errorMessage = 'Authentication error. Please sign in again and try saving.';
+      } else if (error.message.includes('validation')) {
+        errorMessage = error.message;
+      }
+
       Alert.alert(
         'Save Error',
-        'Failed to save your journey. Please try again.',
+        errorMessage,
         [{ text: 'OK' }]
       );
       throw error;
     } finally {
       setSavingJourney(false);
     }
-  }, [namingModal.journey, user]);
+  }, [namingModal.journey, user, validateJourneyForSaving]);
 
   /**
    * Handle journey save cancellation

@@ -298,15 +298,90 @@ class JourneyService {
   }
 
   /**
-   * Generate default name for journey
+   * Generate default name for journey with enhanced date/time formatting
    * @param {number} startTime - Journey start timestamp
    * @returns {string} Default journey name
    */
   generateDefaultName(startTime) {
     const date = new Date(startTime);
-    const dateStr = date.toLocaleDateString();
-    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return `Journey on ${dateStr} at ${timeStr}`;
+    
+    // Format date in a more readable way
+    const options = { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true
+    };
+    
+    const formattedDateTime = date.toLocaleDateString('en-US', options);
+    
+    // Create a more descriptive default name
+    const timeOfDay = this.getTimeOfDayDescription(date.getHours());
+    return `${timeOfDay} Walk - ${formattedDateTime}`;
+  }
+
+  /**
+   * Get time of day description based on hour
+   * @param {number} hour - Hour in 24-hour format
+   * @returns {string} Time of day description
+   */
+  getTimeOfDayDescription(hour) {
+    if (hour >= 5 && hour < 12) {
+      return 'Morning';
+    } else if (hour >= 12 && hour < 17) {
+      return 'Afternoon';
+    } else if (hour >= 17 && hour < 21) {
+      return 'Evening';
+    } else {
+      return 'Night';
+    }
+  }
+
+  /**
+   * Generate unique journey name by checking for duplicates
+   * @param {string} userId - User ID
+   * @param {string} baseName - Base name to make unique
+   * @returns {Promise<string>} Unique journey name
+   */
+  async generateUniqueJourneyName(userId, baseName) {
+    try {
+      if (!userId || !baseName) {
+        throw new Error('User ID and base name are required');
+      }
+
+      const trimmedName = baseName.trim();
+      if (trimmedName.length === 0) {
+        throw new Error('Base name cannot be empty');
+      }
+
+      // Get all user journeys to check for duplicates
+      const existingJourneys = await this.getUserJourneys(userId);
+      const existingNames = existingJourneys.map(journey => journey.name.toLowerCase());
+
+      // If the base name is unique, return it
+      if (!existingNames.includes(trimmedName.toLowerCase())) {
+        return trimmedName;
+      }
+
+      // Find a unique name by appending a number
+      let counter = 2;
+      let uniqueName = `${trimmedName} (${counter})`;
+
+      while (existingNames.includes(uniqueName.toLowerCase())) {
+        counter++;
+        uniqueName = `${trimmedName} (${counter})`;
+      }
+
+      return uniqueName;
+
+    } catch (error) {
+      console.error('Failed to generate unique journey name:', error);
+      // Fallback to timestamp-based name if all else fails
+      const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      return `${baseName} - ${timestamp}`;
+    }
   }
 
   /**

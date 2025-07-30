@@ -86,11 +86,15 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.2, 3.4, 3.5_
 
-  - [ ] 4.3 Create journey completion workflow
-    - Implement journey naming modal
-    - Add default name generation with date and time
-    - Create journey validation with minimum distance check
-    - Implement saveJourney function with error handling
+  - [x] 4.3 Create journey completion workflow
+
+
+
+
+    - Audit existing journey naming modal code
+    - Audit Add default name generation with date and time
+    - Audit Create journey validation with minimum distance check
+    - Audit existing implementation of saveJourney function with error handling
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.1, 2.5, 2.6_
 

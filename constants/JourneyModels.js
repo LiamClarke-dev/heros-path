@@ -165,6 +165,8 @@ export const VALIDATION_CONSTANTS = {
   MIN_COORDINATES_FOR_JOURNEY: 2,
   MAX_JOURNEY_NAME_LENGTH: 100,
   COORDINATE_BATCH_SIZE: 100,
+  MIN_JOURNEY_DURATION: 30000, // 30 seconds in milliseconds
+  MAX_JOURNEY_DURATION: 86400000, // 24 hours in milliseconds
 };
 
 // Export all types for use in other modules

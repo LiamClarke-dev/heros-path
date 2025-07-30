@@ -243,7 +243,10 @@ const MapScreen = () => {
         journeyNaming={journeyTracking.namingModal}
         onSaveJourney={journeyTracking.saveJourney}
         onCancelSaveJourney={journeyTracking.cancelSave}
-        defaultJourneyName={useMemo(() => `Journey ${new Date().toLocaleDateString()}`, [])}
+        defaultJourneyName={useMemo(() => {
+          const now = Date.now();
+          return require('../services/JourneyService').default.generateDefaultName(now);
+        }, [])}
         savingJourney={journeyTracking.savingJourney}
         placeDetail={savedPlaces.detailModal}
         onClosePlaceDetail={savedPlaces.closeDetailModal}

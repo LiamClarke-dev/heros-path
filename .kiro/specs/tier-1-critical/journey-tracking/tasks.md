@@ -99,7 +99,8 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.1, 3.2_
 
-  - [-] 5.2 Implement journey management functions
+  - [x] 5.2 Implement journey management functions
+
 
 
 

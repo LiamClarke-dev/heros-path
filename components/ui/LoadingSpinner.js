@@ -2,16 +2,18 @@
  * LoadingSpinner - Reusable loading spinner component
  * 
  * Single Responsibility: Loading state visualization
+ * Requirements: General UI component
  */
 
 import React from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 
 export const LoadingSpinner = React.memo(({ 
   size = 'large', 
-  text = null, 
-  color = null 
+  color, 
+  style,
+  containerStyle 
 }) => {
   const { theme } = useTheme();
   
@@ -23,18 +25,15 @@ export const LoadingSpinner = React.memo(({
       alignItems: 'center',
       padding: 20,
     },
-    text: {
-      marginTop: 12,
-      fontSize: 16,
-      color: theme.colors.textSecondary,
-      textAlign: 'center',
-    },
   });
 
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size={size} color={spinnerColor} />
-      {text && <Text style={styles.text}>{text}</Text>}
+    <View style={[styles.container, containerStyle]}>
+      <ActivityIndicator 
+        size={size} 
+        color={spinnerColor} 
+        style={style}
+      />
     </View>
   );
 });

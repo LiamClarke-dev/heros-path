@@ -33,6 +33,7 @@ export const JourneyListDisplay = React.memo(({
   formatJourneyMetadata,
   hasJourneys,
   isEmpty,
+  onNavigateToDiscoveries,
 }) => {
   const { theme } = useTheme();
 
@@ -40,9 +41,15 @@ export const JourneyListDisplay = React.memo(({
    * Handle journey item press - navigate to discoveries
    */
   const handleJourneyPress = useCallback((journey) => {
-    // TODO: Navigate to journey discoveries screen
-    console.log('Navigate to journey discoveries:', journey.id);
-  }, []);
+    // Navigate to discoveries screen with journey context
+    // Using React Navigation's navigate function
+    // This will be handled by the parent screen's navigation prop
+    if (onNavigateToDiscoveries) {
+      onNavigateToDiscoveries(journey);
+    } else {
+      console.log('Navigate to journey discoveries:', journey.id);
+    }
+  }, [onNavigateToDiscoveries]);
 
   /**
    * Handle journey deletion
@@ -107,6 +114,7 @@ export const JourneyListDisplay = React.memo(({
         data={journeys}
         renderItem={renderJourneyItem}
         keyExtractor={getItemKey}
+        testID="journey-list"
         ListHeaderComponent={
           <JourneyListHeader
             sortBy={sortBy}

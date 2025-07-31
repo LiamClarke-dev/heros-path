@@ -151,6 +151,7 @@ export const JourneyListItem = React.memo(({
             onPress={handleDeletePress}
             disabled={deleting}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            testID="delete-button"
           >
             <Ionicons
               name={deleting ? "hourglass-outline" : "trash-outline"}

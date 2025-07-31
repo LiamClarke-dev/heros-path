@@ -1,6 +1,10 @@
 # Implementation Plan
 
-- [ ] 1. Set up Route Encoder module
+- [x] 1. Set up Route Encoder module
+
+
+
+
 
   - Create utility functions for converting GPS coordinates to Google's encoded polyline format
   - Implement validation for coordinates to ensure they are within valid ranges

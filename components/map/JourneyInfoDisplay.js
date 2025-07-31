@@ -20,6 +20,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+// CRITICAL FIX: Use centralized distance calculation
+import { calculateJourneyDistance } from '../../utils/distanceUtils';
+
 /**
  * JourneyInfoDisplay Component Props
  * @typedef {Object} JourneyInfoDisplayProps
@@ -88,45 +91,16 @@ const JourneyInfoDisplay = ({
   };
 
   /**
-   * Calculate total journey distance using Haversine formula
+   * Calculate total journey distance using centralized calculation
+   * CRITICAL FIX: Use the same calculation as the rest of the app
    */
   const getDistance = () => {
     if (!currentPath || currentPath.length < 2) {
       return 0;
     }
 
-    let totalDistance = 0;
-    for (let i = 1; i < currentPath.length; i++) {
-      const distance = calculateDistance(currentPath[i - 1], currentPath[i]);
-      totalDistance += distance;
-    }
-
-    return Math.round(totalDistance);
-  };
-
-  /**
-   * Calculate distance between two coordinates using Haversine formula
-   */
-  const calculateDistance = (coord1, coord2) => {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = toRadians(coord2.latitude - coord1.latitude);
-    const dLon = toRadians(coord2.longitude - coord1.longitude);
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRadians(coord1.latitude)) *
-      Math.cos(toRadians(coord2.latitude)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
-  /**
-   * Convert degrees to radians
-   */
-  const toRadians = (degrees) => {
-    return degrees * (Math.PI / 180);
+    // Use centralized distance calculation for consistency
+    return Math.round(calculateJourneyDistance(currentPath));
   };
 
   /**

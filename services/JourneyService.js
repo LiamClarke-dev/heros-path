@@ -32,7 +32,7 @@ import JourneyDiscoveryService from './journey/JourneyDiscoveryService';
 import JourneyCacheService from './journey/JourneyCacheService';
 
 // Utilities
-import { calculateJourneyDistance } from '../utils/distanceUtils';
+import { calculateDistance, calculateJourneyDistance } from '../utils/distanceUtils';
 
 /**
  * JourneyService class handles core journey CRUD operations
@@ -55,8 +55,24 @@ class JourneyService {
       JourneyValidationService.validateJourneyData(journeyData);
 
       // Calculate distance and duration if not provided
-      const distance = journeyData.distance || calculateJourneyDistance(journeyData.coordinates);
-      const duration = journeyData.duration || (journeyData.endTime - journeyData.startTime);
+      // CRITICAL FIX: Use !== undefined to avoid recalculating when distance is 0
+      // Also handle both 'route' and 'coordinates' field names
+      const coordinates = journeyData.route || journeyData.coordinates || [];
+      const distance = journeyData.distance !== undefined 
+        ? journeyData.distance 
+        : calculateJourneyDistance(coordinates);
+      const duration = journeyData.duration !== undefined
+        ? journeyData.duration
+        : (journeyData.endTime - journeyData.startTime);
+        
+      console.log('JourneyService.createJourney distance handling:', {
+        providedDistance: journeyData.distance,
+        calculatedDistance: calculateJourneyDistance(coordinates),
+        finalDistance: distance,
+        coordinatesLength: coordinates.length,
+        hasRoute: !!journeyData.route,
+        hasCoordinates: !!journeyData.coordinates
+      });
 
       // Prepare journey document
       const journeyDoc = {
@@ -65,7 +81,7 @@ class JourneyService {
         name: journeyData.name || this.generateDefaultName(journeyData.startTime),
         startTime: journeyData.startTime,
         endTime: journeyData.endTime,
-        route: journeyData.coordinates || [],
+        route: coordinates,
         distance,
         duration,
         status: 'completed',
@@ -439,8 +455,8 @@ class JourneyService {
       const prev = coordinates[i - 1];
       const curr = coordinates[i];
 
-      // Calculate distance between points
-      const distance = this.calculateDistance(prev, curr);
+      // Calculate distance between points using centralized calculation
+      const distance = calculateDistance(prev, curr);
       totalDistance += distance;
 
       // Track max speed

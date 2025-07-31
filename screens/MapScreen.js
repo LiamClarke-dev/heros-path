@@ -19,10 +19,15 @@ import MapRenderer from '../components/map/MapRenderer';
 import MapControls from '../components/map/MapControls';
 import MapStatusDisplays from '../components/map/MapStatusDisplays';
 import MapModals from '../components/map/MapModals';
+import DistanceDebugOverlay from '../components/ui/DistanceDebugOverlay';
 
 // Contexts
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
+
+// CRITICAL FIX: Use centralized distance calculation
+import { calculateDistance } from '../utils/distanceUtils';
+import { calculateJourneyDistance } from '../utils/distanceUtils';
 
 /**
  * MapScreen - Refactored with modular architecture
@@ -79,6 +84,9 @@ const MapScreen = () => {
 
   // Local state for GPS details expansion
   const [gpsExpanded, setGpsExpanded] = useState(false);
+  
+  // Debug overlay state for production testing
+  const [debugOverlayVisible, setDebugOverlayVisible] = useState(false);
 
   // All hooks integrated - permissions + location tracking + map state + journey tracking + saved routes + saved places + map style
   const permissions = useMapPermissions();
@@ -96,25 +104,8 @@ const MapScreen = () => {
     locationTracking.updatePermissions(permissions.granted);
   }, [permissions.granted, locationTracking.updatePermissions]);
 
-  /**
-   * Calculate distance between two GPS coordinates using Haversine formula
-   * Used to throttle position updates and prevent excessive re-renders
-   * 
-   * @param {Object} pos1 - First position {latitude, longitude}
-   * @param {Object} pos2 - Second position {latitude, longitude}
-   * @returns {number} Distance in meters, or Infinity if positions invalid
-   */
-  const calculateDistance = useCallback((pos1, pos2) => {
-    if (!pos1 || !pos2) return Infinity;
-    const R = 6371000; // Earth's radius in meters
-    const dLat = (pos2.latitude - pos1.latitude) * Math.PI / 180;
-    const dLon = (pos2.longitude - pos1.longitude) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(pos1.latitude * Math.PI / 180) * Math.cos(pos2.latitude * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }, []);
+  // CRITICAL FIX: Use centralized distance calculation from utils
+  // This ensures consistency across the entire application
 
   /**
    * Coordinate location data between hooks with throttling and automatic centering
@@ -167,7 +158,7 @@ const MapScreen = () => {
         lastProcessedPosition.current = currentPos;
       }
     }
-  }, [locationTracking.currentPosition, calculateDistance, mapState, journeyTracking]);
+  }, [locationTracking.currentPosition, mapState, journeyTracking]);
 
   // Permission handling is now centralized through useMapPermissions hook
 
@@ -185,7 +176,30 @@ const MapScreen = () => {
     await locationTracking.locateMe(mapRef);
   }, [locationTracking.locateMe]);
 
+  // Debug calculations for production testing
+  const debugDistances = useMemo(() => {
+    if (!journeyTracking.pathToRender || journeyTracking.pathToRender.length < 2) {
+      return {
+        trackingDistance: 0,
+        validationDistance: 0,
+        modalDistance: 0,
+        pathLength: journeyTracking.pathToRender?.length || 0,
+      };
+    }
 
+    const trackingDistance = Math.round(calculateJourneyDistance(journeyTracking.pathToRender));
+    const modalDistance = journeyTracking.namingModal.journey?.distance || 0;
+    
+    return {
+      trackingDistance,
+      validationDistance: trackingDistance, // Should be the same now
+      modalDistance,
+      pathLength: journeyTracking.pathToRender.length,
+    };
+  }, [
+    journeyTracking.pathToRender, 
+    journeyTracking.namingModal.journey?.distance
+  ]);
 
   return (
     <View style={styles.container}>

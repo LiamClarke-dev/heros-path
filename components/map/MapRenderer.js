@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import MapView from 'react-native-maps';
 
@@ -54,7 +54,6 @@ const MapRenderer = ({
   style,
 }) => {
   const mapRef = useRef(null);
-  const lastAnimatedPosition = useRef(null);
 
   // Memoize initial region - only set once when component mounts
   // This prevents the map from jumping to San Francisco on every render
@@ -79,19 +78,6 @@ const MapRenderer = ({
       longitudeDelta: 0.05,
     };
   }, []); // Empty dependency array - only calculate once on mount
-
-  // Calculate distance between two coordinates
-  const calculateDistance = useCallback((pos1, pos2) => {
-    if (!pos1 || !pos2) return Infinity;
-    const R = 6371000; // Earth's radius in meters
-    const dLat = (pos2.latitude - pos1.latitude) * Math.PI / 180;
-    const dLon = (pos2.longitude - pos1.longitude) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(pos1.latitude * Math.PI / 180) * Math.cos(pos2.latitude * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }, []);
 
   // Note: Map animation is handled by the locate function and journey tracking
   // We don't need to animate here to prevent conflicts

@@ -33,6 +33,16 @@ const JourneyNamingModal = ({
   journeyStats = {},
   loading = false,
 }) => {
+  // Debug logging to track distance flow
+  React.useEffect(() => {
+    if (visible && journeyStats.distance !== undefined) {
+      console.log('JourneyNamingModal received stats:', {
+        distance: journeyStats.distance,
+        duration: journeyStats.duration,
+        visible: visible
+      });
+    }
+  }, [visible, journeyStats.distance, journeyStats.duration]);
   const [journeyName, setJourneyName] = useState(defaultName);
   const [nameError, setNameError] = useState('');
 

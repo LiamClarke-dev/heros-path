@@ -460,6 +460,12 @@ const useJourneyTracking = () => {
    * Implements journey saving modal state as per requirement 2.2
    */
   const promptSaveJourney = useCallback((journeyData, distance) => {
+    console.log('promptSaveJourney called with:', {
+      distance: Math.round(distance),
+      pathToRenderLength: pathToRender.length,
+      journeyDataLength: journeyData.coordinates?.length || 0
+    });
+
     // CRITICAL FIX: Use pathToRender for route data to ensure consistency
     // The filtered coordinates from journeyData may be incomplete
     const routeData = pathToRender.length > journeyData.coordinates.length 
@@ -468,6 +474,20 @@ const useJourneyTracking = () => {
 
     // Calculate journey statistics using the actual route data
     const stats = calculateJourneyStatistics(routeData);
+    
+    // CRITICAL FIX: Override stats distance with the passed distance for consistency
+    // This ensures the modal displays the same distance as the tracking display
+    const correctedStats = {
+      ...stats,
+      distance: Math.round(distance) // Use the passed distance, not calculated stats distance
+    };
+    
+    console.log('Journey statistics calculated:', {
+      originalStatsDistance: stats.distance,
+      correctedStatsDistance: correctedStats.distance,
+      passedDistance: Math.round(distance),
+      routeDataLength: routeData.length
+    });
 
     // Prepare journey data for saving
     const journeyToSave = {
@@ -477,11 +497,17 @@ const useJourneyTracking = () => {
       startTime: journeyStartTime,
       endTime: Date.now(),
       route: routeData, // Use the more complete route data
-      distance: Math.round(distance),
+      distance: Math.round(distance), // Use the passed distance, not stats.distance
       duration: Date.now() - journeyStartTime,
       status: 'completed',
-      stats
+      stats: correctedStats // Use corrected stats with consistent distance
     };
+
+    console.log('Journey prepared for saving:', {
+      journeyDistance: journeyToSave.distance,
+      journeyDuration: journeyToSave.duration,
+      routeLength: journeyToSave.route.length
+    });
 
     // Set journey data and show naming modal
     setNamingModal({
@@ -505,6 +531,13 @@ const useJourneyTracking = () => {
       return;
     }
 
+    console.log('saveJourney called with journey data:', {
+      journeyDistance: namingModal.journey.distance,
+      journeyDuration: namingModal.journey.duration,
+      routeLength: namingModal.journey.route?.length || 0,
+      journeyName: journeyName?.trim()
+    });
+
     try {
       setSavingJourney(true);
 
@@ -524,11 +557,15 @@ const useJourneyTracking = () => {
         trimmedName
       );
 
+      console.log('About to validate journey with distance:', namingModal.journey.distance);
+
       // Final validation of journey data before saving
       const finalValidation = validateJourneyForSaving(
         namingModal.journey, 
         namingModal.journey.distance
       );
+
+      console.log('Validation result:', finalValidation);
 
       if (!finalValidation.isValid) {
         throw new Error(`Journey validation failed: ${finalValidation.message}`);

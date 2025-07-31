@@ -1,9 +1,7 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react';
 import {
   View,
   StyleSheet,
-  Text,
-  TouchableOpacity,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -78,6 +76,9 @@ const MapScreen = () => {
   const mapRef = useRef(null);
   const lastProcessedPosition = useRef(null);
   const hasInitiallyLocated = useRef(false);
+
+  // Local state for GPS details expansion
+  const [gpsExpanded, setGpsExpanded] = useState(false);
 
   // All hooks integrated - permissions + location tracking + map state + journey tracking + saved routes + saved places + map style
   const permissions = useMapPermissions();
@@ -222,6 +223,7 @@ const MapScreen = () => {
         onToggleSavedRoutes={savedRoutes.toggleVisibility}
         onToggleSavedPlaces={savedPlaces.toggleVisibility}
         onToggleMapStyle={mapStyle.toggleSelector}
+        onGPSStatusPress={useCallback(() => setGpsExpanded(prev => !prev), [])}
       />
 
       <MapStatusDisplays
@@ -236,7 +238,8 @@ const MapScreen = () => {
           visible: locationTracking.gpsStatus !== null
         }), [locationTracking.gpsStatus])}
         theme={currentTheme}
-        onGPSStatusPress={useCallback(() => console.log('GPS status pressed'), [])}
+        onGPSStatusPress={useCallback(() => setGpsExpanded(prev => !prev), [])}
+        gpsExpanded={gpsExpanded}
       />
 
       <MapModals

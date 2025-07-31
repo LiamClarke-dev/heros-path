@@ -160,7 +160,7 @@ export const DEFAULT_JOURNEY_DATA_VALUES = {
 
 // Validation constants
 export const VALIDATION_CONSTANTS = {
-  MIN_JOURNEY_DISTANCE: 50, // meters
+  MIN_JOURNEY_DISTANCE: 50, // meters - keeping at 50m but using consistent calculation
   MAX_COORDINATE_ACCURACY: 100, // meters
   MIN_COORDINATES_FOR_JOURNEY: 2,
   MAX_JOURNEY_NAME_LENGTH: 100,

@@ -10,6 +10,9 @@ import { useUser } from '../contexts/UserContext';
 // Constants
 import { DEFAULT_JOURNEY_VALUES, VALIDATION_CONSTANTS } from '../constants/JourneyModels';
 
+// Utilities
+import { calculateDistance, calculateJourneyDistance } from '../utils/distanceUtils';
+
 /**
  * Custom hook for managing journey tracking state and logic
  * 
@@ -174,17 +177,30 @@ const useJourneyTracking = () => {
       const journeyData = await locationTrackingHook.stopTracking();
 
       if (journeyData && journeyData.coordinates && journeyData.coordinates.length > 0) {
-        // Calculate journey distance
-        const distance = calculateJourneyDistance(journeyData.coordinates);
+        // CRITICAL FIX: Use pathToRender for distance calculation instead of filtered coordinates
+        // This ensures consistency between display and validation
+        const actualDistance = calculateJourneyDistance(pathToRender);
+        const filteredDistance = calculateJourneyDistance(journeyData.coordinates);
+        
+        console.log('Distance comparison:', {
+          pathToRenderPoints: pathToRender.length,
+          pathToRenderDistance: Math.round(actualDistance),
+          filteredPoints: journeyData.coordinates.length,
+          filteredDistance: Math.round(filteredDistance),
+          discrepancy: Math.round(actualDistance - filteredDistance)
+        });
+
+        // Use the actual distance from pathToRender for validation
+        const distance = actualDistance;
 
         // Update final metrics
         setTrackingMetrics(prev => ({
           ...prev,
-          pointsRecorded: journeyData.coordinates.length,
+          pointsRecorded: pathToRender.length, // Use actual points recorded
           lastUpdate: Date.now()
         }));
 
-        // Enhanced journey validation
+        // Enhanced journey validation using actual distance
         const validationResult = validateJourneyForSaving(journeyData, distance);
         
         if (!validationResult.isValid) {
@@ -195,6 +211,7 @@ const useJourneyTracking = () => {
               'Journey Too Short',
               `Your journey is only ${Math.round(distance)} meters. Journeys should be at least ${VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE} meters to be saved.`,
               [
+                { text: 'Continue Journey', onPress: () => continueJourney(locationTrackingHook) },
                 { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
                 { text: 'Save Anyway', onPress: () => promptSaveJourney(journeyData, distance) }
               ]
@@ -202,8 +219,9 @@ const useJourneyTracking = () => {
           } else if (validationResult.type === 'too_few_points') {
             Alert.alert(
               'Insufficient Location Data',
-              `Your journey has only ${journeyData.coordinates.length} location points. More data is needed for a meaningful journey.`,
+              `Your journey has only ${pathToRender.length} location points. More data is needed for a meaningful journey.`,
               [
+                { text: 'Continue Journey', onPress: () => continueJourney(locationTrackingHook) },
                 { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
                 { text: 'Save Anyway', onPress: () => promptSaveJourney(journeyData, distance) }
               ]
@@ -211,8 +229,9 @@ const useJourneyTracking = () => {
           } else if (validationResult.type === 'too_short_duration') {
             Alert.alert(
               'Journey Too Brief',
-              `Your journey lasted only ${Math.round((journeyData.endTime - journeyData.startTime) / 1000)} seconds. Consider longer walks for better tracking.`,
+              `Your journey lasted only ${Math.round((Date.now() - journeyStartTime) / 1000)} seconds. Consider longer walks for better tracking.`,
               [
+                { text: 'Continue Journey', onPress: () => continueJourney(locationTrackingHook) },
                 { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
                 { text: 'Save Anyway', onPress: () => promptSaveJourney(journeyData, distance) }
               ]
@@ -246,25 +265,10 @@ const useJourneyTracking = () => {
       );
       return null;
     }
-  }, [currentJourneyId, journeyStartTime, user]);
+  }, [currentJourneyId, journeyStartTime, user, pathToRender, calculateJourneyDistance, validateJourneyForSaving]);
 
-  /**
-   * Calculate total distance of a journey
-   * Implements path management as per requirement 2.1
-   */
-  const calculateJourneyDistance = useCallback((coordinates) => {
-    if (!coordinates || coordinates.length < 2) {
-      return 0;
-    }
-
-    let totalDistance = 0;
-    for (let i = 1; i < coordinates.length; i++) {
-      const distance = calculateDistance(coordinates[i - 1], coordinates[i]);
-      totalDistance += distance;
-    }
-
-    return totalDistance;
-  }, []);
+  // Note: calculateJourneyDistance is now imported from utils/distanceUtils.js
+  // This ensures consistency across the entire application
 
   /**
    * Validate journey data before saving
@@ -274,7 +278,7 @@ const useJourneyTracking = () => {
    * @returns {Object} Validation result with isValid flag and type
    */
   const validateJourneyForSaving = useCallback((journeyData, distance) => {
-    // Check minimum distance
+    // Check minimum distance using actual calculated distance
     if (distance < VALIDATION_CONSTANTS.MIN_JOURNEY_DISTANCE) {
       return {
         isValid: false,
@@ -283,31 +287,33 @@ const useJourneyTracking = () => {
       };
     }
 
-    // Check minimum coordinate count
-    if (!journeyData.coordinates || journeyData.coordinates.length < VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY) {
+    // CRITICAL FIX: Use pathToRender for coordinate count validation
+    // This ensures consistency with the displayed journey
+    const actualCoordinateCount = pathToRender.length;
+    if (actualCoordinateCount < VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY) {
       return {
         isValid: false,
         type: 'too_few_points',
-        message: `Journey has ${journeyData.coordinates?.length || 0} points, minimum is ${VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY}`
+        message: `Journey has ${actualCoordinateCount} points, minimum is ${VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY}`
       };
     }
 
-    // Check minimum duration (30 seconds)
-    const duration = journeyData.endTime - journeyData.startTime;
-    if (duration < 30000) {
+    // Check minimum duration using actual journey time
+    const actualDuration = Date.now() - journeyStartTime;
+    if (actualDuration < 30000) {
       return {
         isValid: false,
         type: 'too_short_duration',
-        message: `Journey duration (${Math.round(duration / 1000)}s) is too brief`
+        message: `Journey duration (${Math.round(actualDuration / 1000)}s) is too brief`
       };
     }
 
     // Check for valid timestamps
-    if (!journeyData.startTime || !journeyData.endTime || journeyData.endTime <= journeyData.startTime) {
+    if (!journeyStartTime || journeyStartTime <= 0) {
       return {
         isValid: false,
         type: 'invalid_timestamps',
-        message: 'Journey has invalid start or end times'
+        message: 'Journey has invalid start time'
       };
     }
 
@@ -317,32 +323,10 @@ const useJourneyTracking = () => {
       type: 'valid',
       message: 'Journey data is valid for saving'
     };
-  }, []);
+  }, [pathToRender, journeyStartTime]);
 
-  /**
-   * Calculate distance between two coordinates using Haversine formula
-   */
-  const calculateDistance = useCallback((coord1, coord2) => {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = toRadians(coord2.latitude - coord1.latitude);
-    const dLon = toRadians(coord2.longitude - coord1.longitude);
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRadians(coord1.latitude)) *
-      Math.cos(toRadians(coord2.latitude)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }, []);
-
-  /**
-   * Convert degrees to radians
-   */
-  const toRadians = useCallback((degrees) => {
-    return degrees * (Math.PI / 180);
-  }, []);
+  // Note: calculateDistance is now imported from utils/distanceUtils.js
+  // This ensures consistency across the entire application
 
   /**
    * Calculate journey statistics from coordinates
@@ -409,12 +393,54 @@ const useJourneyTracking = () => {
   }, [calculateDistance]);
 
   /**
+   * Continue journey after attempting to stop
+   * Allows user to resume tracking if journey is too short
+   */
+  const continueJourney = useCallback(async (locationTrackingHook) => {
+    try {
+      console.log('Continuing journey tracking...');
+      
+      // Reset to active tracking state
+      setTrackingStatus('active');
+      setLastError(null);
+      
+      // Restart location tracking with the same journey ID
+      const success = await locationTrackingHook.startTracking(currentJourneyId, {
+        warmup: false, // Skip warmup since we're continuing
+        timeInterval: 2000,
+        distanceInterval: 5
+      });
+
+      if (success) {
+        console.log('Journey tracking resumed successfully');
+      } else {
+        throw new Error('Failed to resume location tracking');
+      }
+    } catch (error) {
+      console.error('Error continuing journey:', error);
+      setTrackingStatus('error');
+      setLastError(error.message);
+      Alert.alert(
+        'Resume Error',
+        'Failed to resume journey tracking. You may need to start a new journey.',
+        [{ text: 'OK' }]
+      );
+    }
+  }, [currentJourneyId]);
+
+  /**
    * Prompt user to save journey with name
    * Implements journey saving modal state as per requirement 2.2
    */
   const promptSaveJourney = useCallback((journeyData, distance) => {
-    // Calculate journey statistics using the static method
-    const stats = calculateJourneyStatistics(journeyData.coordinates);
+    // CRITICAL FIX: Use pathToRender for route data to ensure consistency
+    // The filtered coordinates from journeyData may be incomplete
+    const routeData = pathToRender.length > journeyData.coordinates.length 
+      ? pathToRender 
+      : journeyData.coordinates;
+
+    // Calculate journey statistics using the actual route data
+    const stats = calculateJourneyStatistics(routeData);
 
     // Prepare journey data for saving
     const journeyToSave = {
@@ -423,7 +449,7 @@ const useJourneyTracking = () => {
       userId: user.uid,
       startTime: journeyStartTime,
       endTime: Date.now(),
-      route: journeyData.coordinates,
+      route: routeData, // Use the more complete route data
       distance: Math.round(distance),
       duration: Date.now() - journeyStartTime,
       status: 'completed',
@@ -435,7 +461,7 @@ const useJourneyTracking = () => {
       visible: true,
       journey: journeyToSave
     });
-  }, [currentJourneyId, journeyStartTime, user]);
+  }, [currentJourneyId, journeyStartTime, user, pathToRender, calculateJourneyStatistics]);
 
   /**
    * Handle journey save from naming modal
@@ -655,6 +681,7 @@ const useJourneyTracking = () => {
     discardJourney,
     addToPath,
     resetTrackingState,
+    continueJourney,
   };
 };
 

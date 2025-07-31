@@ -5,6 +5,9 @@
  * Requirements: 1.3, 2.2, 5.3
  */
 
+// Utilities
+import { calculateJourneyDistance, calculateDistance } from '../../utils/distanceUtils';
+
 /**
  * JourneyStatsService handles journey statistics and calculations
  */
@@ -153,42 +156,12 @@ class JourneyStatsService {
    * @returns {number} Distance in meters
    */
   calculateDistance(coordinates) {
-    if (!coordinates || coordinates.length < 2) {
-      return 0;
-    }
-
-    let totalDistance = 0;
-    for (let i = 1; i < coordinates.length; i++) {
-      const prev = coordinates[i - 1];
-      const curr = coordinates[i];
-      totalDistance += this.haversineDistance(
-        prev.latitude, prev.longitude,
-        curr.latitude, curr.longitude
-      );
-    }
-
-    return Math.round(totalDistance);
+    // Use centralized distance calculation for consistency
+    return Math.round(calculateJourneyDistance(coordinates));
   }
 
-  /**
-   * Calculate distance between two points using Haversine formula
-   * @param {number} lat1 - First point latitude
-   * @param {number} lon1 - First point longitude
-   * @param {number} lat2 - Second point latitude
-   * @param {number} lon2 - Second point longitude
-   * @returns {number} Distance in meters
-   */
-  haversineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = this.toRadians(lat2 - lat1);
-    const dLon = this.toRadians(lon2 - lon1);
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
+  // Note: Distance calculations now use centralized utils/distanceUtils.js
+  // This ensures consistency across the entire application
 
   /**
    * Convert degrees to radians

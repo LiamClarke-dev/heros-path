@@ -31,6 +31,9 @@ import JourneyStatsService from './journey/JourneyStatsService';
 import JourneyDiscoveryService from './journey/JourneyDiscoveryService';
 import JourneyCacheService from './journey/JourneyCacheService';
 
+// Utilities
+import { calculateJourneyDistance } from '../utils/distanceUtils';
+
 /**
  * JourneyService class handles core journey CRUD operations
  */
@@ -52,7 +55,7 @@ class JourneyService {
       JourneyValidationService.validateJourneyData(journeyData);
 
       // Calculate distance and duration if not provided
-      const distance = journeyData.distance || JourneyStatsService.calculateDistance(journeyData.coordinates);
+      const distance = journeyData.distance || calculateJourneyDistance(journeyData.coordinates);
       const duration = journeyData.duration || (journeyData.endTime - journeyData.startTime);
 
       // Prepare journey document
@@ -473,26 +476,8 @@ class JourneyService {
     };
   }
 
-  /**
-   * Calculate distance between two coordinates using Haversine formula
-   * @param {Object} coord1 - First coordinate {latitude, longitude}
-   * @param {Object} coord2 - Second coordinate {latitude, longitude}
-   * @returns {number} Distance in meters
-   */
-  static calculateDistance(coord1, coord2) {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = (coord2.latitude - coord1.latitude) * Math.PI / 180;
-    const dLon = (coord2.longitude - coord1.longitude) * Math.PI / 180;
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(coord1.latitude * Math.PI / 180) *
-      Math.cos(coord2.latitude * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
+  // Note: Distance calculations now use centralized utils/distanceUtils.js
+  // This ensures consistency across the entire application
 
 
 }

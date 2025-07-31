@@ -3,6 +3,9 @@
  * for location tracking services.
  */
 
+// Utilities
+import { calculateDistance } from '../../utils/distanceUtils';
+
 // Battery optimization constants
 const BATTERY_OPTIMIZATION_LEVELS = {
   HIGH_ACCURACY: {
@@ -129,35 +132,8 @@ class LocationOptimizer {
     }
   }
 
-  /**
-   * Calculate distance between two coordinates using Haversine formula
-   * @param {Object} coord1 - First coordinate {latitude, longitude}
-   * @param {Object} coord2 - Second coordinate {latitude, longitude}
-   * @returns {number} - Distance in meters
-   */
-  calculateDistance(coord1, coord2) {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = this.toRadians(coord2.latitude - coord1.latitude);
-    const dLon = this.toRadians(coord2.longitude - coord1.longitude);
-    
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(coord1.latitude)) * 
-      Math.cos(this.toRadians(coord2.latitude)) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  /**
-   * Convert degrees to radians
-   * @param {number} degrees - Degrees to convert
-   * @returns {number} - Radians
-   */
-  toRadians(degrees) {
-    return degrees * (Math.PI / 180);
-  }
+  // Note: Distance calculations now use centralized utils/distanceUtils.js
+  // This ensures consistency across the entire application
 
   /**
    * Detect if user is stationary to reduce location updates (Requirement 6.1)
@@ -189,7 +165,7 @@ class LocationOptimizer {
     let totalMovement = 0;
     
     for (let i = 1; i < recentLocations.length; i++) {
-      const distance = this.calculateDistance(
+      const distance = calculateDistance(
         recentLocations[i - 1].coords,
         recentLocations[i].coords
       );

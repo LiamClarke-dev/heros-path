@@ -3,10 +3,14 @@
  * and location data processing for journey tracking.
  */
 
+// Utilities
+import { calculateDistance } from '../../utils/distanceUtils';
+
 // Location filtering and smoothing constants
-const ACCURACY_THRESHOLD = 50; // meters - reject readings with accuracy worse than this
-const MIN_DISTANCE_THRESHOLD = 5; // meters - minimum distance between points
-const MAX_SPEED_THRESHOLD = 50; // m/s - maximum reasonable walking/running speed
+// CRITICAL FIX: Relaxed filtering to prevent distance calculation discrepancies
+const ACCURACY_THRESHOLD = 100; // meters - increased from 50m to be less aggressive
+const MIN_DISTANCE_THRESHOLD = 2; // meters - reduced from 5m to capture more movement
+const MAX_SPEED_THRESHOLD = 50; // m/s - maximum reasonable walking/running speed (unchanged)
 const SMOOTHING_WINDOW_SIZE = 3; // number of points to use for smoothing
 
 class LocationFilter {
@@ -60,35 +64,8 @@ class LocationFilter {
     );
   }
 
-  /**
-   * Calculate distance between two coordinates using Haversine formula
-   * @param {Object} coord1 - First coordinate {latitude, longitude}
-   * @param {Object} coord2 - Second coordinate {latitude, longitude}
-   * @returns {number} - Distance in meters
-   */
-  calculateDistance(coord1, coord2) {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = this.toRadians(coord2.latitude - coord1.latitude);
-    const dLon = this.toRadians(coord2.longitude - coord1.longitude);
-    
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(coord1.latitude)) * 
-      Math.cos(this.toRadians(coord2.latitude)) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  /**
-   * Convert degrees to radians
-   * @param {number} degrees - Degrees to convert
-   * @returns {number} - Radians
-   */
-  toRadians(degrees) {
-    return degrees * (Math.PI / 180);
-  }
+  // Note: Distance calculations now use centralized utils/distanceUtils.js
+  // This ensures consistency across the entire application
 
   /**
    * Check if location update represents reasonable movement
@@ -101,7 +78,7 @@ class LocationFilter {
       return true; // First location is always reasonable
     }
 
-    const distance = this.calculateDistance(lastLocation.coords, newLocation.coords);
+    const distance = calculateDistance(lastLocation.coords, newLocation.coords);
     const timeDiff = (newLocation.timestamp - lastLocation.timestamp) / 1000; // seconds
     
     // Check minimum distance threshold
@@ -175,15 +152,18 @@ class LocationFilter {
    * @returns {Object|null} - Processed location or null if rejected
    */
   processLocationReading(location) {
+    const totalBefore = this.locationHistory.length;
+    
     // Check basic accuracy
     if (!this.isLocationAccurate(location)) {
+      console.log(`LocationFilter: Rejected location due to accuracy (${location.coords?.accuracy}m > ${ACCURACY_THRESHOLD}m)`);
       return null;
     }
 
     // Check movement reasonableness
     const lastLocation = this.locationHistory[this.locationHistory.length - 1];
     if (!this.isReasonableMovement(location, lastLocation)) {
-      return null;
+      return null; // Logging is already done in isReasonableMovement
     }
 
     // Add to history for smoothing
@@ -196,6 +176,11 @@ class LocationFilter {
 
     // Apply smoothing
     const smoothedLocation = this.smoothLocation(this.locationHistory);
+    
+    // Log filtering statistics periodically
+    if (this.locationHistory.length % 10 === 0) {
+      console.log(`LocationFilter: Accepted ${this.locationHistory.length} locations (${((this.locationHistory.length / (totalBefore + 1)) * 100).toFixed(1)}% acceptance rate)`);
+    }
     
     return smoothedLocation;
   }

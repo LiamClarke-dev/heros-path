@@ -33,31 +33,13 @@ export const calculateBearing = (coord1, coord2) => {
   const y = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon);
 
   let bearing = toDegrees(Math.atan2(x, y));
-  
+
   // Normalize to 0-360 degrees
   return (bearing + 360) % 360;
 };
 
-/**
- * Calculate distance between two coordinates using Haversine formula
- * @param {Object} coord1 - First coordinate {latitude, longitude}
- * @param {Object} coord2 - Second coordinate {latitude, longitude}
- * @returns {number} Distance in meters
- */
-export const calculateDistance = (coord1, coord2) => {
-  const R = 6371000; // Earth's radius in meters
-  const dLat = toRadians(coord2.latitude - coord1.latitude);
-  const dLon = toRadians(coord2.longitude - coord1.longitude);
-  
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRadians(coord1.latitude)) * 
-    Math.cos(toRadians(coord2.latitude)) * 
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
+// Import centralized distance calculation
+import { calculateDistance } from './distanceUtils';
 
 /**
  * Determine sprite direction based on movement between two points
@@ -70,7 +52,7 @@ export const getDirection = (points) => {
   }
 
   const [prevPoint, currentPoint] = points;
-  
+
   // Validate coordinates
   if (!isValidCoordinate(prevPoint) || !isValidCoordinate(currentPoint)) {
     return SPRITE_STATES.IDLE;
@@ -78,7 +60,7 @@ export const getDirection = (points) => {
 
   // Calculate distance to determine if there's significant movement
   const distance = calculateDistance(prevPoint, currentPoint);
-  
+
   if (distance < SPRITE_CONFIG.MIN_MOVEMENT_DISTANCE) {
     return SPRITE_STATES.IDLE;
   }
@@ -94,7 +76,7 @@ export const getDirection = (points) => {
 
   // Calculate bearing (direction of movement)
   const bearing = calculateBearing(prevPoint, currentPoint);
-  
+
   // Convert bearing to sprite direction
   return bearingToSpriteDirection(bearing);
 };
@@ -106,10 +88,10 @@ export const getDirection = (points) => {
  */
 export const bearingToSpriteDirection = (bearing) => {
   const { ANGLE_RANGES } = DIRECTION_CONSTANTS;
-  
+
   // Normalize bearing to 0-360
   const normalizedBearing = (bearing + 360) % 360;
-  
+
   // Check each direction range
   if (isInRange(normalizedBearing, ANGLE_RANGES.NORTH)) {
     return SPRITE_STATES.WALK_UP;
@@ -120,7 +102,7 @@ export const bearingToSpriteDirection = (bearing) => {
   } else if (isInRange(normalizedBearing, ANGLE_RANGES.WEST)) {
     return SPRITE_STATES.WALK_LEFT;
   }
-  
+
   // Default to idle if no clear direction
   return SPRITE_STATES.IDLE;
 };
@@ -149,7 +131,7 @@ const isInRange = (angle, range) => {
 export const getGPSState = (accuracy) => {
   // Import GPS_SIGNAL_LEVELS here to avoid circular dependency
   const { GPS_SIGNAL_LEVELS } = require('../constants/SpriteConstants');
-  
+
   if (accuracy === null || accuracy === undefined) {
     return {
       level: 'LOST',
@@ -158,7 +140,7 @@ export const getGPSState = (accuracy) => {
       accuracy: null,
     };
   }
-  
+
   // Find the appropriate signal level
   for (const [level, config] of Object.entries(GPS_SIGNAL_LEVELS)) {
     if (accuracy <= config.threshold) {
@@ -170,7 +152,7 @@ export const getGPSState = (accuracy) => {
       };
     }
   }
-  
+
   // Fallback (should not reach here)
   return {
     level: 'LOST',
@@ -189,7 +171,7 @@ export const getGPSSignalStrength = (accuracy) => {
   if (accuracy === null || accuracy === undefined) {
     return 0;
   }
-  
+
   // Convert accuracy to signal strength (lower accuracy = higher strength)
   // Excellent (5m) = 100%, Good (10m) = 80%, Fair (20m) = 60%, Poor (50m) = 40%, Very Poor (100m) = 20%
   if (accuracy <= 5) return 100;
@@ -209,7 +191,7 @@ export const getGPSSignalStrength = (accuracy) => {
 export const getSpriteState = (recentPoints, gpsAccuracy) => {
   const gpsStateData = getGPSState(gpsAccuracy);
   const signalStrength = getGPSSignalStrength(gpsAccuracy);
-  
+
   // If GPS is lost, show GPS lost state regardless of movement
   if (gpsStateData.indicator === 'LOST') {
     return {
@@ -219,10 +201,10 @@ export const getSpriteState = (recentPoints, gpsAccuracy) => {
       signalStrength,
     };
   }
-  
+
   // Determine movement direction
   const movementState = getDirection(recentPoints);
-  
+
   return {
     state: movementState,
     gpsState: gpsStateData,
@@ -241,7 +223,7 @@ export const getSpriteState = (recentPoints, gpsAccuracy) => {
 export const smoothDirectionChange = (newDirection, currentDirection, lastUpdateTime) => {
   const now = Date.now();
   const timeSinceLastUpdate = now - lastUpdateTime;
-  
+
   // Always allow updates to/from idle state
   if (currentDirection === SPRITE_STATES.IDLE || newDirection === SPRITE_STATES.IDLE) {
     return {
@@ -250,7 +232,7 @@ export const smoothDirectionChange = (newDirection, currentDirection, lastUpdate
       timestamp: now,
     };
   }
-  
+
   // Throttle rapid direction changes
   if (timeSinceLastUpdate < SPRITE_CONFIG.DIRECTION_UPDATE_THROTTLE) {
     return {
@@ -259,7 +241,7 @@ export const smoothDirectionChange = (newDirection, currentDirection, lastUpdate
       timestamp: lastUpdateTime,
     };
   }
-  
+
   // Allow direction change if enough time has passed
   return {
     shouldUpdate: true,
@@ -312,10 +294,10 @@ const toDegrees = (radians) => {
 export const throttle = (func, delay) => {
   let timeoutId;
   let lastExecTime = 0;
-  
+
   return function (...args) {
     const currentTime = Date.now();
-    
+
     if (currentTime - lastExecTime > delay) {
       func.apply(this, args);
       lastExecTime = currentTime;

@@ -33,6 +33,7 @@ import GPSStatusDisplay from '../ui/GPSStatusDisplay';
  * @property {boolean} gpsStatus.visible - Whether GPS status should be shown
  * @property {string} theme - Current theme ('light', 'dark', 'adventure')
  * @property {Function} onGPSStatusPress - Callback when GPS status is pressed
+ * @property {boolean} gpsExpanded - Whether GPS details should be shown expanded
  */
 
 const MapStatusDisplays = ({
@@ -40,6 +41,7 @@ const MapStatusDisplays = ({
   gpsStatus,
   theme = 'light',
   onGPSStatusPress,
+  gpsExpanded = false,
 }) => {
   // Don't render anything if no status data is provided
   if (!journeyInfo && !gpsStatus) {
@@ -60,8 +62,8 @@ const MapStatusDisplays = ({
         </View>
       )}
 
-      {/* GPS Status Display */}
-      {gpsStatus && gpsStatus.visible && gpsStatus.gpsState && (
+      {/* GPS Status Display - Only show when expanded */}
+      {gpsExpanded && gpsStatus && gpsStatus.visible && gpsStatus.gpsState && (
         <View style={styles.gpsStatusContainer}>
           <GPSStatusDisplay
             gpsState={gpsStatus.gpsState}

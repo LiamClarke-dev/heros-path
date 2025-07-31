@@ -121,26 +121,8 @@ export const CLUSTER_STYLES = {
   ],
 };
 
-/**
- * Calculate distance between two coordinates in meters
- * @param {Object} coord1 - First coordinate {latitude, longitude}
- * @param {Object} coord2 - Second coordinate {latitude, longitude}
- * @returns {number} Distance in meters
- */
-export function calculateDistance(coord1, coord2) {
-  const R = 6371000; // Earth's radius in meters
-  const dLat = toRadians(coord2.latitude - coord1.latitude);
-  const dLon = toRadians(coord2.longitude - coord1.longitude);
-  
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRadians(coord1.latitude)) * 
-    Math.cos(toRadians(coord2.latitude)) * 
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+// Import centralized distance calculation
+import { calculateDistance } from './distanceUtils';
 
 /**
  * Convert degrees to radians

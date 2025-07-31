@@ -60,12 +60,8 @@
     - Create cleanup for journey-related discoveries
     - _Requirements: 3.3, 3.6, 4.3, 4.4_
 
-- [-] 4. Implement journey tracking UI in MapScreen
-
-
+- [x] 4. Implement journey tracking UI in MapScreen
   - [x] 4.1 Create tracking controls and state management
-
-
     - Implement toggleTracking() function for start/stop
     - Add tracking state indicators
     - Cleanup duplicate location permission UI flows across the codebase
@@ -74,11 +70,6 @@
     - _Requirements: 1.1, 1.5, 1.6_
 
   - [x] 4.2 Implement route visualization
-
-
-
-
-
     - Add Polyline component for active route display
     - Create glowing effect for current route
     - Implement saved routes display with styling
@@ -87,10 +78,6 @@
     - _Requirements: 1.2, 3.4, 3.5_
 
   - [x] 4.3 Create journey completion workflow
-
-
-
-
     - Audit existing journey naming modal code
     - Audit Add default name generation with date and time
     - Audit Create journey validation with minimum distance check
@@ -98,8 +85,13 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.1, 2.5, 2.6_
 
-- [ ] 5. Develop PastJourneysScreen for journey management
-  - [ ] 5.1 Implement journey list display
+- [-] 5. Develop PastJourneysScreen for journey management
+
+
+
+  - [x] 5.1 Implement journey list display
+
+
     - Create journey list component with sorting
     - Add journey metadata display (name, date, distance, duration)
     - Implement loading states and error handling
@@ -107,7 +99,10 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.1, 3.2_
 
-  - [ ] 5.2 Implement journey management functions
+  - [-] 5.2 Implement journey management functions
+
+
+
     - Add journey deletion with confirmation
     - Create navigation to journey discoveries
     - Implement journey completion status indicators

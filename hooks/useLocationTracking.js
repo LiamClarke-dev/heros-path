@@ -75,14 +75,20 @@ const useLocationTracking = () => {
                 console.error('Failed to initialize BackgroundLocationService:', result.error);
                 setGpsStatus({
                     indicator: 'ERROR',
-                    message: 'Location service initialization failed'
+                    level: 'ERROR',
+                    message: 'Location service initialization failed',
+                    accuracy: null,
+                    signalStrength: 0
                 });
             }
         } catch (error) {
             console.error('Error initializing location service:', error);
             setGpsStatus({
                 indicator: 'ERROR',
-                message: 'Failed to initialize location tracking'
+                level: 'ERROR',
+                message: 'Failed to initialize location tracking',
+                accuracy: null,
+                signalStrength: 0
             });
         }
     }, []);
@@ -111,13 +117,19 @@ const useLocationTracking = () => {
 
                     setGpsStatus({
                         indicator: 'GOOD',
-                        message: 'GPS signal is strong'
+                        level: 'GOOD',
+                        message: 'GPS signal is strong',
+                        accuracy: locationResult.location.accuracy,
+                        signalStrength: 85
                     });
                 } else {
                     console.warn('Could not get initial location:', locationResult.error);
                     setGpsStatus({
                         indicator: 'POOR',
-                        message: 'Getting GPS location...'
+                        level: 'POOR',
+                        message: 'Getting GPS location...',
+                        accuracy: null,
+                        signalStrength: 20
                     });
 
                     // If initial location fails, start continuous location updates
@@ -209,12 +221,18 @@ const useLocationTracking = () => {
             if (location.type === 'error') {
                 setGpsStatus({
                     indicator: 'LOST',
-                    message: location.message || 'GPS signal lost'
+                    level: 'LOST',
+                    message: location.message || 'GPS signal lost',
+                    accuracy: null,
+                    signalStrength: 0
                 });
             } else {
                 setGpsStatus({
                     indicator: 'POOR',
-                    message: location.message || 'GPS signal is weak'
+                    level: 'POOR',
+                    message: location.message || 'GPS signal is weak',
+                    accuracy: null,
+                    signalStrength: 15
                 });
             }
             return;
@@ -241,20 +259,26 @@ const useLocationTracking = () => {
         if (accuracy <= 10) {
             setGpsStatus({
                 indicator: 'GOOD',
+                level: 'GOOD',
                 message: 'GPS signal is strong',
-                accuracy
+                accuracy,
+                signalStrength: Math.max(0, Math.min(100, 100 - (accuracy * 2)))
             });
         } else if (accuracy <= 50) {
             setGpsStatus({
                 indicator: 'FAIR',
+                level: 'FAIR', 
                 message: 'GPS signal is fair',
-                accuracy
+                accuracy,
+                signalStrength: Math.max(0, Math.min(100, 100 - (accuracy * 2)))
             });
         } else {
             setGpsStatus({
                 indicator: 'POOR',
+                level: 'POOR',
                 message: 'GPS signal is weak',
-                accuracy
+                accuracy,
+                signalStrength: Math.max(0, Math.min(100, 100 - (accuracy * 2)))
             });
         }
     }, []);

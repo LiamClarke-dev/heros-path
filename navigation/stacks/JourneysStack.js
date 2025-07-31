@@ -1,7 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useTheme } from '../../contexts/ThemeContext';
-import { PlaceholderScreen } from '../../screens/PlaceholderScreen';
+import PastJourneysScreen from '../../screens/PastJourneysScreen';
 
 const Stack = createStackNavigator();
 
@@ -27,9 +27,8 @@ export function JourneysStack() {
     >
       <Stack.Screen 
         name="JourneysMain" 
-        component={PlaceholderScreen}
-        options={{ title: 'Past Journeys' }}
-        initialParams={{ screenName: 'Past Journeys' }}
+        component={PastJourneysScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

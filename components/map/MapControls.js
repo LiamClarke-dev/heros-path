@@ -35,6 +35,7 @@ import TrackingStatusIndicator from './TrackingStatusIndicator';
  * - onToggleSavedRoutes: Callback for routes visibility toggle
  * - onToggleSavedPlaces: Callback for places visibility toggle
  * - onToggleMapStyle: Callback for style selector toggle
+ * - onGPSStatusPress: Callback for GPS status indicator press
  * 
  * Permission Handling:
  * - Locate button always visible (allows permission requests)
@@ -72,6 +73,7 @@ const MapControls = ({
   onToggleSavedRoutes,
   onToggleSavedPlaces,
   onToggleMapStyle,
+  onGPSStatusPress,
 }) => {
   // Show locate button even if permissions aren't granted so users can request them
   // Other controls are hidden until permissions are granted
@@ -85,6 +87,7 @@ const MapControls = ({
           metrics={trackingState?.metrics}
           isVisible={trackingState?.isTracking || trackingState?.trackingStatus !== 'idle'}
           compact={false}
+          onPress={onGPSStatusPress}
         />
       )}
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -20,6 +20,7 @@ import { useTheme } from '../../contexts/ThemeContext';
  * - metrics: Tracking metrics object with pointsRecorded, lastUpdate, gpsAccuracy
  * - isVisible: Whether to show the indicator
  * - compact: Whether to use compact display mode
+ * - onPress: Callback when indicator is pressed (for expanding GPS details)
  * 
  * Requirements Addressed:
  * - 1.1: Tracking state indicators
@@ -32,6 +33,7 @@ const TrackingStatusIndicator = ({
   metrics = null,
   isVisible = true,
   compact = false,
+  onPress = null,
 }) => {
   const { theme } = useTheme();
 
@@ -125,9 +127,15 @@ const TrackingStatusIndicator = ({
     );
   };
 
+  const ContainerComponent = onPress ? TouchableOpacity : View;
+
   if (compact) {
     return (
-      <View style={[styles.compactContainer, { backgroundColor: theme.colors.surface }]}>
+      <ContainerComponent 
+        style={[styles.compactContainer, { backgroundColor: theme.colors.surface }]}
+        onPress={onPress}
+        activeOpacity={onPress ? 0.7 : 1}
+      >
         <Ionicons 
           name={getStatusIcon()} 
           size={16} 
@@ -138,12 +146,24 @@ const TrackingStatusIndicator = ({
             {metrics.pointsRecorded}
           </Text>
         )}
-      </View>
+        {onPress && (
+          <Ionicons 
+            name="chevron-down" 
+            size={12} 
+            color={theme.colors.onSurface} 
+            style={styles.expandIcon}
+          />
+        )}
+      </ContainerComponent>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+    <ContainerComponent 
+      style={[styles.container, { backgroundColor: theme.colors.surface }]}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+    >
       <View style={styles.statusRow}>
         <Ionicons 
           name={getStatusIcon()} 
@@ -155,6 +175,14 @@ const TrackingStatusIndicator = ({
           {getStatusText()}
         </Text>
         {getGPSAccuracyIndicator()}
+        {onPress && (
+          <Ionicons 
+            name="chevron-down" 
+            size={14} 
+            color={theme.colors.onSurface} 
+            style={styles.expandIcon}
+          />
+        )}
       </View>
       
       {metrics && trackingStatus === 'active' && (
@@ -169,7 +197,7 @@ const TrackingStatusIndicator = ({
           )}
         </View>
       )}
-    </View>
+    </ContainerComponent>
   );
 };
 
@@ -238,6 +266,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 4,
     fontWeight: '500',
+  },
+  expandIcon: {
+    marginLeft: 4,
+    opacity: 0.6,
   },
 });
 

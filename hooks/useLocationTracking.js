@@ -9,7 +9,6 @@ import {
     getCurrentLocation,
     getCurrentLocationFast,
     animateToLocation,
-    requestLocationPermissions,
     LOCATION_OPTIONS
 } from '../utils/locationUtils';
 
@@ -69,8 +68,8 @@ const useLocationTracking = () => {
                 // Set up location update callback
                 locationServiceRef.current.setLocationUpdateCallback(handleLocationUpdate);
 
-                // Request initial permissions
-                await requestInitialPermissions();
+                // Check initial permissions (don't request automatically)
+                await checkInitialPermissions();
             } else {
                 console.error('Failed to initialize BackgroundLocationService:', result.error);
                 setGpsStatus({
@@ -94,94 +93,99 @@ const useLocationTracking = () => {
     }, []);
 
     /**
-     * Request initial location permissions
+     * Check initial location permissions and get location if granted
      * Implements permission handling as per requirement 3.2
      */
-    const requestInitialPermissions = useCallback(async () => {
+    const checkInitialPermissions = useCallback(async () => {
         try {
-            const permissionResult = await requestLocationPermissions(true);
+            // Check current permissions without requesting
+            const { getLocationPermissionStatus } = require('../utils/locationUtils');
+            const foregroundStatus = await getLocationPermissionStatus(false);
 
-            if (permissionResult.granted) {
+            if (foregroundStatus === 'granted') {
                 setPermissionsGranted(true);
-
-                // Get initial location with faster options for app startup
-                const locationResult = await getCurrentLocation(LOCATION_OPTIONS.INITIAL_LOAD);
-
-                if (locationResult.success) {
-                    const initialPosition = {
-                        ...locationResult.location,
-                        timestamp: Date.now()
-                    };
-                    setCurrentPosition(initialPosition);
-                    setRecentPositions([initialPosition]);
-
-                    setGpsStatus({
-                        indicator: 'GOOD',
-                        level: 'GOOD',
-                        message: 'GPS signal is strong',
-                        accuracy: locationResult.location.accuracy,
-                        signalStrength: 85
-                    });
-                } else {
-                    console.warn('Could not get initial location:', locationResult.error);
-                    setGpsStatus({
-                        indicator: 'POOR',
-                        level: 'POOR',
-                        message: 'Getting GPS location...',
-                        accuracy: null,
-                        signalStrength: 20
-                    });
-
-                    // If initial location fails, start continuous location updates
-                    // to get location as soon as GPS is ready
-                    startContinuousLocationUpdates();
-                }
+                await getInitialLocation();
             } else {
                 setPermissionsGranted(false);
                 setGpsStatus({
                     indicator: 'ERROR',
-                    message: 'Location permission denied'
+                    message: 'Location permission required'
                 });
 
                 // Set up a retry mechanism to check for permissions periodically
                 // This helps if user grants permissions later through settings
                 const retryInterval = setInterval(async () => {
                     try {
-                        const retryResult = await requestLocationPermissions(false); // Just foreground for retry
-                        if (retryResult.granted) {
+                        const retryStatus = await getLocationPermissionStatus(false);
+                        if (retryStatus === 'granted') {
                             clearInterval(retryInterval);
                             setPermissionsGranted(true);
-
-                            // Get location now that we have permissions
-                            const locationResult = await getCurrentLocation(LOCATION_OPTIONS.INITIAL_LOAD);
-                            if (locationResult.success) {
-                                const initialPosition = {
-                                    ...locationResult.location,
-                                    timestamp: Date.now()
-                                };
-                                setCurrentPosition(initialPosition);
-                                setRecentPositions([initialPosition]);
-
-                                setGpsStatus({
-                                    indicator: 'GOOD',
-                                    message: 'GPS signal is strong'
-                                });
-                            }
+                            await getInitialLocation();
                         }
                     } catch (error) {
                         // Ignore retry errors
                     }
-                }, 5000); // Check every 5 seconds
+                }, 2000); // Check every 2 seconds
 
-                // Clear retry after 2 minutes to avoid infinite retries
-                setTimeout(() => clearInterval(retryInterval), 120000);
+                // Clear retry after 1 minute to avoid infinite retries
+                setTimeout(() => clearInterval(retryInterval), 60000);
             }
         } catch (error) {
-            console.error('Error requesting permissions:', error);
+            console.error('Error checking permissions:', error);
             setPermissionsGranted(false);
             setGpsStatus({
                 indicator: 'ERROR',
-                message: 'Permission request failed'
+                message: 'Permission check failed'
+            });
+        }
+    }, []);
+
+    /**
+     * Get initial location and set up GPS status
+     */
+    const getInitialLocation = useCallback(async () => {
+        try {
+            console.log('Getting initial location...');
+
+            // Get initial location with faster options for app startup
+            const locationResult = await getCurrentLocation(LOCATION_OPTIONS.INITIAL_LOAD);
+
+            if (locationResult.success) {
+                const initialPosition = {
+                    ...locationResult.location,
+                    timestamp: Date.now()
+                };
+                setCurrentPosition(initialPosition);
+                setRecentPositions([initialPosition]);
+
+                setGpsStatus({
+                    indicator: 'GOOD',
+                    level: 'GOOD',
+                    message: 'GPS signal is strong',
+                    accuracy: locationResult.location.accuracy,
+                    signalStrength: 85
+                });
+
+                console.log('Initial location found:', initialPosition);
+            } else {
+                console.warn('Could not get initial location:', locationResult.error);
+                setGpsStatus({
+                    indicator: 'POOR',
+                    level: 'POOR',
+                    message: 'Getting GPS location...',
+                    accuracy: null,
+                    signalStrength: 20
+                });
+
+                // If initial location fails, start continuous location updates
+                // to get location as soon as GPS is ready
+                startContinuousLocationUpdates();
+            }
+        } catch (error) {
+            console.error('Error getting initial location:', error);
+            setGpsStatus({
+                indicator: 'ERROR',
+                message: 'Failed to get location'
             });
         }
     }, []);
@@ -191,7 +195,7 @@ const useLocationTracking = () => {
      * Implements permission error handling as per requirement 3.2
      */
     const handlePermissionPrompt = useCallback((promptData) => {
-        const { type, title, message } = promptData;
+        const { title, message } = promptData;
 
         Alert.alert(
             title,
@@ -200,9 +204,14 @@ const useLocationTracking = () => {
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Settings',
-                    onPress: () => {
-                        // TODO: Open device settings
-                        console.log('Open settings for permissions');
+                    onPress: async () => {
+                        try {
+                            const { Linking } = require('react-native');
+                            await Linking.openSettings();
+                            console.log('Opened settings for permissions');
+                        } catch (error) {
+                            console.error('Failed to open settings:', error);
+                        }
                     }
                 },
             ]
@@ -267,7 +276,7 @@ const useLocationTracking = () => {
         } else if (accuracy <= 50) {
             setGpsStatus({
                 indicator: 'FAIR',
-                level: 'FAIR', 
+                level: 'FAIR',
                 message: 'GPS signal is fair',
                 accuracy,
                 signalStrength: Math.max(0, Math.min(100, 100 - (accuracy * 2)))
@@ -505,6 +514,19 @@ const useLocationTracking = () => {
         }
     }, []);
 
+    /**
+     * Update permissions status and get location if granted
+     * Called when permissions change from useMapPermissions
+     */
+    const updatePermissions = useCallback(async (granted) => {
+        setPermissionsGranted(granted);
+
+        if (granted && !currentPosition) {
+            // Permissions were just granted and we don't have a location yet
+            await getInitialLocation();
+        }
+    }, [currentPosition, getInitialLocation]);
+
     return {
         // State
         currentPosition,
@@ -520,6 +542,7 @@ const useLocationTracking = () => {
         stopTracking,
         addToPath,
         clearPath,
+        updatePermissions,
 
         // Service reference (for advanced usage)
         locationService: locationServiceRef.current,

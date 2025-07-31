@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import JourneyNamingModal from '../ui/JourneyNamingModal';
 import PlaceDetailModal from '../ui/PlaceDetailModal';
 import MapStyleSelector from '../ui/MapStyleSelector';
+import BackgroundPermissionModal from '../ui/BackgroundPermissionModal';
 
 /**
  * MapModals Component
@@ -39,6 +40,12 @@ const MapModals = ({
   onCloseStyleSelector,
   onStyleChange,
   currentMapStyle,
+  
+  // Background permission modal props
+  backgroundPermission,
+  onRequestBackgroundPermission,
+  onCancelBackgroundPermission,
+  onOpenSettings,
   
   // Common props
   theme,
@@ -75,6 +82,15 @@ const MapModals = ({
         currentStyle={currentMapStyle}
         onStyleChange={onStyleChange}
         showNightModeOption={true}
+      />
+
+      {/* Background Permission Modal */}
+      <BackgroundPermissionModal
+        visible={backgroundPermission?.visible || false}
+        onRequestPermission={onRequestBackgroundPermission}
+        onCancel={onCancelBackgroundPermission}
+        onOpenSettings={onOpenSettings}
+        theme={theme}
       />
     </View>
   );

@@ -104,6 +104,7 @@
 
 
 
+
     - Add journey deletion with confirmation
     - Create navigation to journey discoveries
     - Implement journey completion status indicators

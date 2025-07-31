@@ -90,6 +90,13 @@ const MapScreen = () => {
   const mapStyle = useMapStyle();
 
   /**
+   * Update location tracking when permissions change
+   */
+  useEffect(() => {
+    locationTracking.updatePermissions(permissions.granted);
+  }, [permissions.granted, locationTracking.updatePermissions]);
+
+  /**
    * Calculate distance between two GPS coordinates using Haversine formula
    * Used to throttle position updates and prevent excessive re-renders
    * 
@@ -219,7 +226,7 @@ const MapScreen = () => {
         permissions={permissions}
         isLocating={locationTracking.isLocating}
         onLocateMe={handleLocateMe}
-        onToggleTracking={useCallback(() => journeyTracking.toggleTracking(locationTracking), [journeyTracking.toggleTracking, locationTracking])}
+        onToggleTracking={useCallback(() => journeyTracking.toggleTracking(locationTracking, permissions), [journeyTracking.toggleTracking, locationTracking, permissions])}
         onToggleSavedRoutes={savedRoutes.toggleVisibility}
         onToggleSavedPlaces={savedPlaces.toggleVisibility}
         onToggleMapStyle={mapStyle.toggleSelector}
@@ -260,6 +267,10 @@ const MapScreen = () => {
         onCloseStyleSelector={mapStyle.closeSelector}
         onStyleChange={mapStyle.handleStyleChange}
         currentMapStyle={mapStyle.mapStyle}
+        backgroundPermission={permissions.backgroundPermissionModal}
+        onRequestBackgroundPermission={permissions.requestBackgroundPermissions}
+        onCancelBackgroundPermission={permissions.hideBackgroundPermissionModal}
+        onOpenSettings={permissions.openSettings}
         theme={currentTheme}
         isAuthenticated={isAuthenticated}
       />

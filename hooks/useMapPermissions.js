@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Alert, Linking, Platform } from 'react-native';
+import { Alert, Linking } from 'react-native';
 
 // Utilities
 import { requestLocationPermissions } from '../utils/locationUtils';
@@ -24,12 +24,48 @@ const useMapPermissions = () => {
   const [error, setError] = useState(null);
   const [lastChecked, setLastChecked] = useState(null);
 
+  // Background permission modal state
+  const [backgroundPermissionModal, setBackgroundPermissionModal] = useState({
+    visible: false,
+  });
+
   /**
-   * Check permissions on mount
+   * Check and request permissions on mount
    * Implements permission status management as per requirement 2.1
    */
   useEffect(() => {
-    checkPermissions();
+    requestInitialPermissions();
+  }, []);
+
+  /**
+   * Request initial foreground permissions on app load
+   * This is essential for core app functionality
+   */
+  const requestInitialPermissions = useCallback(async () => {
+    try {
+      console.log('Requesting initial location permissions...');
+      
+      // Check current status first
+      const { getLocationPermissionStatus } = require('../utils/locationUtils');
+      const currentStatus = await getLocationPermissionStatus(false);
+      
+      if (currentStatus === 'granted') {
+        // Already granted, just update state
+        setGranted(true);
+        setStatus('granted');
+        setCanAskAgain(true);
+        setLastChecked(Date.now());
+        console.log('Location permissions already granted');
+        return { granted: true, status: 'granted' };
+      }
+      
+      // Need to request permissions
+      const result = await requestPermissions(false, false); // Don't show rationale, only foreground
+      return result;
+    } catch (error) {
+      console.error('Error requesting initial permissions:', error);
+      return { granted: false, error: error.message };
+    }
   }, []);
 
   /**
@@ -43,13 +79,21 @@ const useMapPermissions = () => {
       }
       setError(null);
 
-      const result = await requestLocationPermissions(false); // Check only, don't request
+      // Use the status checking function instead of requesting
+      const { getLocationPermissionStatus } = require('../utils/locationUtils');
+      const foregroundStatus = await getLocationPermissionStatus(false);
       
+      const result = {
+        granted: foregroundStatus === 'granted',
+        status: foregroundStatus,
+        canAskAgain: foregroundStatus !== 'denied' // Assume can ask again unless explicitly denied
+      };
+
       setGranted(result.granted);
       setStatus(result.status || (result.granted ? 'granted' : 'denied'));
       setCanAskAgain(result.canAskAgain !== false);
       setLastChecked(Date.now());
-      
+
       if (!silent) {
         console.log('Permission status checked:', {
           granted: result.granted,
@@ -57,17 +101,17 @@ const useMapPermissions = () => {
           canAskAgain: result.canAskAgain
         });
       }
-      
+
       return result;
     } catch (error) {
       console.error('Error checking permissions:', error);
       setError('Failed to check location permissions');
       setStatus('unknown');
-      
+
       if (!silent) {
         setGranted(false);
       }
-      
+
       return { granted: false, error: error.message };
     } finally {
       if (!silent) {
@@ -80,7 +124,7 @@ const useMapPermissions = () => {
    * Request location permissions from user
    * Implements permission request as per requirement 2.1
    */
-  const requestPermissions = useCallback(async (showRationale = true) => {
+  const requestPermissions = useCallback(async (showRationale = true, requestBackground = false) => {
     try {
       setLoading(true);
       setError(null);
@@ -92,29 +136,30 @@ const useMapPermissions = () => {
         return { granted: false, error: 'Permissions permanently denied' };
       }
 
-      const result = await requestLocationPermissions(true); // Request permissions
-      
+      // Request permissions - only request background if explicitly requested
+      const result = await requestLocationPermissions(requestBackground);
+
       setGranted(result.granted);
       setStatus(result.status || (result.granted ? 'granted' : 'denied'));
       setCanAskAgain(result.canAskAgain !== false);
       setLastChecked(Date.now());
-      
+
       if (!result.granted && showRationale) {
         handlePermissionDenied(result);
       }
-      
+
       console.log('Permission request result:', result);
       return result;
     } catch (error) {
       console.error('Error requesting permissions:', error);
       setError('Failed to request location permissions');
-      
+
       Alert.alert(
         'Permission Error',
         'Failed to request location permissions. Please try again.',
         [{ text: 'OK' }]
       );
-      
+
       return { granted: false, error: error.message };
     } finally {
       setLoading(false);
@@ -127,7 +172,7 @@ const useMapPermissions = () => {
    */
   const handlePermissionDenied = useCallback((result) => {
     const { canAskAgain, error } = result;
-    
+
     if (canAskAgain === false) {
       // User has permanently denied permissions
       showSettingsPrompt();
@@ -162,26 +207,24 @@ const useMapPermissions = () => {
   /**
    * Open device settings for the app
    * Implements settings navigation as per requirement 3.2
+   * Uses Expo's documented Linking.openSettings() method
    */
   const openSettings = useCallback(async () => {
     try {
-      if (Platform.OS === 'ios') {
-        // For iOS, use the correct URL scheme
-        const canOpen = await Linking.canOpenURL('app-settings:');
-        if (canOpen) {
-          await Linking.openURL('app-settings:');
-        } else {
-          // Fallback to general settings
-          await Linking.openSettings();
-        }
-      } else {
-        await Linking.openSettings();
-      }
+      console.log('Opening app-specific settings for location permissions...');
+
+      // Use Expo's Linking.openSettings() method
+      // This should open the app-specific settings page directly
+      await Linking.openSettings();
+      console.log('Successfully opened app-specific settings');
+
     } catch (error) {
-      console.error('Error opening settings:', error);
+      console.error('Failed to open settings:', error);
+
+      // Show user-friendly error with manual instructions
       Alert.alert(
         'Settings Error',
-        'Unable to open settings. Please manually enable location permissions for this app in your device settings.',
+        `Unable to open settings automatically. Please manually navigate to:\n\niOS: Settings > Privacy & Security > Location Services > Hero's Path\nAndroid: Settings > Apps > Hero's Path > Permissions\n\nThen select "Always" or "Allow all the time" for location access.`,
         [{ text: 'OK' }]
       );
     }
@@ -196,7 +239,7 @@ const useMapPermissions = () => {
       // App became active and permissions were not granted
       // Check if user enabled permissions in settings
       const result = await checkPermissions(true);
-      
+
       if (result.granted && !granted) {
         console.log('Permissions were enabled in settings');
         // Permissions were granted while app was in background
@@ -213,7 +256,7 @@ const useMapPermissions = () => {
       case 'granted':
         return 'Location access granted';
       case 'denied':
-        return canAskAgain 
+        return canAskAgain
           ? 'Location access denied. Tap to request again.'
           : 'Location access permanently denied. Please enable in settings.';
       case 'restricted':
@@ -290,6 +333,37 @@ const useMapPermissions = () => {
     };
   }, [granted, status, canAskAgain, loading, error, lastChecked, needsRefresh, getStatusMessage, getStatusColor]);
 
+  /**
+   * Show background permission modal
+   */
+  const showBackgroundPermissionModal = useCallback(() => {
+    setBackgroundPermissionModal({ visible: true });
+  }, []);
+
+  /**
+   * Hide background permission modal
+   */
+  const hideBackgroundPermissionModal = useCallback(() => {
+    setBackgroundPermissionModal({ visible: false });
+  }, []);
+
+  /**
+   * Request background location permissions specifically
+   * Used when starting journey tracking
+   */
+  const requestBackgroundPermissions = useCallback(async () => {
+    console.log('Requesting background location permissions...');
+    hideBackgroundPermissionModal(); // Hide modal first
+    const result = await requestPermissions(true, true); // showRationale=true, requestBackground=true
+
+    if (!result.granted) {
+      // If permission denied, show modal again for user to try settings
+      showBackgroundPermissionModal();
+    }
+
+    return result;
+  }, [requestPermissions, hideBackgroundPermissionModal, showBackgroundPermissionModal]);
+
   return {
     // State
     granted,
@@ -298,21 +372,25 @@ const useMapPermissions = () => {
     loading,
     error,
     lastChecked,
-    
+    backgroundPermissionModal,
+
     // Computed
     statusMessage: getStatusMessage(),
     statusColor: getStatusColor(),
     needsRefresh: needsRefresh(),
-    
+
     // Actions
     checkPermissions,
     requestPermissions,
+    requestBackgroundPermissions,
+    showBackgroundPermissionModal,
+    hideBackgroundPermissionModal,
     openSettings,
     showSettingsPrompt,
     handleAppStateChange,
     clearError,
     reset,
-    
+
     // Utilities
     getPermissionSummary,
   };

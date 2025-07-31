@@ -54,7 +54,7 @@ const useJourneyTracking = () => {
    * Implements journey start/stop functionality as per requirement 2.1
    * Enhanced with better state management and error handling
    */
-  const toggleTracking = useCallback(async (locationTrackingHook) => {
+  const toggleTracking = useCallback(async (locationTrackingHook, permissionsHook) => {
     try {
       // Authentication check
       if (!isAuthenticated) {
@@ -83,7 +83,7 @@ const useJourneyTracking = () => {
         return { success: true, action: 'stopped', result };
       } else {
         // Start tracking
-        const result = await startTracking(locationTrackingHook);
+        const result = await startTracking(locationTrackingHook, permissionsHook);
         return { success: result, action: 'started' };
       }
     } catch (error) {
@@ -102,7 +102,7 @@ const useJourneyTracking = () => {
    * Implements journey start functionality as per requirement 2.1
    * Enhanced with better state management and error handling
    */
-  const startTracking = useCallback(async (locationTrackingHook) => {
+  const startTracking = useCallback(async (locationTrackingHook, permissionsHook) => {
     try {
       // Set starting state
       setTrackingStatus('starting');
@@ -128,6 +128,33 @@ const useJourneyTracking = () => {
         lastUpdate: Date.now(),
         gpsAccuracy: null
       });
+
+      // Check for background location permissions before starting tracking
+      if (permissionsHook) {
+        console.log('Checking background location permissions...');
+        
+        // Check current permission status - need to check background permissions specifically
+        const { getLocationPermissionStatus } = require('../utils/locationUtils');
+        const backgroundStatus = await getLocationPermissionStatus(true); // Check background permissions
+        
+        console.log('Background permission status:', backgroundStatus);
+        
+        if (backgroundStatus !== 'granted') {
+          console.log('Background permissions not granted, showing modal...');
+          
+          // Only show modal if it's not already visible to prevent duplicates
+          if (!permissionsHook.backgroundPermissionModal.visible) {
+            permissionsHook.showBackgroundPermissionModal();
+          }
+          
+          // Reset state since we can't start tracking without permissions
+          resetTrackingState();
+          setTrackingStatus('idle');
+          return false;
+        }
+        
+        console.log('Background permissions are granted, proceeding with tracking...');
+      }
 
       // Start location tracking with warm-up
       const success = await locationTrackingHook.startTracking(journeyId, {

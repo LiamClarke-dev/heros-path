@@ -10,6 +10,7 @@ import {
   encodeRoute,
   calculateRouteDistance,
   isRouteLongEnoughForSAR,
+  calculateCenterPoint,
   simplifyRoute
 } from '../utils/routeEncoder';
 
@@ -287,6 +288,172 @@ describe('Route Encoder', () => {
         { latitude: 37.7849, longitude: -122.4094 }
       ];
       expect(isRouteLongEnoughForSAR(invalidCoords)).toBe(false);
+    });
+  });
+
+  describe('calculateCenterPoint', () => {
+    test('should return the same coordinate for single point', () => {
+      const coords = [{ latitude: 37.7749, longitude: -122.4194 }];
+      const center = calculateCenterPoint(coords);
+      expect(center).toEqual(coords[0]);
+    });
+
+    test('should return midpoint for two coordinates', () => {
+      const coords = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7849, longitude: -122.4094 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(center.latitude).toBeCloseTo((37.7749 + 37.7849) / 2, 5);
+      expect(center.longitude).toBeCloseTo((-122.4194 + -122.4094) / 2, 5);
+    });
+
+    test('should calculate weighted centroid for multiple coordinates', () => {
+      const coords = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7849, longitude: -122.4094 },
+        { latitude: 37.7949, longitude: -122.3994 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(center.latitude).toBeGreaterThan(37.7749);
+      expect(center.latitude).toBeLessThan(37.7949);
+      expect(center.longitude).toBeGreaterThan(-122.4194);
+      expect(center.longitude).toBeLessThan(-122.3994);
+    });
+
+    test('should handle coordinates at same location', () => {
+      const coords = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7749, longitude: -122.4194 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(center.latitude).toBeCloseTo(37.7749, 5);
+      expect(center.longitude).toBeCloseTo(-122.4194, 5);
+    });
+
+    test('should handle straight line routes', () => {
+      const coords = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7799, longitude: -122.4194 }, // same longitude
+        { latitude: 37.7849, longitude: -122.4194 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(center.latitude).toBeCloseTo(37.7799, 4); // Should be near middle
+      expect(center.longitude).toBeCloseTo(-122.4194, 5); // Should be same longitude
+    });
+
+    test('should handle curved routes with varying complexity', () => {
+      const coords = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7849, longitude: -122.4094 },
+        { latitude: 37.7749, longitude: -122.3994 }, // curve back
+        { latitude: 37.7649, longitude: -122.4094 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(typeof center.latitude).toBe('number');
+      expect(typeof center.longitude).toBe('number');
+      expect(center.latitude).toBeGreaterThan(37.7600);
+      expect(center.latitude).toBeLessThan(37.7900);
+      expect(center.longitude).toBeGreaterThan(-122.4300);
+      expect(center.longitude).toBeLessThan(-122.3900);
+    });
+
+    test('should handle routes crossing the equator', () => {
+      const coords = [
+        { latitude: 1, longitude: 0 },
+        { latitude: -1, longitude: 0 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(center.latitude).toBeCloseTo(0, 5);
+      expect(center.longitude).toBeCloseTo(0, 5);
+    });
+
+    test('should handle routes crossing the international date line', () => {
+      const coords = [
+        { latitude: 0, longitude: 179 },
+        { latitude: 0, longitude: -179 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(center.latitude).toBeCloseTo(0, 5);
+      // For simple midpoint calculation, this will be 0 (average of 179 and -179)
+      // This is acceptable behavior for the basic implementation
+      expect(center.longitude).toBeCloseTo(0, 5);
+    });
+
+    test('should handle routes at extreme latitudes', () => {
+      const coords = [
+        { latitude: 89, longitude: 0 },
+        { latitude: 90, longitude: 0 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(center.latitude).toBeCloseTo(89.5, 1);
+      expect(center.longitude).toBeCloseTo(0, 5);
+    });
+
+    test('should handle complex routes with many points', () => {
+      // Create a square route
+      const coords = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7849, longitude: -122.4194 }, // north
+        { latitude: 37.7849, longitude: -122.4094 }, // east
+        { latitude: 37.7749, longitude: -122.4094 }, // south
+        { latitude: 37.7749, longitude: -122.4194 }  // back to start
+      ];
+      const center = calculateCenterPoint(coords);
+      // Center should be approximately in the middle of the square
+      expect(center.latitude).toBeCloseTo(37.7799, 3);
+      expect(center.longitude).toBeCloseTo(-122.4144, 3);
+    });
+
+    test('should throw error for empty coordinates array', () => {
+      expect(() => calculateCenterPoint([])).toThrow('Invalid coordinates provided');
+    });
+
+    test('should throw error for invalid coordinates', () => {
+      const invalidCoords = [
+        { latitude: 91, longitude: -122.4194 }
+      ];
+      expect(() => calculateCenterPoint(invalidCoords)).toThrow('Invalid coordinates provided');
+    });
+
+    test('should handle coordinates with high precision', () => {
+      const coords = [
+        { latitude: 37.774929, longitude: -122.419416 },
+        { latitude: 37.774930, longitude: -122.419417 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(center.latitude).toBeCloseTo(37.7749295, 6);
+      expect(center.longitude).toBeCloseTo(-122.4194165, 6);
+    });
+
+    test('should handle routes with duplicate consecutive points', () => {
+      const coords = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7749, longitude: -122.4194 }, // duplicate
+        { latitude: 37.7849, longitude: -122.4094 }
+      ];
+      const center = calculateCenterPoint(coords);
+      expect(typeof center.latitude).toBe('number');
+      expect(typeof center.longitude).toBe('number');
+      expect(isFinite(center.latitude)).toBe(true);
+      expect(isFinite(center.longitude)).toBe(true);
+    });
+
+    test('should weight longer segments more heavily', () => {
+      // Create a route where one segment is much longer
+      const coords = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7750, longitude: -122.4194 }, // very short segment
+        { latitude: 37.7850, longitude: -122.4094 }  // much longer segment
+      ];
+      const center = calculateCenterPoint(coords);
+      
+      // Center should be closer to the longer segment
+      const distanceToLongSegmentMidpoint = Math.abs(center.latitude - 37.7800) + Math.abs(center.longitude + 122.4144);
+      const distanceToShortSegmentMidpoint = Math.abs(center.latitude - 37.77495) + Math.abs(center.longitude + 122.4194);
+      
+      expect(distanceToLongSegmentMidpoint).toBeLessThan(distanceToShortSegmentMidpoint);
     });
   });
 

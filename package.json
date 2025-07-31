@@ -44,11 +44,14 @@
     "@testing-library/react-native": "^13.2.2",
     "@types/react": "~19.0.10",
     "jest": "^30.0.5",
-    "react-native-dotenv": "^3.4.11"
+    "react-native-dotenv": "^3.4.11",
+    "react-test-renderer": "^19.0.0"
   },
   "jest": {
     "preset": "react-native",
-    "setupFilesAfterEnv": ["<rootDir>/jest.setup.js"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.js"
+    ],
     "transformIgnorePatterns": [
       "node_modules/(?!(react-native|@react-native|expo|@expo|@react-navigation)/)"
     ],

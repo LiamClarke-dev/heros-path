@@ -6,15 +6,21 @@
 
 
 
+
   - Create utility functions for converting GPS coordinates to Google's encoded polyline format
   - Implement validation for coordinates to ensure they are within valid ranges
   - Write tests for encoding various route patterns and edge cases
   - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 2. Implement route analysis utilities
+- [x] 2. Implement route analysis utilities
 
-  - [ ] 2.1 Create function to calculate route length
+
+
+
+
+  - [x] 2.1 Create function to calculate route length
+
 
     - Implement distance calculation between coordinates
     - Add validation to check if route is long enough for SAR (>50m)
@@ -22,7 +28,9 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.6, 3.4_
 
-  - [ ] 2.2 Implement center point calculation
+  - [x] 2.2 Implement center point calculation
+
+
     - Create function to find the geographic center of a route
     - Ensure it works with routes of varying complexity
     - Write tests for different route patterns

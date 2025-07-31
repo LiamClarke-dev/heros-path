@@ -50,27 +50,27 @@ export function validateCoordinates(coordinates) {
 function encodeValue(value) {
   // Convert to integer (multiply by 1e5 and round)
   let intValue = Math.round(value * 1e5);
-  
+
   // Left-shift the binary value one bit
   intValue <<= 1;
-  
+
   // If the original decimal value is negative, invert all the bits
   if (value < 0) {
     intValue = ~intValue;
   }
-  
+
   let encoded = '';
-  
+
   // Break the binary value out into 5-bit chunks
   while (intValue >= 0x20) {
     // Place the 5-bit chunks into reverse order, OR each value with 0x20 if another bit chunk follows
     encoded += String.fromCharCode((0x20 | (intValue & 0x1f)) + 63);
     intValue >>= 5;
   }
-  
+
   // Add the final chunk without the OR operation
   encoded += String.fromCharCode(intValue + 63);
-  
+
   return encoded;
 }
 
@@ -99,21 +99,43 @@ export function encodeRoute(coordinates) {
   // Encode each coordinate as a delta from the previous coordinate
   for (const coord of coordinates) {
     const { latitude, longitude } = coord;
-    
+
     // Calculate deltas
     const deltaLat = latitude - prevLat;
     const deltaLng = longitude - prevLng;
-    
+
     // Encode deltas
     encoded += encodeValue(deltaLat);
     encoded += encodeValue(deltaLng);
-    
+
     // Update previous coordinates
     prevLat = latitude;
     prevLng = longitude;
   }
 
   return encoded;
+}
+
+/**
+ * Calculates the distance between two coordinates using the Haversine formula
+ * @param {{latitude: number, longitude: number}} coord1 - First coordinate
+ * @param {{latitude: number, longitude: number}} coord2 - Second coordinate
+ * @returns {number} - Distance in meters
+ */
+function calculateHaversineDistance(coord1, coord2) {
+  const R = 6371000; // Earth's radius in meters
+  const lat1Rad = (coord1.latitude * Math.PI) / 180;
+  const lat2Rad = (coord2.latitude * Math.PI) / 180;
+  const deltaLatRad = ((coord2.latitude - coord1.latitude) * Math.PI) / 180;
+  const deltaLngRad = ((coord2.longitude - coord1.longitude) * Math.PI) / 180;
+
+  const a = Math.sin(deltaLatRad / 2) * Math.sin(deltaLatRad / 2) +
+    Math.cos(lat1Rad) * Math.cos(lat2Rad) *
+    Math.sin(deltaLngRad / 2) * Math.sin(deltaLngRad / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
 }
 
 /**
@@ -138,28 +160,6 @@ export function calculateRouteDistance(coordinates) {
 }
 
 /**
- * Calculates the distance between two coordinates using the Haversine formula
- * @param {{latitude: number, longitude: number}} coord1 - First coordinate
- * @param {{latitude: number, longitude: number}} coord2 - Second coordinate
- * @returns {number} - Distance in meters
- */
-function calculateHaversineDistance(coord1, coord2) {
-  const R = 6371000; // Earth's radius in meters
-  const lat1Rad = (coord1.latitude * Math.PI) / 180;
-  const lat2Rad = (coord2.latitude * Math.PI) / 180;
-  const deltaLatRad = ((coord2.latitude - coord1.latitude) * Math.PI) / 180;
-  const deltaLngRad = ((coord2.longitude - coord1.longitude) * Math.PI) / 180;
-
-  const a = Math.sin(deltaLatRad / 2) * Math.sin(deltaLatRad / 2) +
-    Math.cos(lat1Rad) * Math.cos(lat2Rad) *
-    Math.sin(deltaLngRad / 2) * Math.sin(deltaLngRad / 2);
-  
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  
-  return R * c;
-}
-
-/**
  * Checks if a route meets the minimum length requirement for Search Along Route
  * @param {Array<{latitude: number, longitude: number}>} coordinates - Array of GPS coordinates
  * @param {number} minLength - Minimum length in meters (default: 50)
@@ -168,6 +168,77 @@ function calculateHaversineDistance(coord1, coord2) {
 export function isRouteLongEnoughForSAR(coordinates, minLength = 50) {
   const distance = calculateRouteDistance(coordinates);
   return distance >= minLength;
+}
+
+/**
+ * Calculates the geographic center point of a route
+ * Uses the centroid calculation method for better accuracy with complex routes
+ * @param {Array<{latitude: number, longitude: number}>} coordinates - Array of GPS coordinates
+ * @returns {{latitude: number, longitude: number}} - Center point coordinates
+ * @throws {Error} - If coordinates are invalid or empty
+ */
+export function calculateCenterPoint(coordinates) {
+  // Validate input coordinates
+  if (!validateCoordinates(coordinates)) {
+    throw new Error('Invalid coordinates provided. Coordinates must be an array of objects with valid latitude and longitude values.');
+  }
+
+  if (coordinates.length === 0) {
+    throw new Error('Cannot calculate center point of empty coordinates array.');
+  }
+
+  // Handle single coordinate
+  if (coordinates.length === 1) {
+    return {
+      latitude: coordinates[0].latitude,
+      longitude: coordinates[0].longitude
+    };
+  }
+
+  // For two coordinates, return the midpoint
+  if (coordinates.length === 2) {
+    return {
+      latitude: (coordinates[0].latitude + coordinates[1].latitude) / 2,
+      longitude: (coordinates[0].longitude + coordinates[1].longitude) / 2
+    };
+  }
+
+  // For multiple coordinates, calculate the weighted centroid
+  // This method gives more accurate results for complex routes
+  let totalWeight = 0;
+  let weightedLatSum = 0;
+  let weightedLngSum = 0;
+
+  // Calculate weights based on segment lengths
+  for (let i = 1; i < coordinates.length; i++) {
+    const prev = coordinates[i - 1];
+    const curr = coordinates[i];
+    const segmentLength = calculateHaversineDistance(prev, curr);
+    
+    // Use segment length as weight (longer segments have more influence)
+    const weight = segmentLength || 1; // Avoid zero weights
+    
+    // Add weighted coordinates
+    weightedLatSum += (prev.latitude + curr.latitude) / 2 * weight;
+    weightedLngSum += (prev.longitude + curr.longitude) / 2 * weight;
+    totalWeight += weight;
+  }
+
+  // Handle edge case where all segments have zero length
+  if (totalWeight === 0) {
+    // Fall back to simple arithmetic mean
+    const latSum = coordinates.reduce((sum, coord) => sum + coord.latitude, 0);
+    const lngSum = coordinates.reduce((sum, coord) => sum + coord.longitude, 0);
+    return {
+      latitude: latSum / coordinates.length,
+      longitude: lngSum / coordinates.length
+    };
+  }
+
+  return {
+    latitude: weightedLatSum / totalWeight,
+    longitude: weightedLngSum / totalWeight
+  };
 }
 
 /**
@@ -217,7 +288,7 @@ function douglasPeucker(points, tolerance) {
   if (maxDistance > tolerance) {
     const leftSegment = douglasPeucker(points.slice(0, maxIndex + 1), tolerance);
     const rightSegment = douglasPeucker(points.slice(maxIndex), tolerance);
-    
+
     // Combine segments, removing duplicate point at the junction
     return leftSegment.slice(0, -1).concat(rightSegment);
   } else {
@@ -241,7 +312,7 @@ function perpendicularDistance(point, lineStart, lineEnd) {
 
   const dot = A * C + B * D;
   const lenSq = C * C + D * D;
-  
+
   if (lenSq === 0) {
     // Line start and end are the same point
     return Math.sqrt(A * A + B * B);
@@ -263,6 +334,6 @@ function perpendicularDistance(point, lineStart, lineEnd) {
 
   const dx = point.latitude - xx;
   const dy = point.longitude - yy;
-  
+
   return Math.sqrt(dx * dx + dy * dy);
 }

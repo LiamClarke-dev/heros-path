@@ -51,9 +51,30 @@ const MapRenderer = ({
   savedRoutes,
   mapStyle,
   onMapReady,
+  onDebugToggle,
   style,
 }) => {
   const mapRef = useRef(null);
+  const tapCount = useRef(0);
+  const tapTimer = useRef(null);
+
+  // Triple-tap handler for debug overlay
+  const handleMapPress = useCallback(() => {
+    if (!onDebugToggle) return;
+    
+    tapCount.current += 1;
+    
+    if (tapTimer.current) {
+      clearTimeout(tapTimer.current);
+    }
+    
+    tapTimer.current = setTimeout(() => {
+      if (tapCount.current >= 3) {
+        onDebugToggle();
+      }
+      tapCount.current = 0;
+    }, 500);
+  }, [onDebugToggle]);
 
   // Memoize initial region - only set once when component mounts
   // This prevents the map from jumping to San Francisco on every render
@@ -113,6 +134,7 @@ const MapRenderer = ({
         showsUserLocation={true}
         showsMyLocationButton={false}
         onMapReady={handleMapReady}
+        onPress={handleMapPress}
         onError={(error) => {
           console.error('MapView error:', error);
         }}
@@ -122,7 +144,7 @@ const MapRenderer = ({
       >
         {/* Route visualization with polylines */}
         <MapPolylines
-          currentPath={journeyTracking?.pathToRender || []}
+          currentPath={journeyTracking?.displayPath || []} // Use display path for beautiful visualization
           savedRoutes={savedRoutes?.visibleRoutes || []}
           styleConfig={mapStyle?.styleConfig || {}}
           showSavedRoutes={savedRoutes?.visible || false}

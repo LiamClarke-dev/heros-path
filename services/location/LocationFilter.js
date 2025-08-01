@@ -1,6 +1,11 @@
 /**
  * LocationFilter handles coordinate filtering, accuracy validation,
  * and location data processing for journey tracking.
+ * 
+ * NOTE: With TWO-STREAM PROCESSING, this filter is used by BackgroundLocationService
+ * for basic filtering, while utils/locationDataProcessor.js handles the main
+ * two-stream processing (journey vs display data). The thresholds should be kept
+ * in sync between both systems.
  */
 
 // Utilities

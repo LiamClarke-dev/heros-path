@@ -11,7 +11,7 @@ import { useUser } from '../contexts/UserContext';
 import { DEFAULT_JOURNEY_VALUES, VALIDATION_CONSTANTS } from '../constants/JourneyModels';
 
 // Utilities
-import { calculateDistance, calculateJourneyDistance } from '../utils/distanceUtils';
+import { calculateJourneyDistance } from '../utils/distanceUtils';
 
 /**
  * Custom hook for managing journey tracking state and logic
@@ -31,7 +31,10 @@ const useJourneyTracking = () => {
   const [isTracking, setIsTracking] = useState(false);
   const [currentJourneyId, setCurrentJourneyId] = useState(null);
   const [journeyStartTime, setJourneyStartTime] = useState(null);
-  const [pathToRender, setPathToRender] = useState([]);
+  
+  // SIMPLIFIED: Service handles data processing, hook manages UI state
+  const [currentJourneyData, setCurrentJourneyData] = useState([]);
+  const [currentDisplayData, setCurrentDisplayData] = useState([]);
   
   // Enhanced tracking state indicators
   const [trackingStatus, setTrackingStatus] = useState('idle'); // 'idle', 'starting', 'active', 'stopping', 'error'
@@ -122,7 +125,11 @@ const useJourneyTracking = () => {
       setIsTracking(true);
       setCurrentJourneyId(journeyId);
       setJourneyStartTime(Date.now());
-      setPathToRender([]);
+      
+      // Reset data streams
+      setCurrentJourneyData([]);
+      setCurrentDisplayData([]);
+      
       setTrackingMetrics({
         pointsRecorded: 0,
         lastUpdate: Date.now(),
@@ -204,26 +211,30 @@ const useJourneyTracking = () => {
       const journeyData = await locationTrackingHook.stopTracking();
 
       if (journeyData && journeyData.coordinates && journeyData.coordinates.length > 0) {
-        // CRITICAL FIX: Use pathToRender for distance calculation instead of filtered coordinates
-        // This ensures consistency between display and validation
-        const actualDistance = calculateJourneyDistance(pathToRender);
-        const filteredDistance = calculateJourneyDistance(journeyData.coordinates);
+        // SERVICE-PROCESSED DATA: Use journey data from BackgroundLocationService
+        const distance = calculateJourneyDistance(journeyData.coordinates);
         
-        console.log('Distance comparison:', {
-          pathToRenderPoints: pathToRender.length,
-          pathToRenderDistance: Math.round(actualDistance),
-          filteredPoints: journeyData.coordinates.length,
-          filteredDistance: Math.round(filteredDistance),
-          discrepancy: Math.round(actualDistance - filteredDistance)
+        console.log('SERVICE-PROCESSED DATA ANALYSIS:', {
+          distance: Math.round(distance),
+          processingStats: journeyData.processingStats,
+          dataStreams: {
+            journeyPoints: journeyData.coordinates.length,
+            displayPoints: journeyData.displayCoordinates?.length || 0,
+            rawPoints: journeyData.rawCoordinates?.length || 0
+          }
         });
 
-        // Use the actual distance from pathToRender for validation
-        const distance = actualDistance;
+        // Update local state with service-processed data
+        setCurrentJourneyData(journeyData.coordinates);
+        setCurrentDisplayData(journeyData.displayCoordinates || []);
+        
+        // Distance is already calculated correctly by the service
+        journeyData.distance = distance;
 
         // Update final metrics
         setTrackingMetrics(prev => ({
           ...prev,
-          pointsRecorded: pathToRender.length, // Use actual points recorded
+          pointsRecorded: journeyData.coordinates.length, // Use service-processed journey data
           lastUpdate: Date.now()
         }));
 
@@ -246,7 +257,7 @@ const useJourneyTracking = () => {
           } else if (validationResult.type === 'too_few_points') {
             Alert.alert(
               'Insufficient Location Data',
-              `Your journey has only ${pathToRender.length} location points. More data is needed for a meaningful journey.`,
+              `Your journey has only ${journeyPath.length} location points. More data is needed for a meaningful journey.`,
               [
                 { text: 'Continue Journey', onPress: () => continueJourney(locationTrackingHook) },
                 { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
@@ -292,7 +303,7 @@ const useJourneyTracking = () => {
       );
       return null;
     }
-  }, [currentJourneyId, journeyStartTime, user, pathToRender, calculateJourneyDistance, validateJourneyForSaving]);
+  }, [currentJourneyId, journeyStartTime, user, currentJourneyData, validateJourneyForSaving]);
 
   // Note: calculateJourneyDistance is now imported from utils/distanceUtils.js
   // This ensures consistency across the entire application
@@ -314,9 +325,8 @@ const useJourneyTracking = () => {
       };
     }
 
-    // CRITICAL FIX: Use pathToRender for coordinate count validation
-    // This ensures consistency with the displayed journey
-    const actualCoordinateCount = pathToRender.length;
+    // Use service-processed journey data for coordinate count validation
+    const actualCoordinateCount = currentJourneyData.length;
     if (actualCoordinateCount < VALIDATION_CONSTANTS.MIN_COORDINATES_FOR_JOURNEY) {
       return {
         isValid: false,
@@ -350,7 +360,7 @@ const useJourneyTracking = () => {
       type: 'valid',
       message: 'Journey data is valid for saving'
     };
-  }, [pathToRender, journeyStartTime]);
+  }, [currentJourneyData, journeyStartTime]);
 
   // Note: calculateDistance is now imported from utils/distanceUtils.js
   // This ensures consistency across the entire application
@@ -462,15 +472,13 @@ const useJourneyTracking = () => {
   const promptSaveJourney = useCallback((journeyData, distance) => {
     console.log('promptSaveJourney called with:', {
       distance: Math.round(distance),
-      pathToRenderLength: pathToRender.length,
-      journeyDataLength: journeyData.coordinates?.length || 0
+      journeyDataLength: currentJourneyData.length,
+      displayDataLength: currentDisplayData.length,
+      serviceDataLength: journeyData.coordinates?.length || 0
     });
 
-    // CRITICAL FIX: Use pathToRender for route data to ensure consistency
-    // The filtered coordinates from journeyData may be incomplete
-    const routeData = pathToRender.length > journeyData.coordinates.length 
-      ? pathToRender 
-      : journeyData.coordinates;
+    // Use service-processed journey data for route storage
+    const routeData = currentJourneyData;
 
     // Calculate journey statistics using the actual route data
     const stats = calculateJourneyStatistics(routeData);
@@ -514,7 +522,7 @@ const useJourneyTracking = () => {
       visible: true,
       journey: journeyToSave
     });
-  }, [currentJourneyId, journeyStartTime, user, pathToRender, calculateJourneyStatistics]);
+  }, [currentJourneyId, journeyStartTime, user, currentJourneyData, calculateJourneyStatistics]);
 
   /**
    * Handle journey save from naming modal
@@ -656,7 +664,11 @@ const useJourneyTracking = () => {
     setIsTracking(false);
     setCurrentJourneyId(null);
     setJourneyStartTime(null);
-    setPathToRender([]);
+    
+    // Reset data streams
+    setCurrentJourneyData([]);
+    setCurrentDisplayData([]);
+    
     setTrackingStatus('idle');
     setLastError(null);
     setTrackingMetrics({
@@ -676,15 +688,37 @@ const useJourneyTracking = () => {
   }, [resetTrackingState]);
 
   /**
-   * Add position to current journey path
-   * Implements path management as per requirement 2.1
-   * Enhanced with metrics tracking
+   * Update current journey data from service
+   * SERVICE-CENTRIC: BackgroundLocationService handles all data processing
+   * Hook only manages UI state and real-time updates
+   */
+  const updateFromService = useCallback((locationTrackingHook) => {
+    if (isTracking && currentJourneyId && locationTrackingHook?.locationService) {
+      const processedData = locationTrackingHook.locationService.getCurrentProcessedData();
+      
+      if (processedData) {
+        setCurrentJourneyData(processedData.journeyData);
+        setCurrentDisplayData(processedData.displayData);
+        
+        // Update tracking metrics
+        setTrackingMetrics(prev => ({
+          pointsRecorded: processedData.journeyData.length,
+          lastUpdate: Date.now(),
+          gpsAccuracy: prev.gpsAccuracy // Keep last known accuracy
+        }));
+      }
+    }
+  }, [isTracking, currentJourneyId]);
+
+  /**
+   * Legacy addToPath method - now triggers service data update
+   * Maintains backward compatibility with MapScreen
    */
   const addToPath = useCallback((position) => {
+    // The BackgroundLocationService handles the actual data processing
+    // This method is kept for backward compatibility but doesn't process data
     if (isTracking && currentJourneyId) {
-      setPathToRender(prevPath => [...prevPath, position]);
-      
-      // Update tracking metrics
+      // Update tracking metrics for UI feedback
       setTrackingMetrics(prev => ({
         pointsRecorded: prev.pointsRecorded + 1,
         lastUpdate: Date.now(),
@@ -695,7 +729,7 @@ const useJourneyTracking = () => {
 
   /**
    * Get current journey information for display
-   * Implements journey state management as per requirement 2.1
+   * SERVICE-CENTRIC: Uses service-processed journey data
    */
   const getCurrentJourneyInfo = useCallback(() => {
     if (!isTracking || !journeyStartTime) {
@@ -704,16 +738,16 @@ const useJourneyTracking = () => {
 
     const currentTime = Date.now();
     const duration = currentTime - journeyStartTime;
-    const distance = calculateJourneyDistance(pathToRender);
+    const distance = calculateJourneyDistance(currentJourneyData); // Use service-processed data
 
     return {
       startTime: journeyStartTime,
       duration,
       distance: Math.round(distance),
-      pointCount: pathToRender.length,
+      pointCount: currentJourneyData.length, // Use service-processed count
       isActive: isTracking
     };
-  }, [isTracking, journeyStartTime, pathToRender, calculateJourneyDistance]);
+  }, [isTracking, journeyStartTime, currentJourneyData]);
 
   return {
     // State
@@ -728,8 +762,9 @@ const useJourneyTracking = () => {
     // Current journey info
     currentJourney: getCurrentJourneyInfo(),
     
-    // Path data
-    pathToRender,
+    // Path data (SERVICE-PROCESSED)
+    journeyPath: currentJourneyData,    // Service-processed journey data for statistics
+    displayPath: currentDisplayData,    // Service-processed display data for visualization
     
     // Tracking metrics
     metrics: trackingMetrics,
@@ -744,6 +779,7 @@ const useJourneyTracking = () => {
     cancelSave,
     discardJourney,
     addToPath,
+    updateFromService,
     resetTrackingState,
     continueJourney,
   };

@@ -137,18 +137,26 @@ interface JourneyService {
 
 ### 2. BackgroundLocationService
 
-Handles location tracking with background support, ensuring continuous recording even when the app is minimized.
+**SERVICE-CENTRIC ARCHITECTURE**: Handles ALL location processing including two-stream data processing, ensuring single source of truth for location data.
 
 ```typescript
 interface BackgroundLocationService {
   // Initialize the service
   initialize(): Promise<boolean>;
   
-  // Start tracking a new journey
+  // Start tracking a new journey (resets data streams)
   startTracking(journeyId: string, options?: TrackingOptions): Promise<boolean>;
   
-  // Stop tracking and return journey data
-  stopTracking(): Promise<JourneyData | null>;
+  // Stop tracking and return processed journey data with both streams
+  stopTracking(): Promise<{
+    coordinates: LocationCoordinates[],      // Journey data for statistics
+    displayCoordinates: LocationCoordinates[], // Display data for visualization
+    rawCoordinates: LocationCoordinates[],   // Raw data for debugging
+    processingStats: ProcessingStats,        // Processing statistics
+    id: string,
+    endTime: number,
+    isActive: boolean
+  } | null>;
   
   // Pause tracking temporarily
   pauseTracking(): Promise<void>;
@@ -176,6 +184,14 @@ interface BackgroundLocationService {
   
   // NEW: Performance optimization
   setOptimizationLevel(level: 'battery' | 'accuracy' | 'balanced'): Promise<void>;
+  
+  // NEW: Get current processed data streams for real-time updates
+  getCurrentProcessedData(): {
+    journeyData: LocationCoordinates[],
+    displayData: LocationCoordinates[],
+    rawData: LocationCoordinates[],
+    processingStats: ProcessingStats | null
+  };
 }
 ```
 
@@ -188,7 +204,11 @@ interface MapScreenState {
   currentPosition: LocationCoordinates | null;
   tracking: boolean;
   currentJourneyId: string | null;
-  pathToRender: LocationCoordinates[];
+  
+  // SERVICE-PROCESSED DATA (from BackgroundLocationService)
+  journeyPath: LocationCoordinates[];     // Service-processed journey data for statistics
+  displayPath: LocationCoordinates[];     // Service-processed display data for visualization
+  
   savedRoutes: Journey[];
   savedPlaces: Place[];
   showSavedPlaces: boolean;
@@ -231,6 +251,57 @@ interface ExplorationContextState {
   socialSharingData: SocialSharingData;
 }
 ```
+
+## Data Processing Architecture
+
+### Service-Centric Two-Stream Processing
+
+**CRITICAL ARCHITECTURAL DECISION**: The journey tracking system uses a **service-centric architecture** where BackgroundLocationService handles ALL data processing, eliminating duplicate processing and ensuring single source of truth:
+
+#### Consolidated Processing in BackgroundLocationService
+- **Single Responsibility**: All location data processing happens in one place
+- **Two-Stream Output**: Service produces both journey and display data streams
+- **No Duplicate Processing**: Eliminates previous duplicate filtering between service and hook
+
+#### Stream 1: Journey Data (Statistics & Distance)
+- **Purpose**: Accurate distance calculations, journey statistics, and data integrity
+- **Processing**: Minimal filtering - only remove clearly erroneous GPS points
+- **Filtering Criteria**:
+  - Remove points with accuracy > 100m (clearly bad GPS)
+  - Remove points with impossible speeds (> 50 m/s)
+  - Preserve all legitimate movement for accurate distance calculation
+- **Usage**: Distance calculations, journey statistics, data storage, validation
+
+#### Stream 2: Display Data (Map Visualization)
+- **Purpose**: Beautiful route visualization for map coverage display
+- **Processing**: Heavy processing for visual appeal
+- **Processing Pipeline**:
+  - Smoothing: Reduce GPS noise and jitter
+  - Simplification: Remove redundant points for performance
+  - Street-snapping: Align routes to nearest streets for coverage visualization
+- **Usage**: Map polyline rendering, route visualization, coverage display
+
+#### Consolidated Data Flow:
+```
+Raw GPS Points
+    ↓
+BackgroundLocationService (SINGLE PROCESSING POINT)
+    ├─ Two-Stream Processor (utils/locationDataProcessor.js)
+    ├─ Journey Data (minimal filter) → Distance Calculations → Storage
+    └─ Display Data (heavy processing) → Map Rendering → Visual Display
+    ↓
+useJourneyTracking (UI STATE MANAGEMENT ONLY)
+    ├─ Journey lifecycle management
+    ├─ Modal state management
+    └─ UI updates from service-processed data
+```
+
+**Benefits of Service-Centric Approach**:
+- **Single Source of Truth**: All processing in BackgroundLocationService
+- **No Duplicate Processing**: Eliminates waste and inconsistency
+- **Clear Separation**: Service = Data, Hook = UI State
+- **Maintainability**: One place to update location logic
+- **Scalability**: Ready for advanced features like offline sync
 
 ## Data Models
 
@@ -308,6 +379,10 @@ interface LocationCoordinates {
   altitude?: number;
   heading?: number;
   speed?: number;
+  
+  // TWO-STREAM DATA PROCESSING
+  dataType?: 'raw' | 'journey' | 'display';  // Indicates processing level
+  processedFrom?: 'gps' | 'smoothed' | 'snapped';  // Processing source
   
   // NEW: Enhanced accuracy tracking
   accuracyLevel?: 'high' | 'medium' | 'low';

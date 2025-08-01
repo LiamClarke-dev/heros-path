@@ -76,7 +76,11 @@ interface MapScreenState {
   currentPosition: LocationCoordinates | null;
   tracking: boolean;
   currentJourneyId: string | null;
-  pathToRender: LocationCoordinates[];
+  
+  // SERVICE-PROCESSED DATA (from BackgroundLocationService)
+  journeyPath: LocationCoordinates[];    // Service-processed journey data for statistics
+  displayPath: LocationCoordinates[];    // Service-processed display data for visualization
+  
   savedRoutes: Journey[];
   savedPlaces: Place[];
   showSavedPlaces: boolean;

@@ -77,9 +77,10 @@ Journey Tracking & Recording is a core feature of Hero's Path that allows users 
 
 1. WHEN tracking is active THEN the system SHALL use adaptive location sampling based on movement speed.
 2. WHEN the device battery is low THEN the system SHALL reduce location update frequency to conserve power.
-3. WHEN displaying large journey routes THEN the system SHALL use route simplification to maintain smooth rendering.
-4. WHEN storing journey data THEN the system SHALL use batch processing to minimize database operations.
-5. WHEN the app is in the background THEN the system SHALL optimize location tracking for battery efficiency.
+3. WHEN displaying large journey routes THEN the BackgroundLocationService SHALL use route simplification on display data (not journey data) to maintain smooth rendering while preserving statistical accuracy.
+4. WHEN storing journey data THEN the system SHALL use batch processing to minimize database operations and store both service-processed journey data (for statistics) and display data (for visualization).
+5. WHEN the app is in the background THEN the BackgroundLocationService SHALL optimize location tracking for battery efficiency.
+6. WHEN processing location data THEN the BackgroundLocationService SHALL maintain two separate streams as the single source of truth: minimal filtering for journey statistics and heavy processing for map visualization.
 
 ### Requirement 7
 
@@ -87,11 +88,14 @@ Journey Tracking & Recording is a core feature of Hero's Path that allows users 
 
 #### Acceptance Criteria
 
-1. WHEN GPS accuracy is poor THEN the system SHALL filter out low-accuracy coordinates.
+1. WHEN GPS accuracy is poor THEN the BackgroundLocationService SHALL apply minimal filtering to journey data (accuracy > 100m) and heavy processing to display data for visual appeal.
 2. WHEN location services are unavailable THEN the system SHALL provide clear error messages to the user.
 3. WHEN tracking is interrupted THEN the system SHALL attempt to resume tracking automatically.
-4. WHEN location data is corrupted THEN the system SHALL validate and clean the data before storage.
+4. WHEN location data is corrupted THEN the BackgroundLocationService SHALL validate and clean the data before storage using consolidated two-stream processing (minimal filtering for statistics, heavy processing for visualization).
 5. WHEN the user moves between different environments THEN the system SHALL adapt tracking parameters accordingly.
+6. WHEN calculating journey distance THEN the system SHALL use service-processed journey data to preserve accuracy.
+7. WHEN displaying routes on the map THEN the system SHALL use service-processed display data with smoothing and street-snapping for visual appeal.
+8. WHEN processing location data THEN the BackgroundLocationService SHALL be the single source of truth for all data processing to eliminate duplicate filtering.
 
 ### Requirement 8
 

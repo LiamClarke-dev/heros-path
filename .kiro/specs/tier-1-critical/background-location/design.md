@@ -8,29 +8,39 @@ This document outlines the technical architecture, components, interfaces, data 
 
 ## Architecture
 
-The Background Location Tracking feature follows a service-oriented architecture with clear separation of concerns:
+The Background Location Tracking feature follows a **service-centric architecture** with consolidated data processing:
 
 ```mermaid
 graph TD
     A[BackgroundLocationService] --> B[Location Provider]
-    A --> C[AsyncStorage]
+    A --> C[Two-Stream Processor]
     A --> D[Permission Manager]
-    E[MapScreen] --> A
-    F[ExplorationContext] --> A
-    A --> G[JourneyService]
-    H[AppState] --> A
+    A --> E[AsyncStorage]
+    F[useJourneyTracking] --> A
+    G[MapScreen] --> F
+    A --> H[JourneyService]
+    I[AppState] --> A
+    
+    C --> J[Journey Data - Statistics]
+    C --> K[Display Data - Visualization]
 ```
 
 ### Core Components
 
-1. **BackgroundLocationService**: The central service that manages all location tracking functionality.
-2. **Location Provider**: Expo Location API that provides the raw location data.
-3. **Permission Manager**: Handles requesting and checking location permissions.
-4. **AsyncStorage**: Temporarily stores location data during tracking.
-5. **MapScreen**: UI component that interacts with the service and displays tracking status.
-6. **ExplorationContext**: Stores tracked segments for exploration history.
-7. **JourneyService**: Handles saving completed journeys.
-8. **AppState**: Monitors app lifecycle for background/foreground transitions.
+1. **BackgroundLocationService**: **CONSOLIDATED DATA LAYER** - Manages all location functionality including two-stream processing
+2. **Two-Stream Processor**: Processes raw GPS into journey data (statistics) and display data (visualization)
+3. **Location Provider**: Expo Location API that provides the raw location data
+4. **Permission Manager**: Handles requesting and checking location permissions
+5. **AsyncStorage**: Stores processed location data during tracking
+6. **useJourneyTracking**: **UI STATE LAYER** - Manages journey lifecycle and UI state only
+7. **MapScreen**: UI component that displays tracking status and controls
+8. **JourneyService**: Handles saving completed journeys with processed data
+9. **AppState**: Monitors app lifecycle for background/foreground transitions
+
+### **CRITICAL ARCHITECTURAL CHANGE**
+- **Single Source of Truth**: BackgroundLocationService handles ALL data processing
+- **No Duplicate Processing**: Eliminated duplicate filtering between service and hook
+- **Clear Separation**: Service = Data Processing, Hook = UI State Management
 
 ## Dependencies and Extensions
 
@@ -88,8 +98,16 @@ initialize(): Promise<boolean>
 // Start tracking with a specific journey ID
 startTracking(journeyId: string, options?: object): Promise<boolean>
 
-// Stop tracking and return journey data
-stopTracking(): Promise<JourneyData | null>
+// Stop tracking and return processed journey data with both streams
+stopTracking(): Promise<{
+  coordinates: LocationCoordinates[],      // Journey data for statistics
+  displayCoordinates: LocationCoordinates[], // Display data for visualization
+  rawCoordinates: LocationCoordinates[],   // Raw data for debugging
+  processingStats: ProcessingStats,        // Processing statistics
+  id: string,
+  endTime: number,
+  isActive: boolean
+} | null>
 
 // Pause tracking temporarily
 pauseTracking(): Promise<void>
@@ -126,25 +144,31 @@ simulateLocation(coordinates: LocationCoordinates[]): Promise<void>
 
 // NEW: Performance optimization
 setOptimizationLevel(level: 'battery' | 'accuracy' | 'balanced'): Promise<void>
+
+// NEW: Get current processed data streams for real-time updates
+getCurrentProcessedData(): {
+  journeyData: LocationCoordinates[],
+  displayData: LocationCoordinates[],
+  rawData: LocationCoordinates[],
+  processingStats: ProcessingStats | null
+}
 ```
 
 #### Private Methods
 
 ```javascript
-// Handle location updates
+// Handle location updates with two-stream processing
 handleLocationUpdate(location: LocationObject): void
 
-// Filter location based on accuracy
-isLocationAccurate(location: LocationObject): boolean
+// Process raw GPS data into journey and display streams
+processLocationStreams(rawLocations: LocationObject[]): {
+  journeyData: LocationCoordinates[],
+  displayData: LocationCoordinates[],
+  processingStats: ProcessingStats
+}
 
 // Validate location coordinates
 isValidLocationCoordinates(location: LocationObject): boolean
-
-// Smooth location using recent points
-smoothLocation(newLocation: LocationObject): LocationObject
-
-// Calculate distance between two points
-calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number
 
 // Show permission denied alert
 showPermissionDeniedAlert(): void
@@ -188,31 +212,25 @@ monitorPerformanceMetrics(): void
 
 ### MapScreen Integration
 
-The MapScreen component integrates with the BackgroundLocationService to provide UI controls for tracking and display real-time location updates.
+The MapScreen component integrates with BackgroundLocationService through useJourneyTracking hook for clean separation of concerns.
 
 ```javascript
-// Initialize BackgroundLocationService
-useEffect(() => {
-  const initializeLocation = async () => {
-    await BackgroundLocationService.initialize();
-    BackgroundLocationService.setLocationUpdateCallback((coords, journey) => {
-      // Update UI with new location
-    });
-  };
-  
-  initializeLocation();
-}, []);
+// SERVICE-CENTRIC ARCHITECTURE: Hook manages UI state, Service processes data
+const journeyTracking = useJourneyTracking();
+const locationTracking = useLocationTracking(); // Wraps BackgroundLocationService
 
-// Toggle tracking
-const toggleTracking = async () => {
-  if (tracking) {
-    const journeyData = await BackgroundLocationService.stopTracking();
-    // Handle journey completion
-  } else {
-    const journeyId = Date.now().toString();
-    const success = await BackgroundLocationService.startTracking(journeyId);
-    // Handle tracking start
+// Real-time updates from service-processed data
+useEffect(() => {
+  if (journeyTracking.state.isTracking) {
+    // Get processed data from service for UI updates
+    journeyTracking.updateFromService(locationTracking);
   }
+}, [locationTracking.currentPosition, journeyTracking.state.isTracking]);
+
+// Toggle tracking through hook (which delegates to service)
+const toggleTracking = async () => {
+  const result = await journeyTracking.toggleTracking(locationTracking, permissions);
+  // Hook handles UI state, service handles data processing
 };
 
 // NEW: Extension points

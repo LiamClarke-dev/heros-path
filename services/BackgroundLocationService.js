@@ -6,9 +6,12 @@ import LocationOptimizer from './location/LocationOptimizer';
 import LocationFilter from './location/LocationFilter';
 import LocationBackupManager from './location/LocationBackupManager';
 
+// TWO-STREAM PROCESSING: Import the consolidated data processor
+import { processBothStreams, getProcessingStats } from '../utils/locationDataProcessor';
+
 // GPS warmup constants
-const GPS_WARMUP_DURATION = 30000; // 30 seconds
-const GPS_WARMUP_READINGS = 5; // minimum readings during warmup
+const GPS_WARMUP_DURATION = 10000; // 10 seconds
+const GPS_WARMUP_READINGS = 3; // minimum readings during warmup
 
 // Background task name
 const BACKGROUND_LOCATION_TASK = 'background-location';
@@ -48,28 +51,33 @@ class BackgroundLocationService {
     this.isTracking = false;
     this.currentJourneyId = null;
     this.locationUpdateCallback = null;
+
+    // TWO-STREAM PROCESSING: Store raw GPS data for processing
+    this.rawLocationHistory = [];
+    this.currentJourneyData = null;
+    this.currentDisplayData = null;
     this.isWarmingUp = false;
     this.warmupStartTime = null;
     this.warmupReadings = 0;
     this.permissionPromptCallback = null;
     this.appStateSubscription = null;
     this.locationSubscription = null;
-    
+
     // Initialize modular components
     this.locationOptimizer = new LocationOptimizer();
     this.locationFilter = new LocationFilter();
     this.backupManager = new LocationBackupManager();
-    
+
     // Set up component callbacks
     this.locationOptimizer.setOptimizationChangeCallback(this.handleOptimizationChange.bind(this));
     this.backupManager.setBackupStatusCallback(this.handleBackupStatusChange.bind(this));
-    
+
     // Bind methods to preserve context
     this.handleAppStateChange = this.handleAppStateChange.bind(this);
     this.handleLocationUpdate = this.handleLocationUpdate.bind(this);
     this.handleOptimizationChange = this.handleOptimizationChange.bind(this);
     this.handleBackupStatusChange = this.handleBackupStatusChange.bind(this);
-    
+
     // Set singleton instance
     BackgroundLocationService._instance = this;
   }
@@ -108,7 +116,7 @@ class BackgroundLocationService {
 
       // Check initial permissions and prompt if needed
       const permissions = await this.checkPermissions();
-      
+
       // Requirement 1.5: Prompt user with clear explanation if background permission not granted
       if (!permissions.background && this.permissionPromptCallback) {
         this.permissionPromptCallback({
@@ -120,7 +128,7 @@ class BackgroundLocationService {
       }
 
       this.isInitialized = true;
-      
+
       return {
         success: true,
         permissions,
@@ -144,7 +152,7 @@ class BackgroundLocationService {
     if (change.type === 'movement_change' || change.type === 'level_changed') {
       this.updateTrackingWithOptions(change.options);
     }
-    
+
     // Forward to location update callback
     if (this.locationUpdateCallback) {
       this.locationUpdateCallback(change);
@@ -196,7 +204,7 @@ class BackgroundLocationService {
         (location) => {
           // Let optimizer detect movement
           this.locationOptimizer.detectMovement(location);
-          
+
           // Process location through filter
           const processedLocation = this.locationFilter.processLocationReading(location);
           if (processedLocation && this.locationUpdateCallback) {
@@ -301,7 +309,7 @@ class BackgroundLocationService {
     }
 
     const timeElapsed = Date.now() - this.warmupStartTime;
-    
+
     // Warm-up is complete if we have enough accurate readings OR time limit reached
     return (
       this.warmupReadings >= GPS_WARMUP_READINGS ||
@@ -326,7 +334,7 @@ class BackgroundLocationService {
     const timeElapsed = Date.now() - this.warmupStartTime;
     const timeProgress = Math.min(timeElapsed / GPS_WARMUP_DURATION, 1.0);
     const readingsProgress = Math.min(this.warmupReadings / GPS_WARMUP_READINGS, 1.0);
-    
+
     // Use the maximum of time or readings progress
     const overallProgress = Math.max(timeProgress, readingsProgress);
 
@@ -346,7 +354,7 @@ class BackgroundLocationService {
     try {
       const foregroundStatus = await Location.getForegroundPermissionsAsync();
       const backgroundStatus = await Location.getBackgroundPermissionsAsync();
-      
+
       return {
         foreground: foregroundStatus.status === 'granted',
         background: backgroundStatus.status === 'granted',
@@ -375,10 +383,10 @@ class BackgroundLocationService {
     try {
       // Use the centralized permission utility to avoid duplicate dialogs
       const { requestLocationPermissions } = require('../utils/locationUtils');
-      
+
       // Check current permissions first
       const currentPermissions = await this.checkPermissions();
-      
+
       // If permissions are already granted, return success
       if (currentPermissions.foreground && currentPermissions.background) {
         return {
@@ -391,7 +399,7 @@ class BackgroundLocationService {
 
       // Use centralized permission request
       const permissionResult = await requestLocationPermissions(true); // Request background permission
-      
+
       if (permissionResult.granted) {
         return {
           success: true,
@@ -483,7 +491,7 @@ class BackgroundLocationService {
         (location) => {
           // Let optimizer detect movement for adaptive tracking
           this.locationOptimizer.detectMovement(location);
-          
+
           // Process location through filter
           const processedLocation = this.locationFilter.processLocationReading(location);
           if (processedLocation && this.locationUpdateCallback) {
@@ -509,10 +517,15 @@ class BackgroundLocationService {
 
       this.isTracking = true;
       this.currentJourneyId = journeyId;
-      
+
+      // TWO-STREAM PROCESSING: Reset data streams for new journey
+      this.rawLocationHistory = [];
+      this.currentJourneyData = [];
+      this.currentDisplayData = [];
+
       // Requirement 5.4: Start periodic saving to prevent data loss
       this.backupManager.startPeriodicSave(journeyId);
-      
+
       console.log(`Location tracking started for journey: ${journeyId}`);
       return true;
     } catch (error) {
@@ -541,21 +554,28 @@ class BackgroundLocationService {
       // Stop background tracking
       await this.stopBackgroundTracking();
 
-      // Get location history from filter
-      const locationHistory = this.locationFilter.getLocationHistory();
+      // TWO-STREAM PROCESSING: Return processed data streams
+      const processingStats = getProcessingStats(
+        this.rawLocationHistory,
+        this.currentJourneyData || [],
+        this.currentDisplayData || []
+      );
 
-      // Prepare journey data
+      console.log('BackgroundLocationService two-stream processing complete:', processingStats);
+
+      // Prepare journey data with both streams
       const journeyData = {
         id: this.currentJourneyId,
         endTime: Date.now(),
-        coordinates: locationHistory
-          .filter(loc => loc && loc.coords && typeof loc.coords.latitude === 'number' && typeof loc.coords.longitude === 'number')
-          .map(loc => ({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            timestamp: loc.timestamp,
-            accuracy: loc.coords.accuracy
-          })),
+
+        // TWO-STREAM DATA: Provide both processed streams
+        coordinates: this.currentJourneyData || [], // Journey data for statistics
+        displayCoordinates: this.currentDisplayData || [], // Display data for visualization
+        rawCoordinates: this.rawLocationHistory || [], // Raw data for debugging
+
+        // Processing statistics for debugging
+        processingStats,
+
         isActive: false
       };
 
@@ -570,6 +590,11 @@ class BackgroundLocationService {
       // Reset modular components
       this.locationFilter.reset();
       this.locationOptimizer.reset();
+
+      // TWO-STREAM PROCESSING: Reset data streams
+      this.rawLocationHistory = [];
+      this.currentJourneyData = null;
+      this.currentDisplayData = null;
 
       // Clean up backup data
       await this.backupManager.clearJourneyBackup(journeyIdToClean);
@@ -716,20 +741,42 @@ class BackgroundLocationService {
         try {
           // Let optimizer detect movement
           this.locationOptimizer.detectMovement(location);
-          
-          // Process location through filter
-          const processedLocation = this.locationFilter.processLocationReading(location);
-          if (processedLocation && this.locationUpdateCallback) {
-            this.locationUpdateCallback(processedLocation);
+
+          // TWO-STREAM PROCESSING: Add to raw location history
+          if (location && location.coords) {
+            const rawLocation = {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              timestamp: location.timestamp || Date.now(),
+              accuracy: location.coords.accuracy,
+              altitude: location.coords.altitude,
+              heading: location.coords.heading,
+              speed: location.coords.speed
+            };
+
+            this.rawLocationHistory.push(rawLocation);
+
+            // Process both streams when we have new data
+            const processed = processBothStreams(this.rawLocationHistory);
+
+            // Update current journey and display data
+            this.currentJourneyData = processed.journeyData;
+            this.currentDisplayData = processed.displayData;
+
+            // Send the latest raw location to callback (for real-time display)
+            if (this.locationUpdateCallback) {
+              this.locationUpdateCallback(rawLocation);
+            }
           }
         } catch (error) {
           console.error('Error processing individual location:', error, location);
         }
       });
 
-      // Trigger periodic save with current location history
-      const locationHistory = this.locationFilter.getLocationHistory();
-      this.backupManager.performPeriodicSave(locationHistory);
+      // Trigger periodic save with current journey data (not raw data)
+      if (this.currentJourneyData && this.currentJourneyData.length > 0) {
+        this.backupManager.performPeriodicSave(this.currentJourneyData);
+      }
     } catch (error) {
       console.error('Error in handleLocationUpdate:', error);
       if (this.locationUpdateCallback) {
@@ -743,12 +790,27 @@ class BackgroundLocationService {
   }
 
   /**
+   * Get current processed data streams for real-time updates
+   * @returns {Object} Current journey and display data
+   */
+  getCurrentProcessedData() {
+    return {
+      journeyData: this.currentJourneyData || [],
+      displayData: this.currentDisplayData || [],
+      rawData: this.rawLocationHistory || [],
+      processingStats: this.rawLocationHistory.length > 0 ?
+        getProcessingStats(this.rawLocationHistory, this.currentJourneyData || [], this.currentDisplayData || []) :
+        null
+    };
+  }
+
+  /**
    * Handle app state changes for background/foreground transitions
    * @param {string} nextAppState - The next app state ('active', 'background', 'inactive')
    */
   handleAppStateChange(nextAppState) {
     console.log('App state changed to:', nextAppState);
-    
+
     if (nextAppState === 'background' && this.isTracking) {
       this.handleAppBackground();
     } else if (nextAppState === 'active' && this.isTracking) {
@@ -761,11 +823,11 @@ class BackgroundLocationService {
    */
   async handleAppBackground() {
     console.log('App going to background - maintaining location tracking');
-    
+
     try {
       // Ensure background location is still active
       const { status } = await Location.getBackgroundPermissionsAsync();
-      
+
       if (status !== 'granted') {
         console.warn('Background location permission not granted');
         // Notify user that tracking may be interrupted
@@ -780,7 +842,7 @@ class BackgroundLocationService {
 
       // Store current tracking state
       await this.saveTrackingState();
-      
+
       console.log('Background tracking configured successfully');
     } catch (error) {
       console.error('Error configuring background tracking:', error);
@@ -792,11 +854,11 @@ class BackgroundLocationService {
    */
   async handleAppForeground() {
     console.log('App returning to foreground - resuming foreground tracking');
-    
+
     try {
       // Restore tracking state if needed
       await this.restoreTrackingState();
-      
+
       // Update UI with any locations captured while in background
       if (this.locationUpdateCallback) {
         this.locationUpdateCallback({
@@ -804,7 +866,7 @@ class BackgroundLocationService {
           message: 'Tracking resumed in foreground'
         });
       }
-      
+
       console.log('Foreground tracking resumed successfully');
     } catch (error) {
       console.error('Error resuming foreground tracking:', error);
@@ -822,7 +884,7 @@ class BackgroundLocationService {
         startTime: Date.now(),
         locationHistoryCount: this.locationHistory.length
       };
-      
+
       await AsyncStorage.setItem('trackingState', JSON.stringify(trackingState));
       console.log('Tracking state saved');
     } catch (error) {
@@ -836,11 +898,11 @@ class BackgroundLocationService {
   async restoreTrackingState() {
     try {
       const trackingStateJson = await AsyncStorage.getItem('trackingState');
-      
+
       if (trackingStateJson) {
         const trackingState = JSON.parse(trackingStateJson);
         console.log('Restored tracking state:', trackingState);
-        
+
         // Verify state is still valid
         if (trackingState.isTracking && trackingState.currentJourneyId) {
           this.isTracking = trackingState.isTracking;
@@ -867,7 +929,7 @@ class BackgroundLocationService {
 
       // Check if background location is already running
       const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_LOCATION_TASK);
-      
+
       if (isRegistered) {
         console.log('Background location task already registered');
         return true;
@@ -902,12 +964,12 @@ class BackgroundLocationService {
   async stopBackgroundTracking() {
     try {
       const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_LOCATION_TASK);
-      
+
       if (isRegistered) {
         await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
         console.log('Background location tracking stopped');
       }
-      
+
       // Clear saved tracking state
       await AsyncStorage.removeItem('trackingState');
     } catch (error) {

@@ -20,6 +20,7 @@ import MapControls from '../components/map/MapControls';
 import MapStatusDisplays from '../components/map/MapStatusDisplays';
 import MapModals from '../components/map/MapModals';
 import DistanceDebugOverlay from '../components/ui/DistanceDebugOverlay';
+import DebugInstructions from '../components/ui/DebugInstructions';
 
 // Contexts
 import { useUser } from '../contexts/UserContext';
@@ -84,9 +85,10 @@ const MapScreen = () => {
 
   // Local state for GPS details expansion
   const [gpsExpanded, setGpsExpanded] = useState(false);
-  
+
   // Debug overlay state for production testing
   const [debugOverlayVisible, setDebugOverlayVisible] = useState(false);
+  const [debugInstructionsVisible, setDebugInstructionsVisible] = useState(false);
 
   // All hooks integrated - permissions + location tracking + map state + journey tracking + saved routes + saved places + map style
   const permissions = useMapPermissions();
@@ -141,7 +143,7 @@ const MapScreen = () => {
         if (!hasInitiallyLocated.current && mapRef.current) {
           console.log('First GPS location detected - centering map automatically');
           hasInitiallyLocated.current = true;
-          
+
           // Use the animateToLocation utility for smooth centering
           const { animateToLocation } = require('../utils/locationUtils');
           animateToLocation(mapRef, currentPos, 1500).catch(error => {
@@ -149,9 +151,11 @@ const MapScreen = () => {
           });
         }
 
-        // Add position to journey path if actively tracking
+        // SERVICE-CENTRIC: BackgroundLocationService handles data processing
+        // Update journey tracking with latest service data
         if (journeyTracking.state.isTracking) {
-          journeyTracking.addToPath(currentPos);
+          journeyTracking.addToPath(currentPos); // Legacy compatibility
+          journeyTracking.updateFromService(locationTracking); // Get processed data from service
         }
 
         // Cache position to prevent redundant processing
@@ -176,28 +180,31 @@ const MapScreen = () => {
     await locationTracking.locateMe(mapRef);
   }, [locationTracking.locateMe]);
 
-  // Debug calculations for production testing
+  // Debug calculations for SERVICE-PROCESSED DATA
   const debugDistances = useMemo(() => {
-    if (!journeyTracking.pathToRender || journeyTracking.pathToRender.length < 2) {
+    if (!journeyTracking.journeyPath || journeyTracking.journeyPath.length < 2) {
       return {
         trackingDistance: 0,
         validationDistance: 0,
         modalDistance: 0,
-        pathLength: journeyTracking.pathToRender?.length || 0,
+        pathLength: 0,
+        displayLength: 0,
       };
     }
 
-    const trackingDistance = Math.round(calculateJourneyDistance(journeyTracking.pathToRender));
+    const trackingDistance = Math.round(calculateJourneyDistance(journeyTracking.journeyPath));
     const modalDistance = journeyTracking.namingModal.journey?.distance || 0;
     
     return {
       trackingDistance,
-      validationDistance: trackingDistance, // Should be the same now
+      validationDistance: trackingDistance, // Same source - service-processed
       modalDistance,
-      pathLength: journeyTracking.pathToRender.length,
+      pathLength: journeyTracking.journeyPath.length,
+      displayLength: journeyTracking.displayPath.length,
     };
   }, [
-    journeyTracking.pathToRender, 
+    journeyTracking.journeyPath,
+    journeyTracking.displayPath,
     journeyTracking.namingModal.journey?.distance
   ]);
 
@@ -213,6 +220,7 @@ const MapScreen = () => {
         savedPlaces={savedPlaces}
         mapStyle={mapStyle}
         onMapReady={handleMapReady}
+        onDebugToggle={() => setDebugOverlayVisible(!debugOverlayVisible)}
       />
 
       <MapControls
@@ -251,8 +259,8 @@ const MapScreen = () => {
         journeyInfo={useMemo(() => ({
           isTracking: journeyTracking.state.isTracking,
           startTime: journeyTracking.currentJourney?.startTime,
-          currentPath: journeyTracking.pathToRender
-        }), [journeyTracking.state.isTracking, journeyTracking.currentJourney?.startTime, journeyTracking.pathToRender])}
+          currentPath: journeyTracking.journeyPath // Use journey data for accurate distance display
+        }), [journeyTracking.state.isTracking, journeyTracking.currentJourney?.startTime, journeyTracking.journeyPath])}
         gpsStatus={useMemo(() => ({
           gpsState: locationTracking.gpsStatus,
           signalStrength: locationTracking.gpsStatus?.signalStrength || 0,
@@ -287,6 +295,32 @@ const MapScreen = () => {
         onOpenSettings={permissions.openSettings}
         theme={currentTheme}
         isAuthenticated={isAuthenticated}
+      />
+
+      {/* Distance Debug Overlay for production testing */}
+      <DistanceDebugOverlay
+        isVisible={debugOverlayVisible}
+        trackingDistance={debugDistances.trackingDistance}
+        validationDistance={debugDistances.validationDistance}
+        modalDistance={debugDistances.modalDistance}
+        pathLength={debugDistances.pathLength}
+        displayLength={debugDistances.displayLength}
+
+        onToggle={(action) => {
+          if (action === 'instructions') {
+            setDebugInstructionsVisible(true);
+          } else {
+            setDebugOverlayVisible(!debugOverlayVisible);
+          }
+        }}
+        theme={currentTheme}
+      />
+
+      {/* Debug Instructions Modal */}
+      <DebugInstructions
+        visible={debugInstructionsVisible}
+        onClose={() => setDebugInstructionsVisible(false)}
+        theme={currentTheme}
       />
 
       {/* Centralized permission handling through useMapPermissions hook - no duplicate UI needed */}

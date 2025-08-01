@@ -27,6 +27,7 @@ const DistanceDebugOverlay = ({
   validationDistance = 0,
   modalDistance = 0,
   pathLength = 0,
+  displayLength = 0,
   onToggle,
   theme = 'light',
 }) => {
@@ -37,6 +38,13 @@ const DistanceDebugOverlay = ({
       <TouchableOpacity
         style={styles.toggleButton}
         onPress={onToggle}
+        onLongPress={() => {
+          // Show instructions on long press
+          if (onToggle) {
+            // This will be handled by the parent component
+            onToggle('instructions');
+          }
+        }}
         activeOpacity={0.7}
       >
         <Ionicons name="bug" size={16} color="#666" />
@@ -125,7 +133,7 @@ const DistanceDebugOverlay = ({
           <View style={styles.distanceGrid}>
             <View style={styles.distanceItem}>
               <Text style={[styles.distanceLabel, { color: themeStyles.textColor }]}>
-                Tracking
+                Journey Distance
               </Text>
               <Text style={[styles.distanceValue, { color: getStatusColor() }]}>
                 {trackingDistance}m
@@ -134,42 +142,50 @@ const DistanceDebugOverlay = ({
 
             <View style={styles.distanceItem}>
               <Text style={[styles.distanceLabel, { color: themeStyles.textColor }]}>
-                Validation
-              </Text>
-              <Text style={[styles.distanceValue, { color: getStatusColor() }]}>
-                {validationDistance}m
-              </Text>
-            </View>
-
-            <View style={styles.distanceItem}>
-              <Text style={[styles.distanceLabel, { color: themeStyles.textColor }]}>
-                Modal
+                Modal Distance
               </Text>
               <Text style={[styles.distanceValue, { color: getStatusColor() }]}>
                 {modalDistance}m
               </Text>
             </View>
 
+
+
             <View style={styles.distanceItem}>
               <Text style={[styles.distanceLabel, { color: themeStyles.textColor }]}>
-                Path Points
+                Journey Points
               </Text>
               <Text style={[styles.distanceValue, { color: themeStyles.textColor }]}>
                 {pathLength}
               </Text>
             </View>
+
+            <View style={styles.distanceItem}>
+              <Text style={[styles.distanceLabel, { color: themeStyles.textColor }]}>
+                Display Points
+              </Text>
+              <Text style={[styles.distanceValue, { color: themeStyles.textColor }]}>
+                {displayLength}
+              </Text>
+            </View>
           </View>
 
-          {/* Calculation Details */}
+          {/* Service-Processed Data Details */}
           <View style={styles.detailsSection}>
             <Text style={[styles.detailsTitle, { color: themeStyles.textColor }]}>
-              Calculation Source:
+              Service-Processed Data:
             </Text>
             <Text style={[styles.detailsText, { color: themeStyles.textColor }]}>
-              All using utils/distanceUtils.js
+              • Journey: Statistics data ({pathLength})
             </Text>
             <Text style={[styles.detailsText, { color: themeStyles.textColor }]}>
-              Data source: pathToRender
+              • Display: Visualization data ({displayLength})
+            </Text>
+            <Text style={[styles.detailsText, { color: themeStyles.textColor }]}>
+              • Processing: BackgroundLocationService
+            </Text>
+            <Text style={[styles.detailsText, { color: themeStyles.textColor }]}>
+              • Single source of truth ✓
             </Text>
           </View>
         </View>

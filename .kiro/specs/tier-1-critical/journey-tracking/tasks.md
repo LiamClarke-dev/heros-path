@@ -22,10 +22,13 @@
 
   - [x] 2.3 Implement location data processing and callbacks
     - Create location update callback system
-    - Add coordinate filtering for accuracy
+    - **SERVICE-CENTRIC PROCESSING**: Consolidate all data processing in BackgroundLocationService
+    - **TWO-STREAM PROCESSING**: Implement minimal filtering for journey data (statistics) in service
+    - **TWO-STREAM PROCESSING**: Implement heavy processing for display data (visualization) in service
+    - **ELIMINATE DUPLICATE PROCESSING**: Remove duplicate filtering between service and hook
     - Implement periodic data saving for crash recovery
     - Add battery optimization strategies
-    - _Requirements: 1.6, 5.4_
+    - _Requirements: 1.6, 5.4, 7.1, 7.4, 7.8_
 
 - [ ] 3. Develop JourneyService for journey data management
 

@@ -38,12 +38,15 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.2, 3.4_
 
-- [-] 3. Create Search Along Route service
+- [x] 3. Create Search Along Route service
 
 
 
 
-  - [-] 3.1 Implement core SAR API integration
+
+
+  - [x] 3.1 Implement core SAR API integration
+
 
 
     - Create function to build SAR API request with encoded polyline
@@ -52,6 +55,8 @@
     - Write tests for API integration
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.1, 1.3, 6.1, 6.2, 6.3_
+
+
 
   - [ ] 3.2 Add preference filtering to SAR
     - Integrate with user discovery preferences from DiscoveryPreferencesScreen

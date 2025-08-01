@@ -61,6 +61,7 @@ const MapModals = ({
         defaultName={defaultJourneyName}
         journeyStats={journeyNaming.journey?.stats || {}}
         loading={savingJourney}
+        validationWarning={journeyNaming.validationWarning}
       />
 
       {/* Place Detail Modal */}

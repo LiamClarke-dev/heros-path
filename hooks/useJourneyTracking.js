@@ -11,7 +11,7 @@ import { useUser } from '../contexts/UserContext';
 import { DEFAULT_JOURNEY_VALUES, VALIDATION_CONSTANTS } from '../constants/JourneyModels';
 
 // Utilities
-import { calculateJourneyDistance } from '../utils/distanceUtils';
+import { calculateDistance, calculateJourneyDistance } from '../utils/distanceUtils';
 
 /**
  * Custom hook for managing journey tracking state and logic
@@ -48,7 +48,8 @@ const useJourneyTracking = () => {
   // Journey saving state
   const [namingModal, setNamingModal] = useState({ 
     visible: false, 
-    journey: null 
+    journey: null,
+    validationWarning: null
   });
   const [savingJourney, setSavingJourney] = useState(false);
 
@@ -207,6 +208,18 @@ const useJourneyTracking = () => {
       setTrackingStatus('stopping');
       setLastError(null);
 
+      // CRITICAL FIX: Get current processed data from service BEFORE stopping
+      // This ensures we have the most up-to-date processed data
+      let currentServiceData = null;
+      if (locationTrackingHook?.locationService) {
+        currentServiceData = locationTrackingHook.locationService.getCurrentProcessedData();
+        console.log('Pre-stop service data:', {
+          journeyPoints: currentServiceData?.journeyData?.length || 0,
+          displayPoints: currentServiceData?.displayData?.length || 0,
+          rawPoints: currentServiceData?.rawData?.length || 0
+        });
+      }
+
       // Stop location tracking and get journey data
       const journeyData = await locationTrackingHook.stopTracking();
 
@@ -257,7 +270,7 @@ const useJourneyTracking = () => {
           } else if (validationResult.type === 'too_few_points') {
             Alert.alert(
               'Insufficient Location Data',
-              `Your journey has only ${journeyPath.length} location points. More data is needed for a meaningful journey.`,
+              `Your journey has only ${currentJourneyData.length} location points. More data is needed for a meaningful journey.`,
               [
                 { text: 'Continue Journey', onPress: () => continueJourney(locationTrackingHook) },
                 { text: 'Discard', style: 'destructive', onPress: () => discardJourney() },
@@ -477,8 +490,16 @@ const useJourneyTracking = () => {
       serviceDataLength: journeyData.coordinates?.length || 0
     });
 
-    // Use service-processed journey data for route storage
-    const routeData = currentJourneyData;
+    // CRITICAL FIX: Use service-processed data from journeyData parameter, not local state
+    // The local state might not be updated yet when this function is called
+    const routeData = journeyData.coordinates || currentJourneyData;
+    
+    console.log('Route data selection:', {
+      usingServiceData: !!journeyData.coordinates,
+      serviceDataLength: journeyData.coordinates?.length || 0,
+      localDataLength: currentJourneyData.length,
+      selectedDataLength: routeData.length
+    });
 
     // Calculate journey statistics using the actual route data
     const stats = calculateJourneyStatistics(routeData);
@@ -494,7 +515,8 @@ const useJourneyTracking = () => {
       originalStatsDistance: stats.distance,
       correctedStatsDistance: correctedStats.distance,
       passedDistance: Math.round(distance),
-      routeDataLength: routeData.length
+      routeDataLength: routeData.length,
+      distanceSource: 'service-processed'
     });
 
     // Prepare journey data for saving
@@ -505,11 +527,20 @@ const useJourneyTracking = () => {
       startTime: journeyStartTime,
       endTime: Date.now(),
       route: routeData, // Use the more complete route data
-      distance: Math.round(distance), // Use the passed distance, not stats.distance
+      distance: Math.round(distance), // CRITICAL: Use the passed distance, not stats.distance
       duration: Date.now() - journeyStartTime,
       status: 'completed',
       stats: correctedStats // Use corrected stats with consistent distance
     };
+    
+    // DEBUGGING: Verify the journey object has the correct distance
+    console.log('Journey object verification:', {
+      hasDistance: 'distance' in journeyToSave,
+      distanceValue: journeyToSave.distance,
+      distanceType: typeof journeyToSave.distance,
+      passedDistance: Math.round(distance),
+      objectKeys: Object.keys(journeyToSave)
+    });
 
     console.log('Journey prepared for saving:', {
       journeyDistance: journeyToSave.distance,
@@ -518,9 +549,20 @@ const useJourneyTracking = () => {
     });
 
     // Set journey data and show naming modal
+    console.log('Setting naming modal with journey:', {
+      journeyDistance: journeyToSave.distance,
+      journeyId: journeyToSave.id,
+      routeLength: journeyToSave.route.length,
+      modalWillShow: true
+    });
+    
+    // Check for validation warnings
+    const validationResult = validateJourneyForSaving(journeyToSave, distance);
+    
     setNamingModal({
       visible: true,
-      journey: journeyToSave
+      journey: journeyToSave,
+      validationWarning: !validationResult.isValid ? validationResult : null
     });
   }, [currentJourneyId, journeyStartTime, user, currentJourneyData, calculateJourneyStatistics]);
 
@@ -528,7 +570,7 @@ const useJourneyTracking = () => {
    * Handle journey save from naming modal
    * Implements journey saving functionality with enhanced error handling as per requirement 2.2
    */
-  const saveJourney = useCallback(async (journeyName) => {
+  const saveJourney = useCallback(async (journeyName, overrideValidation = false) => {
     if (!namingModal.journey) {
       console.error('No journey data to save');
       Alert.alert(
@@ -567,16 +609,20 @@ const useJourneyTracking = () => {
 
       console.log('About to validate journey with distance:', namingModal.journey.distance);
 
-      // Final validation of journey data before saving
-      const finalValidation = validateJourneyForSaving(
-        namingModal.journey, 
-        namingModal.journey.distance
-      );
+      // Final validation of journey data before saving (unless overridden)
+      if (!overrideValidation) {
+        const finalValidation = validateJourneyForSaving(
+          namingModal.journey, 
+          namingModal.journey.distance
+        );
 
-      console.log('Validation result:', finalValidation);
+        console.log('Validation result:', finalValidation);
 
-      if (!finalValidation.isValid) {
-        throw new Error(`Journey validation failed: ${finalValidation.message}`);
+        if (!finalValidation.isValid) {
+          throw new Error(`Journey validation failed: ${finalValidation.message}`);
+        }
+      } else {
+        console.log('Validation overridden - saving journey anyway');
       }
 
       // Save journey with the provided name
@@ -588,7 +634,7 @@ const useJourneyTracking = () => {
       const savedJourney = await JourneyService.createJourney(user.uid, journeyData);
 
       // Close modal and reset state
-      setNamingModal({ visible: false, journey: null });
+      setNamingModal({ visible: false, journey: null, validationWarning: null });
       discardJourney();
 
       // Show success message with journey details
@@ -635,7 +681,7 @@ const useJourneyTracking = () => {
    * Implements naming modal state management as per requirement 2.2
    */
   const cancelSave = useCallback(() => {
-    setNamingModal({ visible: false, journey: null });
+    setNamingModal({ visible: false, journey: null, validationWarning: null });
 
     // Ask user if they want to discard the journey
     Alert.alert(
@@ -684,7 +730,7 @@ const useJourneyTracking = () => {
    */
   const discardJourney = useCallback(() => {
     resetTrackingState();
-    setNamingModal({ visible: false, journey: null });
+    setNamingModal({ visible: false, journey: null, validationWarning: null });
   }, [resetTrackingState]);
 
   /**

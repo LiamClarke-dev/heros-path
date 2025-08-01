@@ -182,25 +182,40 @@ const MapScreen = () => {
 
   // Debug calculations for SERVICE-PROCESSED DATA
   const debugDistances = useMemo(() => {
-    if (!journeyTracking.journeyPath || journeyTracking.journeyPath.length < 2) {
+    // CRITICAL FIX: Handle undefined/null journeyPath gracefully
+    const journeyPath = journeyTracking.journeyPath || [];
+    const displayPath = journeyTracking.displayPath || [];
+    
+    if (journeyPath.length < 2) {
       return {
         trackingDistance: 0,
         validationDistance: 0,
         modalDistance: 0,
-        pathLength: 0,
-        displayLength: 0,
+        pathLength: journeyPath.length,
+        displayLength: displayPath.length,
       };
     }
 
-    const trackingDistance = Math.round(calculateJourneyDistance(journeyTracking.journeyPath));
+    const trackingDistance = Math.round(calculateJourneyDistance(journeyPath));
     const modalDistance = journeyTracking.namingModal.journey?.distance || 0;
+    
+    // Debug modal distance issue
+    if (journeyTracking.namingModal.visible && modalDistance === 0) {
+      console.log('MODAL DISTANCE DEBUG:', {
+        modalVisible: journeyTracking.namingModal.visible,
+        modalJourney: journeyTracking.namingModal.journey,
+        modalDistance: modalDistance,
+        journeyDistance: journeyTracking.namingModal.journey?.distance,
+        trackingDistance: trackingDistance
+      });
+    }
     
     return {
       trackingDistance,
       validationDistance: trackingDistance, // Same source - service-processed
       modalDistance,
-      pathLength: journeyTracking.journeyPath.length,
-      displayLength: journeyTracking.displayPath.length,
+      pathLength: journeyPath.length,
+      displayLength: displayPath.length,
     };
   }, [
     journeyTracking.journeyPath,
@@ -259,7 +274,7 @@ const MapScreen = () => {
         journeyInfo={useMemo(() => ({
           isTracking: journeyTracking.state.isTracking,
           startTime: journeyTracking.currentJourney?.startTime,
-          currentPath: journeyTracking.journeyPath // Use journey data for accurate distance display
+          currentPath: journeyTracking.journeyPath || [] // Use journey data for accurate distance display
         }), [journeyTracking.state.isTracking, journeyTracking.currentJourney?.startTime, journeyTracking.journeyPath])}
         gpsStatus={useMemo(() => ({
           gpsState: locationTracking.gpsStatus,

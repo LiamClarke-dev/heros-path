@@ -202,14 +202,8 @@ class BackgroundLocationService {
           distanceInterval: options.distanceInterval
         },
         (location) => {
-          // Let optimizer detect movement
-          this.locationOptimizer.detectMovement(location);
-
-          // Process location through filter
-          const processedLocation = this.locationFilter.processLocationReading(location);
-          if (processedLocation && this.locationUpdateCallback) {
-            this.locationUpdateCallback(processedLocation);
-          }
+          // CRITICAL FIX: Use consistent data processing path
+          this.handleLocationUpdate([location]);
         }
       );
 
@@ -492,11 +486,9 @@ class BackgroundLocationService {
           // Let optimizer detect movement for adaptive tracking
           this.locationOptimizer.detectMovement(location);
 
-          // Process location through filter
-          const processedLocation = this.locationFilter.processLocationReading(location);
-          if (processedLocation && this.locationUpdateCallback) {
-            this.locationUpdateCallback(processedLocation);
-          }
+          // CRITICAL FIX: Use consistent data processing path
+          // Both foreground and background should use handleLocationUpdate
+          this.handleLocationUpdate([location]);
         }
       );
 
@@ -644,10 +636,8 @@ class BackgroundLocationService {
           distanceInterval: 5
         },
         (location) => {
-          const processedLocation = this.processLocationReading(location);
-          if (processedLocation && this.locationUpdateCallback) {
-            this.locationUpdateCallback(processedLocation);
-          }
+          // CRITICAL FIX: Use consistent data processing path
+          this.handleLocationUpdate([location]);
         }
       );
 
@@ -739,43 +729,83 @@ class BackgroundLocationService {
       // Process each location
       locations.forEach(location => {
         try {
-          // Let optimizer detect movement
+          // CRITICAL FIX: Add validation for location structure
+          if (!location || !location.coords) {
+            console.error('BackgroundLocationService: Invalid location structure', location);
+            return;
+          }
+
+          // Let optimizer detect movement for adaptive tracking
           this.locationOptimizer.detectMovement(location);
 
           // TWO-STREAM PROCESSING: Add to raw location history
-          if (location && location.coords) {
-            const rawLocation = {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-              timestamp: location.timestamp || Date.now(),
-              accuracy: location.coords.accuracy,
-              altitude: location.coords.altitude,
-              heading: location.coords.heading,
-              speed: location.coords.speed
-            };
+          const rawLocation = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            timestamp: location.timestamp || Date.now(),
+            accuracy: location.coords.accuracy,
+            altitude: location.coords.altitude,
+            heading: location.coords.heading,
+            speed: location.coords.speed
+          };
 
-            this.rawLocationHistory.push(rawLocation);
+          this.rawLocationHistory.push(rawLocation);
 
-            // Process both streams when we have new data
-            const processed = processBothStreams(this.rawLocationHistory);
+          // Process both streams when we have new data
+          const processed = processBothStreams(this.rawLocationHistory);
 
-            // Update current journey and display data
-            this.currentJourneyData = processed.journeyData;
-            this.currentDisplayData = processed.displayData;
+          // Update current journey and display data
+          this.currentJourneyData = processed.journeyData;
+          this.currentDisplayData = processed.displayData;
 
-            // Send the latest raw location to callback (for real-time display)
-            if (this.locationUpdateCallback) {
-              this.locationUpdateCallback(rawLocation);
-            }
+          // Process location through filter for real-time callback
+          const processedLocation = this.locationFilter.processLocationReading(location);
+          if (processedLocation && this.locationUpdateCallback) {
+            this.locationUpdateCallback(processedLocation);
           }
         } catch (error) {
-          console.error('Error processing individual location:', error, location);
+          console.error('Error processing location:', error.message);
+          // Continue processing other locations
         }
       });
 
-      // Trigger periodic save with current journey data (not raw data)
+      // Trigger periodic save with properly formatted data for backup manager
       if (this.currentJourneyData && this.currentJourneyData.length > 0) {
-        this.backupManager.performPeriodicSave(this.currentJourneyData);
+        // DEBUG: Check what's in the journey data
+        console.log('Journey data for backup:', {
+          length: this.currentJourneyData.length,
+          firstPoint: this.currentJourneyData[0],
+          hasLatitude: this.currentJourneyData[0]?.latitude !== undefined,
+          hasLongitude: this.currentJourneyData[0]?.longitude !== undefined
+        });
+        
+        // Convert journey data back to the format expected by backup manager
+        const backupData = this.currentJourneyData.map((point, index) => {
+          if (!point || typeof point.latitude !== 'number' || typeof point.longitude !== 'number') {
+            console.warn(`Invalid journey data point at index ${index}:`, point);
+            return null;
+          }
+          
+          return {
+            coords: {
+              latitude: point.latitude,
+              longitude: point.longitude,
+              accuracy: point.accuracy,
+              altitude: point.altitude,
+              heading: point.heading,
+              speed: point.speed
+            },
+            timestamp: point.timestamp
+          };
+        }).filter(point => point !== null);
+        
+        console.log('Backup data formatted:', {
+          originalLength: this.currentJourneyData.length,
+          backupLength: backupData.length,
+          firstBackupPoint: backupData[0]
+        });
+        
+        this.backupManager.performPeriodicSave(backupData);
       }
     } catch (error) {
       console.error('Error in handleLocationUpdate:', error);

@@ -103,14 +103,43 @@ class LocationBackupManager {
         })
         .map((loc, index) => {
           try {
-            return {
+            // DEBUGGING: Log the location structure
+            console.log(`Mapping location at index ${index}:`, {
+              hasCoords: !!loc.coords,
+              coordsKeys: loc.coords ? Object.keys(loc.coords) : 'no coords',
+              latitude: loc.coords?.latitude,
+              longitude: loc.coords?.longitude,
+              timestamp: loc.timestamp
+            });
+            
+            // CRITICAL FIX: Add more validation
+            if (!loc.coords) {
+              throw new Error(`Location at index ${index} missing coords property`);
+            }
+            
+            if (typeof loc.coords.latitude !== 'number' || typeof loc.coords.longitude !== 'number') {
+              throw new Error(`Location at index ${index} has invalid coordinates: lat=${loc.coords.latitude}, lng=${loc.coords.longitude}`);
+            }
+            
+            const mappedLocation = {
               latitude: loc.coords.latitude,
               longitude: loc.coords.longitude,
               timestamp: loc.timestamp || Date.now(),
               accuracy: loc.coords.accuracy || null
             };
+            
+            // Validate the mapped location
+            if (typeof mappedLocation.latitude !== 'number' || typeof mappedLocation.longitude !== 'number') {
+              throw new Error(`Mapped location at index ${index} has invalid coordinates after mapping`);
+            }
+            
+            return mappedLocation;
           } catch (error) {
-            console.error(`Error mapping location at index ${index}:`, error, loc);
+            console.error(`Error mapping location at index ${index}:`, error, {
+              location: loc,
+              errorMessage: error.message,
+              stack: error.stack
+            });
             return null;
           }
         })
@@ -121,6 +150,14 @@ class LocationBackupManager {
         return;
       }
 
+      // DEBUGGING: Check the first location structure
+      console.log('First location for startTime:', {
+        hasFirstLocation: !!locationHistory[0],
+        firstLocationKeys: locationHistory[0] ? Object.keys(locationHistory[0]) : 'no first location',
+        timestamp: locationHistory[0]?.timestamp,
+        coords: locationHistory[0]?.coords
+      });
+
       const backupData = {
         journeyId: this.currentJourneyId,
         coordinates: validCoordinates,
@@ -128,6 +165,21 @@ class LocationBackupManager {
         lastSaveTime: Date.now(),
         isActive: true
       };
+
+      // CRITICAL FIX: Add validation before JSON.stringify
+      try {
+        const testSerialization = JSON.stringify(backupData);
+        console.log('Backup data serialization test passed:', {
+          dataSize: testSerialization.length,
+          coordinatesCount: validCoordinates.length
+        });
+      } catch (serializationError) {
+        console.error('Backup data serialization failed:', serializationError, {
+          backupData: backupData,
+          validCoordinates: validCoordinates
+        });
+        throw new Error(`Serialization failed: ${serializationError.message}`);
+      }
 
       const backupKey = `${STORAGE_KEY_JOURNEY_BACKUP}${this.currentJourneyId}`;
       await AsyncStorage.setItem(backupKey, JSON.stringify(backupData));

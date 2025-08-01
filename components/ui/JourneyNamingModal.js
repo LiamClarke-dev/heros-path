@@ -32,6 +32,7 @@ const JourneyNamingModal = ({
   defaultName = '',
   journeyStats = {},
   loading = false,
+  validationWarning = null, // New prop for validation warnings
 }) => {
   // Debug logging to track distance flow
   React.useEffect(() => {
@@ -45,6 +46,7 @@ const JourneyNamingModal = ({
   }, [visible, journeyStats.distance, journeyStats.duration]);
   const [journeyName, setJourneyName] = useState(defaultName);
   const [nameError, setNameError] = useState('');
+  const [showOverrideConfirm, setShowOverrideConfirm] = useState(false);
 
   // Update journey name when default changes
   useEffect(() => {
@@ -93,8 +95,31 @@ const JourneyNamingModal = ({
     const trimmedName = journeyName.trim();
     
     if (validateName(trimmedName)) {
-      onSave(trimmedName);
+      // If there's a validation warning and user hasn't confirmed override
+      if (validationWarning && !showOverrideConfirm) {
+        setShowOverrideConfirm(true);
+        return;
+      }
+      
+      onSave(trimmedName, showOverrideConfirm); // Pass override flag
     }
+  };
+
+  /**
+   * Handle override confirmation
+   */
+  const handleOverrideConfirm = () => {
+    const trimmedName = journeyName.trim();
+    if (validateName(trimmedName)) {
+      onSave(trimmedName, true); // Force save with override
+    }
+  };
+
+  /**
+   * Handle override cancel
+   */
+  const handleOverrideCancel = () => {
+    setShowOverrideConfirm(false);
   };
 
   /**
@@ -103,6 +128,7 @@ const JourneyNamingModal = ({
   const handleCancel = () => {
     setJourneyName(defaultName);
     setNameError('');
+    setShowOverrideConfirm(false);
     onCancel();
   };
 
@@ -179,6 +205,43 @@ const JourneyNamingModal = ({
                 </Text>
               </View>
             </View>
+
+            {/* Validation Warning */}
+            {validationWarning && (
+              <View style={styles.warningContainer}>
+                <View style={styles.warningHeader}>
+                  <Ionicons name="warning" size={20} color="#ff8800" />
+                  <Text style={styles.warningTitle}>Journey Warning</Text>
+                </View>
+                <Text style={styles.warningMessage}>{validationWarning.message}</Text>
+                {showOverrideConfirm && (
+                  <View style={styles.overrideContainer}>
+                    <Text style={styles.overrideText}>
+                      Do you want to save this journey anyway?
+                    </Text>
+                    <View style={styles.overrideButtons}>
+                      <TouchableOpacity
+                        style={[styles.button, styles.overrideCancelButton]}
+                        onPress={handleOverrideCancel}
+                      >
+                        <Text style={styles.overrideCancelText}>No, Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.button, styles.overrideConfirmButton]}
+                        onPress={handleOverrideConfirm}
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.overrideConfirmText}>Yes, Save Anyway</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
 
             {/* Name Input */}
             <View style={styles.inputContainer}>
@@ -381,6 +444,63 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  warningContainer: {
+    backgroundColor: '#fff8e1',
+    borderWidth: 1,
+    borderColor: '#ffcc02',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 20,
+  },
+  warningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ff8800',
+    marginLeft: 8,
+  },
+  warningMessage: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  overrideContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#ffcc02',
+  },
+  overrideText: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  overrideButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  overrideCancelButton: {
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  overrideCancelText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  overrideConfirmButton: {
+    backgroundColor: '#ff8800',
+  },
+  overrideConfirmText: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#fff',
   },

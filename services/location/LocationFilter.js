@@ -83,7 +83,39 @@ class LocationFilter {
       return true; // First location is always reasonable
     }
 
-    const distance = calculateDistance(lastLocation.coords, newLocation.coords);
+    // CRITICAL FIX: Comprehensive validation for coords property
+    if (!lastLocation?.coords || !newLocation?.coords) {
+      console.error('LocationFilter: Missing coords property', {
+        lastLocationHasCoords: !!lastLocation?.coords,
+        newLocationHasCoords: !!newLocation?.coords
+      });
+      return false;
+    }
+
+    // CRITICAL FIX: Comprehensive validation for latitude/longitude
+    if (typeof lastLocation.coords.latitude !== 'number' || 
+        typeof lastLocation.coords.longitude !== 'number' ||
+        typeof newLocation.coords.latitude !== 'number' || 
+        typeof newLocation.coords.longitude !== 'number') {
+      console.error('LocationFilter: Invalid coordinate values', {
+        lastCoords: lastLocation.coords,
+        newCoords: newLocation.coords
+      });
+      return false;
+    }
+
+    let distance;
+    try {
+      distance = calculateDistance(lastLocation.coords, newLocation.coords);
+    } catch (error) {
+      console.error('LocationFilter: Error calculating distance', {
+        error: error.message,
+        lastCoords: lastLocation.coords,
+        newCoords: newLocation.coords
+      });
+      return false;
+    }
+
     const timeDiff = (newLocation.timestamp - lastLocation.timestamp) / 1000; // seconds
     
     // Check minimum distance threshold

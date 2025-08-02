@@ -43,14 +43,6 @@ export const PLACE_TYPES = {
     pet_store: { key: 'pet_store', label: 'Pet Stores' }, // Pet supplies and animal stores
     florist: { key: 'florist', label: 'Florists' }, // Flower shops and floral services
     liquor_store: { key: 'liquor_store', label: 'Liquor Stores' }, // Alcoholic beverage retailers
-    convenience_store: { key: 'convenience_store', label: 'Convenience Stores' }, // Small local stores
-    department_store: { key: 'department_store', label: 'Department Stores' }, // Large multi-department retailers
-    furniture_store: { key: 'furniture_store', label: 'Furniture Stores' }, // Furniture and home furnishing stores
-    home_goods_store: { key: 'home_goods_store', label: 'Home Goods' }, // Home improvement and goods stores
-    bicycle_store: { key: 'bicycle_store', label: 'Bike Shops' }, // Bicycle sales and repair shops
-    pet_store: { key: 'pet_store', label: 'Pet Stores' }, // Pet supplies and animal stores
-    florist: { key: 'florist', label: 'Florists' }, // Flower shops and floral services
-    liquor_store: { key: 'liquor_store', label: 'Liquor Stores' }, // Alcoholic beverage retailers
 
     // Entertainment & Culture - Interesting walking discoveries
     museum: { key: 'museum', label: 'Museums' }, // Museums and cultural exhibitions
@@ -139,7 +131,9 @@ export const PLACE_CATEGORIES = {
     'Food & Dining': {
         title: 'Food & Dining',
         icon: 'restaurant', // Material icon for food and dining
-        types: ['restaurant', 'cafe', 'bar', 'bakery', 'meal_takeaway', 'meal_delivery', 'food'],
+        types: [
+            'restaurant', 'cafe', 'bar', 'bakery', 'meal_takeaway', 'meal_delivery', 'food'
+        ],
     },
     'Shopping & Retail': {
         title: 'Shopping & Retail',
@@ -160,7 +154,7 @@ export const PLACE_CATEGORIES = {
     },
     'Health & Wellness': {
         title: 'Health & Wellness',
-        icon: 'medical-bag', // Material icon for health services
+        icon: 'local-hospital', // Material icon for health services
         types: [
             'hospital', 'pharmacy', 'dentist', 'doctor', 'physiotherapist',
             'gym', 'spa', 'veterinary_care'
@@ -168,7 +162,7 @@ export const PLACE_CATEGORIES = {
     },
     'Services': {
         title: 'Services',
-        icon: 'briefcase', // Material icon for professional services
+        icon: 'business-center', // Material icon for professional services
         types: [
             'bank', 'atm', 'gas_station', 'car_wash', 'car_repair', 'car_dealer', 'car_rental',
             'laundry', 'hair_care', 'beauty_salon', 'post_office', 'insurance_agency',
@@ -177,7 +171,7 @@ export const PLACE_CATEGORIES = {
     },
     'Outdoors & Recreation': {
         title: 'Outdoors & Recreation',
-        icon: 'tree', // Material icon for outdoor activities
+        icon: 'park', // Material icon for outdoor activities
         types: [
             'park', 'zoo', 'aquarium', 'campground', 'rv_park', 'stadium',
             'bowling_alley', 'golf_course'
@@ -206,7 +200,7 @@ export const PLACE_CATEGORIES = {
     },
     'Religious': {
         title: 'Religious',
-        icon: 'place-of-worship', // Material icon for religious sites
+        icon: 'account-balance', // Material icon for religious sites
         types: [
             'church', 'mosque', 'synagogue', 'hindu_temple', 'place_of_worship'
         ],

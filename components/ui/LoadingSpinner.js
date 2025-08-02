@@ -1,41 +1,58 @@
 /**
- * LoadingSpinner - Reusable loading spinner component
+ * Loading Spinner Component
  * 
- * Single Responsibility: Loading state visualization
- * Requirements: General UI component
+ * Simple loading spinner component for displaying loading states
+ * with theme-aware styling.
  */
 
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import {
+  View,
+  ActivityIndicator,
+  Text,
+  StyleSheet,
+} from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 
-export const LoadingSpinner = React.memo(({ 
-  size = 'large', 
-  color, 
-  style,
-  containerStyle 
+/**
+ * Loading Spinner Component
+ * Displays a centered loading spinner with optional text
+ */
+const LoadingSpinner = React.memo(({
+  text = 'Loading...',
+  size = 'large',
 }) => {
   const { theme } = useTheme();
-  
-  const spinnerColor = color || theme.colors.primary;
-
-  const styles = StyleSheet.create({
-    container: {
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 20,
-    },
-  });
 
   return (
-    <View style={[styles.container, containerStyle]}>
-      <ActivityIndicator 
-        size={size} 
-        color={spinnerColor} 
-        style={style}
+    <View style={styles.container}>
+      <ActivityIndicator
+        size={size}
+        color={theme.colors.primary}
       />
+      {text && (
+        <Text style={[styles.text, { color: theme.colors.textSecondary }]}>
+          {text}
+        </Text>
+      )}
     </View>
   );
 });
 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  text: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: '400',
+  },
+});
+
 LoadingSpinner.displayName = 'LoadingSpinner';
+
+export default LoadingSpinner;

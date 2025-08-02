@@ -47,6 +47,7 @@ jest.mock('./firebase', () => ({
       })),
     })),
   },
+  getCurrentUser: jest.fn(() => ({ uid: 'test-user' })),
 }));
 
 // Mock AsyncStorage

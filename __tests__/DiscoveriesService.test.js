@@ -272,4 +272,185 @@ describe('DiscoveriesService', () => {
       expect(syncedPreferences).toEqual(expectedDefaults);
     });
   });
+
+  describe('getSuggestionsForRoute', () => {
+    beforeEach(() => {
+      // Mock SearchAlongRouteService
+      jest.doMock('../services/SearchAlongRouteService', () => ({
+        default: {
+          searchAlongRoute: jest.fn().mockResolvedValue([
+            { id: '1', name: 'Test Restaurant', types: ['restaurant'], rating: 4.5 },
+            { id: '2', name: 'Test Cafe', types: ['cafe'], rating: 4.2 }
+          ])
+        }
+      }));
+    });
+
+    it('should return suggestions for a valid route', async () => {
+      const coordinates = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7849, longitude: -122.4094 }
+      ];
+
+      const suggestions = await DiscoveriesService.getSuggestionsForRoute(coordinates);
+
+      expect(Array.isArray(suggestions)).toBe(true);
+    });
+
+    it('should handle invalid coordinates gracefully', async () => {
+      const invalidCoordinates = [{ latitude: 'invalid' }];
+
+      const suggestions = await DiscoveriesService.getSuggestionsForRoute(invalidCoordinates);
+
+      expect(suggestions).toEqual([]);
+    });
+
+    it('should handle empty coordinates array', async () => {
+      const suggestions = await DiscoveriesService.getSuggestionsForRoute([]);
+
+      expect(suggestions).toEqual([]);
+    });
+
+    it('should handle single coordinate', async () => {
+      const singleCoordinate = [{ latitude: 37.7749, longitude: -122.4194 }];
+
+      const suggestions = await DiscoveriesService.getSuggestionsForRoute(singleCoordinate);
+
+      expect(suggestions).toEqual([]);
+    });
+  });
+
+  describe('getPingDiscoveries', () => {
+    it('should return empty array for valid location (placeholder implementation)', async () => {
+      const location = { latitude: 37.7749, longitude: -122.4194 };
+
+      const discoveries = await DiscoveriesService.getPingDiscoveries(location);
+
+      expect(discoveries).toEqual([]);
+    });
+
+    it('should handle invalid location gracefully', async () => {
+      const invalidLocation = { latitude: 'invalid' };
+
+      const discoveries = await DiscoveriesService.getPingDiscoveries(invalidLocation);
+
+      expect(discoveries).toEqual([]);
+    });
+
+    it('should handle missing location gracefully', async () => {
+      const discoveries = await DiscoveriesService.getPingDiscoveries(null);
+
+      expect(discoveries).toEqual([]);
+    });
+  });
+
+  describe('applyPreferenceUpdatesToPingResults', () => {
+    it('should re-filter ping results with updated preferences', async () => {
+      const pingResults = [
+        { id: '1', name: 'Test Restaurant', types: ['restaurant'], rating: 4.5 },
+        { id: '2', name: 'Test Cafe', types: ['cafe'], rating: 3.5 }
+      ];
+
+      const updatedPreferences = { restaurant: true, cafe: false };
+      const updatedMinRating = 4.0;
+
+      const filteredResults = await DiscoveriesService.applyPreferenceUpdatesToPingResults(
+        pingResults, 
+        updatedPreferences, 
+        updatedMinRating
+      );
+
+      expect(filteredResults).toHaveLength(1);
+      expect(filteredResults[0].name).toBe('Test Restaurant');
+    });
+
+    it('should handle invalid ping results gracefully', async () => {
+      const invalidResults = 'not an array';
+
+      const filteredResults = await DiscoveriesService.applyPreferenceUpdatesToPingResults(invalidResults);
+
+      expect(filteredResults).toEqual([]);
+    });
+
+    it('should handle empty ping results', async () => {
+      const emptyResults = [];
+
+      const filteredResults = await DiscoveriesService.applyPreferenceUpdatesToPingResults(emptyResults);
+
+      expect(filteredResults).toEqual([]);
+    });
+  });
+
+  describe('getManualSearchResults', () => {
+    it('should return empty array for valid query and location (placeholder implementation)', async () => {
+      const query = 'coffee shops';
+      const location = { latitude: 37.7749, longitude: -122.4194 };
+
+      const results = await DiscoveriesService.getManualSearchResults(query, location);
+
+      expect(results).toEqual([]);
+    });
+
+    it('should handle invalid query gracefully', async () => {
+      const invalidQuery = '';
+      const location = { latitude: 37.7749, longitude: -122.4194 };
+
+      const results = await DiscoveriesService.getManualSearchResults(invalidQuery, location);
+
+      expect(results).toEqual([]);
+    });
+
+    it('should handle invalid location gracefully', async () => {
+      const query = 'restaurants';
+      const invalidLocation = { latitude: 'invalid' };
+
+      const results = await DiscoveriesService.getManualSearchResults(query, invalidLocation);
+
+      expect(results).toEqual([]);
+    });
+
+    it('should handle missing parameters gracefully', async () => {
+      const results = await DiscoveriesService.getManualSearchResults(null, null);
+
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('applyConsistentFiltering', () => {
+    it('should apply consistent filtering to places from any source', async () => {
+      const places = [
+        { id: '1', name: 'Test Restaurant', types: ['restaurant'], rating: 4.5 },
+        { id: '2', name: 'Test Cafe', types: ['cafe'], rating: 3.5 },
+        { id: '3', name: 'Test Bar', types: ['bar'], rating: 4.2 }
+      ];
+
+      const preferences = { restaurant: true, cafe: false, bar: true };
+      const minRating = 4.0;
+
+      const filteredResults = await DiscoveriesService.applyConsistentFiltering(places, {
+        preferences,
+        minRating,
+        source: 'test'
+      });
+
+      expect(filteredResults).toHaveLength(2);
+      expect(filteredResults.map(p => p.name)).toEqual(['Test Restaurant', 'Test Bar']);
+    });
+
+    it('should handle invalid places array gracefully', async () => {
+      const invalidPlaces = 'not an array';
+
+      const filteredResults = await DiscoveriesService.applyConsistentFiltering(invalidPlaces);
+
+      expect(filteredResults).toEqual([]);
+    });
+
+    it('should handle empty places array', async () => {
+      const emptyPlaces = [];
+
+      const filteredResults = await DiscoveriesService.applyConsistentFiltering(emptyPlaces);
+
+      expect(filteredResults).toEqual([]);
+    });
+  });
 });

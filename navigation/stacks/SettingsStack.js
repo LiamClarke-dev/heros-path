@@ -1,7 +1,8 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useTheme } from '../../contexts/ThemeContext';
-import { PlaceholderScreen } from '../../screens/PlaceholderScreen';
+import SettingsScreen from '../../screens/SettingsScreen';
+import DiscoveryPreferencesScreen from '../../screens/DiscoveryPreferencesScreen';
 
 const Stack = createStackNavigator();
 
@@ -27,9 +28,13 @@ export function SettingsStack() {
     >
       <Stack.Screen 
         name="SettingsMain" 
-        component={PlaceholderScreen}
+        component={SettingsScreen}
         options={{ title: 'Settings' }}
-        initialParams={{ screenName: 'Settings' }}
+      />
+      <Stack.Screen 
+        name="DiscoveryPreferences" 
+        component={DiscoveryPreferencesScreen}
+        options={{ title: 'Discovery Preferences' }}
       />
     </Stack.Navigator>
   );

@@ -91,6 +91,11 @@
     - _Requirements: 3.1, 3.2_
 
   - [x] 5.2 Implement journey management functions
+
+
+
+
+
     - Add journey deletion with confirmation
     - Create navigation to journey discoveries
     - Implement journey completion status indicators

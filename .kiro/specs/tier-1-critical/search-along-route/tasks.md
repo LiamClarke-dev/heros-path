@@ -68,11 +68,6 @@
 - [ ] 5. Develop results processing system
 
   - [x] 5.1 Create deduplication algorithm
-
-
-
-
-
     - Bug: Render Error: Element type is invalid: check render method of 'JourneyListDisplay'
     - Implement function to deduplicate results by place_id
     - Ensure it handles large result sets efficiently
@@ -80,7 +75,10 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.5, 5.2_
 
-  - [ ] 5.2 Implement category-based processing
+  - [-] 5.2 Implement category-based processing
+
+
+
     - Map Google Places API types to app categories
     - Ensure balanced representation of categories in results
     - Classify places according to their primary category

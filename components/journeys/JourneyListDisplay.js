@@ -17,7 +17,7 @@ import { JourneyListItem } from './JourneyListItem';
 import { JourneyListHeader } from './JourneyListHeader';
 import { JourneyListEmpty } from './JourneyListEmpty';
 import { JourneyListError } from './JourneyListError';
-import { LoadingSpinner } from '../ui/LoadingSpinner';
+import LoadingSpinner from '../ui/LoadingSpinner';
 
 export const JourneyListDisplay = React.memo(({
     journeys,

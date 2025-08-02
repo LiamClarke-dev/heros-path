@@ -1066,32 +1066,268 @@ class SearchAlongRouteService {
   }
 
   /**
-   * Deduplicate discovery results by place ID
+   * Deduplicate discovery results by place ID with enhanced efficiency for large datasets
    * Requirements: 1.5, 5.2
-   * @param {Array<Object>} results - Discovery results
+   * 
+   * This method efficiently handles large result sets by:
+   * - Using Set for O(1) lookup performance
+   * - Processing results in batches for memory efficiency
+   * - Preserving the highest quality duplicate when conflicts occur
+   * - Providing detailed logging for debugging
+   * 
+   * @param {Array<Object>} results - Discovery results to deduplicate
+   * @param {Object} options - Deduplication options
+   * @param {number} options.batchSize - Size of batches for processing large datasets (default: 1000)
+   * @param {boolean} options.preserveHighestRated - Keep highest rated duplicate (default: true)
+   * @param {boolean} options.logDuplicates - Log duplicate places found (default: true)
    * @returns {Array<Object>} Deduplicated results
    */
-  deduplicateResults(results) {
-    if (!Array.isArray(results) || results.length === 0) {
+  deduplicateResults(results, options = {}) {
+    // Validate input
+    if (!Array.isArray(results)) {
+      console.warn('deduplicateResults: Invalid input - expected array, got:', typeof results);
+      return [];
+    }
+
+    if (results.length === 0) {
       return results;
     }
 
-    const seenPlaceIds = new Set();
-    const deduplicatedResults = [];
+    // Set default options
+    const {
+      batchSize = 1000,
+      preserveHighestRated = true,
+      logDuplicates = true
+    } = options;
+
+    // For small datasets, use simple approach
+    if (results.length <= batchSize) {
+      return this._deduplicateSimple(results, { preserveHighestRated, logDuplicates });
+    }
+
+    // For large datasets, use batch processing
+    return this._deduplicateBatched(results, { batchSize, preserveHighestRated, logDuplicates });
+  }
+
+  /**
+   * Simple deduplication for small datasets
+   * @private
+   * @param {Array<Object>} results - Results to deduplicate
+   * @param {Object} options - Deduplication options
+   * @returns {Array<Object>} Deduplicated results
+   */
+  _deduplicateSimple(results, options) {
+    const { preserveHighestRated, logDuplicates } = options;
+    const seenPlaces = new Map(); // Use Map to store place data for comparison
+    const duplicatesFound = [];
 
     for (const place of results) {
-      const placeId = place.placeId || place.id;
+      // Skip null, undefined, or non-object entries
+      if (!place || typeof place !== 'object') {
+        if (logDuplicates) {
+          console.warn('deduplicateResults: Invalid place object, skipping:', typeof place);
+        }
+        continue;
+      }
+
+      const placeId = this._extractPlaceId(place);
       
-      if (!seenPlaceIds.has(placeId)) {
-        seenPlaceIds.add(placeId);
-        deduplicatedResults.push(place);
+      if (!placeId) {
+        if (logDuplicates) {
+          console.warn('deduplicateResults: Place missing ID, skipping:', place.name || 'Unknown');
+        }
+        continue;
+      }
+
+      if (!seenPlaces.has(placeId)) {
+        // First occurrence of this place
+        seenPlaces.set(placeId, place);
       } else {
-        console.log(`Duplicate place filtered out: ${place.name} (${placeId})`);
+        // Duplicate found
+        const existingPlace = seenPlaces.get(placeId);
+        duplicatesFound.push({
+          placeId,
+          existing: existingPlace.name || 'Unknown',
+          duplicate: place.name || 'Unknown'
+        });
+
+        if (preserveHighestRated) {
+          // Keep the place with higher rating, or the existing one if ratings are equal
+          const existingRating = existingPlace.rating || 0;
+          const newRating = place.rating || 0;
+          
+          if (newRating > existingRating) {
+            seenPlaces.set(placeId, place);
+            if (logDuplicates) {
+              console.log(`Duplicate place replaced with higher rated version: ${place.name} (${newRating}) > ${existingPlace.name} (${existingRating})`);
+            }
+          } else if (logDuplicates) {
+            console.log(`Duplicate place filtered out: ${place.name} (${newRating}) <= ${existingPlace.name} (${existingRating})`);
+          }
+        } else if (logDuplicates) {
+          console.log(`Duplicate place filtered out: ${place.name} (${placeId})`);
+        }
       }
     }
 
-    console.log(`Deduplication: ${results.length} -> ${deduplicatedResults.length} places`);
+    const deduplicatedResults = Array.from(seenPlaces.values());
+    
+    if (logDuplicates && duplicatesFound.length > 0) {
+      console.log(`Deduplication completed: ${results.length} -> ${deduplicatedResults.length} places (${duplicatesFound.length} duplicates removed)`);
+    }
+
     return deduplicatedResults;
+  }
+
+  /**
+   * Batch deduplication for large datasets
+   * @private
+   * @param {Array<Object>} results - Results to deduplicate
+   * @param {Object} options - Deduplication options
+   * @returns {Array<Object>} Deduplicated results
+   */
+  _deduplicateBatched(results, options) {
+    const { batchSize, preserveHighestRated, logDuplicates } = options;
+    const seenPlaces = new Map();
+    let totalDuplicates = 0;
+    let processedCount = 0;
+
+    console.log(`Starting batch deduplication for ${results.length} places (batch size: ${batchSize})`);
+
+    // Process results in batches to manage memory usage
+    for (let i = 0; i < results.length; i += batchSize) {
+      const batch = results.slice(i, i + batchSize);
+      const batchDuplicates = this._processBatch(batch, seenPlaces, preserveHighestRated, logDuplicates);
+      
+      totalDuplicates += batchDuplicates;
+      processedCount += batch.length;
+
+      // Log progress for large datasets
+      if (logDuplicates && results.length > 5000) {
+        console.log(`Batch deduplication progress: ${processedCount}/${results.length} processed, ${totalDuplicates} duplicates found`);
+      }
+    }
+
+    const deduplicatedResults = Array.from(seenPlaces.values());
+    
+    if (logDuplicates) {
+      console.log(`Batch deduplication completed: ${results.length} -> ${deduplicatedResults.length} places (${totalDuplicates} duplicates removed)`);
+    }
+
+    return deduplicatedResults;
+  }
+
+  /**
+   * Process a single batch of results
+   * @private
+   * @param {Array<Object>} batch - Batch of results to process
+   * @param {Map} seenPlaces - Map of already seen places
+   * @param {boolean} preserveHighestRated - Whether to preserve highest rated duplicates
+   * @param {boolean} logDuplicates - Whether to log duplicate information
+   * @returns {number} Number of duplicates found in this batch
+   */
+  _processBatch(batch, seenPlaces, preserveHighestRated, logDuplicates) {
+    let duplicatesInBatch = 0;
+
+    for (const place of batch) {
+      // Skip null, undefined, or non-object entries
+      if (!place || typeof place !== 'object') {
+        if (logDuplicates) {
+          console.warn('deduplicateResults: Invalid place object in batch, skipping:', typeof place);
+        }
+        continue;
+      }
+
+      const placeId = this._extractPlaceId(place);
+      
+      if (!placeId) {
+        if (logDuplicates) {
+          console.warn('deduplicateResults: Place missing ID in batch, skipping:', place.name || 'Unknown');
+        }
+        continue;
+      }
+
+      if (!seenPlaces.has(placeId)) {
+        seenPlaces.set(placeId, place);
+      } else {
+        duplicatesInBatch++;
+        
+        if (preserveHighestRated) {
+          const existingPlace = seenPlaces.get(placeId);
+          const existingRating = existingPlace.rating || 0;
+          const newRating = place.rating || 0;
+          
+          if (newRating > existingRating) {
+            seenPlaces.set(placeId, place);
+          }
+        }
+      }
+    }
+
+    return duplicatesInBatch;
+  }
+
+  /**
+   * Extract place ID from a place object, handling various formats
+   * @private
+   * @param {Object} place - Place object
+   * @returns {string|null} Place ID or null if not found
+   */
+  _extractPlaceId(place) {
+    if (!place || typeof place !== 'object') {
+      return null;
+    }
+
+    // Try different possible ID fields in order of preference
+    return place.placeId || place.id || place.place_id || place.googlePlaceId || null;
+  }
+
+  /**
+   * Get deduplication statistics for analysis
+   * @param {Array<Object>} originalResults - Original results before deduplication
+   * @param {Array<Object>} deduplicatedResults - Results after deduplication
+   * @returns {Object} Deduplication statistics
+   */
+  getDeduplicationStats(originalResults, deduplicatedResults) {
+    if (!Array.isArray(originalResults) || !Array.isArray(deduplicatedResults)) {
+      return {
+        error: 'Invalid input arrays',
+        originalCount: 0,
+        deduplicatedCount: 0,
+        duplicatesRemoved: 0,
+        deduplicationRate: 0
+      };
+    }
+
+    const originalCount = originalResults.length;
+    const deduplicatedCount = deduplicatedResults.length;
+    const duplicatesRemoved = originalCount - deduplicatedCount;
+    const deduplicationRate = originalCount > 0 ? (duplicatesRemoved / originalCount) * 100 : 0;
+
+    // Analyze duplicate patterns
+    const placeIdCounts = new Map();
+    for (const place of originalResults) {
+      const placeId = this._extractPlaceId(place);
+      if (placeId) {
+        placeIdCounts.set(placeId, (placeIdCounts.get(placeId) || 0) + 1);
+      }
+    }
+
+    const duplicateGroups = Array.from(placeIdCounts.entries())
+      .filter(([_, count]) => count > 1)
+      .sort(([_, a], [__, b]) => b - a);
+
+    return {
+      originalCount,
+      deduplicatedCount,
+      duplicatesRemoved,
+      deduplicationRate: Math.round(deduplicationRate * 100) / 100,
+      duplicateGroups: duplicateGroups.slice(0, 10), // Top 10 most duplicated places
+      uniquePlaceIds: placeIdCounts.size,
+      averageDuplicatesPerPlace: duplicateGroups.length > 0 
+        ? Math.round((duplicateGroups.reduce((sum, [_, count]) => sum + count, 0) / duplicateGroups.length) * 100) / 100
+        : 0
+    };
   }
 
   /**

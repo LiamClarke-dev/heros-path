@@ -28,7 +28,7 @@ export const PLACE_TYPES = {
   bakery: 'Bakery',
   meal_takeaway: 'Takeaway',
   meal_delivery: 'Food Delivery',
-  
+
   // Shopping & Retail
   store: 'Store',
   shopping_mall: 'Shopping Mall',
@@ -36,7 +36,7 @@ export const PLACE_TYPES = {
   convenience_store: 'Convenience Store',
   clothing_store: 'Clothing Store',
   book_store: 'Book Store',
-  
+
   // Entertainment & Culture
   park: 'Park',
   amusement_park: 'Amusement Park',
@@ -45,19 +45,19 @@ export const PLACE_TYPES = {
   art_gallery: 'Art Gallery',
   movie_theater: 'Movie Theater',
   night_club: 'Night Club',
-  
+
   // Health & Wellness
   hospital: 'Hospital',
   pharmacy: 'Pharmacy',
   gym: 'Gym',
   spa: 'Spa',
-  
+
   // Services & Utilities
   gas_station: 'Gas Station',
   bank: 'Bank',
   atm: 'ATM',
   post_office: 'Post Office',
-  
+
   // Outdoors & Recreation
   tourist_attraction: 'Tourist Attraction',
   campground: 'Campground',
@@ -86,14 +86,14 @@ export const PLACE_TYPE_TO_CATEGORY = {
   bakery: PLACE_CATEGORIES.FOOD_DINING,
   meal_takeaway: PLACE_CATEGORIES.FOOD_DINING,
   meal_delivery: PLACE_CATEGORIES.FOOD_DINING,
-  
+
   store: PLACE_CATEGORIES.SHOPPING_RETAIL,
   shopping_mall: PLACE_CATEGORIES.SHOPPING_RETAIL,
   supermarket: PLACE_CATEGORIES.SHOPPING_RETAIL,
   convenience_store: PLACE_CATEGORIES.SHOPPING_RETAIL,
   clothing_store: PLACE_CATEGORIES.SHOPPING_RETAIL,
   book_store: PLACE_CATEGORIES.SHOPPING_RETAIL,
-  
+
   park: PLACE_CATEGORIES.ENTERTAINMENT_CULTURE,
   amusement_park: PLACE_CATEGORIES.ENTERTAINMENT_CULTURE,
   zoo: PLACE_CATEGORIES.ENTERTAINMENT_CULTURE,
@@ -101,17 +101,17 @@ export const PLACE_TYPE_TO_CATEGORY = {
   art_gallery: PLACE_CATEGORIES.ENTERTAINMENT_CULTURE,
   movie_theater: PLACE_CATEGORIES.ENTERTAINMENT_CULTURE,
   night_club: PLACE_CATEGORIES.ENTERTAINMENT_CULTURE,
-  
+
   hospital: PLACE_CATEGORIES.HEALTH_WELLNESS,
   pharmacy: PLACE_CATEGORIES.HEALTH_WELLNESS,
   gym: PLACE_CATEGORIES.HEALTH_WELLNESS,
   spa: PLACE_CATEGORIES.HEALTH_WELLNESS,
-  
+
   gas_station: PLACE_CATEGORIES.SERVICES_UTILITIES,
   bank: PLACE_CATEGORIES.SERVICES_UTILITIES,
   atm: PLACE_CATEGORIES.SERVICES_UTILITIES,
   post_office: PLACE_CATEGORIES.SERVICES_UTILITIES,
-  
+
   tourist_attraction: PLACE_CATEGORIES.OUTDOORS_RECREATION,
   campground: PLACE_CATEGORIES.OUTDOORS_RECREATION,
   rv_park: PLACE_CATEGORIES.OUTDOORS_RECREATION
@@ -131,7 +131,7 @@ class SearchAlongRouteService {
    */
   getApiKey() {
     let apiKey;
-    
+
     if (Platform.OS === 'ios' && GOOGLE_MAPS_API_KEY_IOS) {
       apiKey = GOOGLE_MAPS_API_KEY_IOS;
     } else if (Platform.OS === 'android' && GOOGLE_MAPS_API_KEY_ANDROID) {
@@ -150,43 +150,50 @@ class SearchAlongRouteService {
 
   /**
    * Build place types array based on user preferences
-   * @param {Object} preferences - User's discovery preferences
+   * Enhanced to handle DiscoveryPreferencesScreen structured preferences
+   * @param {Object} preferences - User's discovery preferences (structured or legacy format)
    * @returns {Array<string>} Array of place types to search for
    */
   buildPlaceTypesFromPreferences(preferences) {
     if (!preferences || typeof preferences !== 'object') {
       // Default to all place types if no preferences provided
+      console.log('No preferences provided, using all place types');
       return Object.keys(PLACE_TYPES);
     }
 
-    // Handle structured preference object with placeTypes property
-    const placeTypePrefs = preferences.placeTypes || preferences;
+    // Handle structured preference object with placeTypes property (from DiscoveryPreferencesScreen)
+    let placeTypePrefs = preferences.placeTypes || preferences;
 
     // If 'All Types' is selected, return all supported types
     if (preferences.allTypes === true || placeTypePrefs.allTypes === true) {
+      console.log('All types enabled, using all place types');
       return Object.keys(PLACE_TYPES);
     }
 
     // Build array from individual preference selections
     const selectedTypes = [];
-    
-    Object.keys(PLACE_TYPES).forEach(type => {
+    const allPlaceTypes = Object.keys(PLACE_TYPES);
+
+    allPlaceTypes.forEach(type => {
       if (placeTypePrefs[type] === true) {
         selectedTypes.push(type);
       }
     });
 
-    // If no types are selected, default to all types
+    // If no types are selected, default to all types to avoid empty results
     if (selectedTypes.length === 0) {
-      return Object.keys(PLACE_TYPES);
+      console.log('No place types selected, defaulting to all types');
+      return allPlaceTypes;
     }
 
+    console.log(`Built place types from preferences: ${selectedTypes.length}/${allPlaceTypes.length} types enabled`);
     return selectedTypes;
   }
 
   /**
    * Get minimum rating from user preferences
-   * @param {Object} preferences - User's discovery preferences
+   * Enhanced to handle DiscoveryPreferencesScreen structured preferences
+   * @param {Object} preferences - User's discovery preferences (structured or legacy format)
    * @returns {number} Minimum rating threshold
    */
   getMinRatingFromPreferences(preferences) {
@@ -194,12 +201,31 @@ class SearchAlongRouteService {
       return 0; // No minimum rating if no preferences
     }
 
-    // Check for minRating in preferences object
-    const minRating = preferences.minRating || preferences.minimumRating || 0;
-    
+    // Check for minRating in various possible locations
+    let minRating = 0;
+
+    // Priority order for finding minimum rating:
+    // 1. Direct minRating property (from DiscoveryPreferencesScreen)
+    // 2. minimumRating property (legacy)
+    // 3. rating property (alternative naming)
+    // 4. Default to 0
+
+    if (typeof preferences.minRating === 'number') {
+      minRating = preferences.minRating;
+    } else if (typeof preferences.minimumRating === 'number') {
+      minRating = preferences.minimumRating;
+    } else if (typeof preferences.rating === 'number') {
+      minRating = preferences.rating;
+    }
+
     // Validate rating is within valid range (0-5)
-    if (typeof minRating === 'number' && minRating >= 0 && minRating <= 5) {
+    if (minRating >= 0 && minRating <= 5) {
       return minRating;
+    }
+
+    // Log warning for invalid rating values
+    if (minRating !== 0) {
+      console.warn(`Invalid minimum rating value: ${minRating}. Using default value 0.`);
     }
 
     return 0; // Default to no minimum rating
@@ -207,8 +233,9 @@ class SearchAlongRouteService {
 
   /**
    * Apply advanced preference filtering to discovered places
+   * Enhanced to work with DiscoveryPreferencesScreen integration
    * @param {Array<Object>} places - Array of discovered places
-   * @param {Object} preferences - User's discovery preferences
+   * @param {Object} preferences - User's discovery preferences (structured object from DiscoveryPreferencesScreen)
    * @returns {Array<Object>} Filtered places array
    */
   applyPreferenceFiltering(places, preferences) {
@@ -221,34 +248,64 @@ class SearchAlongRouteService {
     }
 
     let filteredPlaces = [...places];
+    const originalCount = places.length;
 
-    // Apply minimum rating filter
-    const minRating = this.getMinRatingFromPreferences(preferences);
+    // Normalize preferences to handle both structured and legacy formats
+    const normalizedPrefs = this.validateAndNormalizePreferences(preferences);
+
+    // Apply minimum rating filter with enhanced logic
+    const minRating = this.getMinRatingFromPreferences(normalizedPrefs);
     if (minRating > 0) {
       filteredPlaces = filteredPlaces.filter(place => {
-        return place.rating && place.rating >= minRating;
+        // Handle places without ratings more intelligently
+        if (!place.rating || place.rating === null || place.rating === undefined) {
+          // For places without ratings, apply a more lenient filter
+          // Only exclude if minimum rating is very high (4.5+)
+          return minRating < 4.5;
+        }
+        return place.rating >= minRating;
       });
+
+      console.log(`Applied minimum rating filter (${minRating}): ${originalCount} -> ${filteredPlaces.length} places`);
     }
 
-    // Apply place type filtering (additional client-side filtering)
-    const enabledTypes = this.buildPlaceTypesFromPreferences(preferences);
-    if (enabledTypes.length < Object.keys(PLACE_TYPES).length) {
+    // Apply place type filtering with enhanced logic
+    const enabledTypes = this.buildPlaceTypesFromPreferences(normalizedPrefs);
+    if (enabledTypes.length < Object.keys(PLACE_TYPES).length && !normalizedPrefs.allTypes) {
+      const beforeTypeFilter = filteredPlaces.length;
+
       filteredPlaces = filteredPlaces.filter(place => {
-        if (!place.types || !Array.isArray(place.types)) {
+        if (!place.types || !Array.isArray(place.types) || place.types.length === 0) {
+          // For places without types, check primary type
+          if (place.primaryType) {
+            return enabledTypes.includes(place.primaryType);
+          }
           return false;
         }
-        
+
         // Check if any of the place's types are in the enabled types
         return place.types.some(type => enabledTypes.includes(type));
       });
+
+      console.log(`Applied place type filter (${enabledTypes.length} enabled): ${beforeTypeFilter} -> ${filteredPlaces.length} places`);
+    }
+
+    // Apply category-based filtering for balanced results
+    if (normalizedPrefs.categoryBalancing !== false) {
+      filteredPlaces = this.applyCategoryBalancing(filteredPlaces, normalizedPrefs);
     }
 
     // Apply enhanced data preferences if available
-    if (preferences.enhancedDataPreferences) {
-      filteredPlaces = this.applyEnhancedDataFiltering(filteredPlaces, preferences.enhancedDataPreferences);
+    if (normalizedPrefs.enhancedDataPreferences) {
+      filteredPlaces = this.applyEnhancedDataFiltering(filteredPlaces, normalizedPrefs.enhancedDataPreferences);
     }
 
-    console.log(`Applied preference filtering: ${places.length} -> ${filteredPlaces.length} places`);
+    // Apply user behavior-based filtering if available
+    if (normalizedPrefs.userBehaviorPreferences) {
+      filteredPlaces = this.applyUserBehaviorFiltering(filteredPlaces, normalizedPrefs.userBehaviorPreferences);
+    }
+
+    console.log(`Applied comprehensive preference filtering: ${originalCount} -> ${filteredPlaces.length} places`);
     return filteredPlaces;
   }
 
@@ -283,8 +340,114 @@ class SearchAlongRouteService {
   }
 
   /**
+   * Apply category balancing to ensure diverse results
+   * @param {Array<Object>} places - Array of places
+   * @param {Object} preferences - User preferences
+   * @returns {Array<Object>} Balanced places array
+   */
+  applyCategoryBalancing(places, preferences) {
+    if (!Array.isArray(places) || places.length === 0) {
+      return places;
+    }
+
+    // Group places by category
+    const placesByCategory = {};
+    places.forEach(place => {
+      const category = place.category || this.getPlaceCategory(place.types || []);
+      if (!placesByCategory[category]) {
+        placesByCategory[category] = [];
+      }
+      placesByCategory[category].push(place);
+    });
+
+    // Get enabled categories based on user preferences
+    const enabledTypes = this.buildPlaceTypesFromPreferences(preferences);
+    const enabledCategories = new Set();
+
+    enabledTypes.forEach(type => {
+      const category = PLACE_TYPE_TO_CATEGORY[type];
+      if (category) {
+        enabledCategories.add(category);
+      }
+    });
+
+    // Balance results across enabled categories
+    const balancedPlaces = [];
+    const maxPerCategory = Math.max(1, Math.floor(20 / enabledCategories.size)); // Distribute 20 results across categories, minimum 1 per category
+
+    Object.entries(placesByCategory).forEach(([category, categoryPlaces]) => {
+      if (enabledCategories.has(category)) {
+        // Sort by rating (highest first) and take top results for this category
+        const sortedPlaces = categoryPlaces.sort((a, b) => {
+          const ratingA = a.rating || 0;
+          const ratingB = b.rating || 0;
+          return ratingB - ratingA;
+        });
+
+        balancedPlaces.push(...sortedPlaces.slice(0, maxPerCategory));
+      }
+    });
+
+    console.log(`Applied category balancing: ${places.length} -> ${balancedPlaces.length} places across ${enabledCategories.size} categories`);
+    return balancedPlaces;
+  }
+
+  /**
+   * Apply user behavior-based filtering
+   * @param {Array<Object>} places - Array of places
+   * @param {Object} behaviorPrefs - User behavior preferences
+   * @returns {Array<Object>} Filtered places array
+   */
+  applyUserBehaviorFiltering(places, behaviorPrefs) {
+    if (!behaviorPrefs || typeof behaviorPrefs !== 'object') {
+      return places;
+    }
+
+    let filteredPlaces = [...places];
+
+    // Filter based on previously saved/dismissed places
+    if (behaviorPrefs.excludePreviouslyDismissed === true && behaviorPrefs.dismissedPlaceIds) {
+      const dismissedIds = new Set(behaviorPrefs.dismissedPlaceIds);
+      filteredPlaces = filteredPlaces.filter(place => !dismissedIds.has(place.placeId));
+    }
+
+    // Filter based on user's historical preferences
+    if (behaviorPrefs.preferredCategories && Array.isArray(behaviorPrefs.preferredCategories)) {
+      const preferredCategories = new Set(behaviorPrefs.preferredCategories);
+      filteredPlaces = filteredPlaces.filter(place => {
+        const category = place.category || this.getPlaceCategory(place.types || []);
+        return preferredCategories.has(category);
+      });
+    }
+
+    // Apply time-based filtering if available
+    if (behaviorPrefs.timePreferences) {
+      filteredPlaces = this.applyTimeBasedFiltering(filteredPlaces, behaviorPrefs.timePreferences);
+    }
+
+    return filteredPlaces;
+  }
+
+  /**
+   * Apply time-based filtering for places
+   * @param {Array<Object>} places - Array of places
+   * @param {Object} timePrefs - Time-based preferences
+   * @returns {Array<Object>} Filtered places array
+   */
+  applyTimeBasedFiltering(places, timePrefs) {
+    if (!timePrefs || typeof timePrefs !== 'object') {
+      return places;
+    }
+
+    // This is a placeholder for future time-based filtering
+    // Could include filtering based on opening hours, peak times, etc.
+    return places;
+  }
+
+  /**
    * Validate and normalize user preferences for SAR
-   * @param {Object} preferences - Raw user preferences
+   * Enhanced to handle DiscoveryPreferencesScreen structured preferences
+   * @param {Object} preferences - Raw user preferences from DiscoveryPreferencesScreen or legacy format
    * @returns {Object} Normalized preferences object
    */
   validateAndNormalizePreferences(preferences) {
@@ -292,24 +455,52 @@ class SearchAlongRouteService {
       return {
         placeTypes: {},
         minRating: 0,
-        allTypes: true
+        allTypes: true,
+        categoryBalancing: true,
+        enhancedDataPreferences: null,
+        userBehaviorPreferences: null
       };
     }
 
+    // Handle both structured preferences from DiscoveryPreferencesScreen and legacy format
+    let placeTypes = {};
+
+    // Check if this is a structured preference object from DiscoveryPreferencesScreen
+    if (preferences.placeTypes && typeof preferences.placeTypes === 'object') {
+      placeTypes = preferences.placeTypes;
+    } else {
+      // Legacy format - preferences object contains place types directly
+      placeTypes = preferences;
+    }
+
     const normalized = {
-      placeTypes: preferences.placeTypes || preferences,
+      placeTypes: placeTypes,
       minRating: this.getMinRatingFromPreferences(preferences),
       allTypes: preferences.allTypes || false,
-      enhancedDataPreferences: preferences.enhancedDataPreferences || null
+      categoryBalancing: preferences.categoryBalancing !== false, // Default to true
+      enhancedDataPreferences: preferences.enhancedDataPreferences || null,
+      userBehaviorPreferences: preferences.userBehaviorPreferences || null
     };
 
     // Validate place types against known types
     if (normalized.placeTypes && typeof normalized.placeTypes === 'object') {
       const validatedPlaceTypes = {};
       Object.keys(PLACE_TYPES).forEach(type => {
+        // Include all place types with their boolean values
         validatedPlaceTypes[type] = normalized.placeTypes[type] === true;
       });
       normalized.placeTypes = validatedPlaceTypes;
+    }
+
+    // Check if all types are enabled (for optimization)
+    const enabledCount = Object.values(normalized.placeTypes).filter(Boolean).length;
+    const totalCount = Object.keys(PLACE_TYPES).length;
+
+    if (enabledCount === totalCount) {
+      normalized.allTypes = true;
+    } else if (enabledCount === 0) {
+      // If no types are enabled, default to all types
+      normalized.allTypes = true;
     }
 
     return normalized;
@@ -323,13 +514,15 @@ class SearchAlongRouteService {
   getPreferenceStats(preferences) {
     const normalized = this.validateAndNormalizePreferences(preferences);
     const enabledTypes = this.buildPlaceTypesFromPreferences(normalized);
-    
+
     const stats = {
       totalPlaceTypes: Object.keys(PLACE_TYPES).length,
       enabledPlaceTypes: enabledTypes.length,
       minRating: normalized.minRating,
       allTypesEnabled: normalized.allTypes,
-      hasEnhancedPrefs: !!normalized.enhancedDataPreferences
+      hasEnhancedPrefs: !!normalized.enhancedDataPreferences,
+      hasBehaviorPrefs: !!normalized.userBehaviorPreferences,
+      categoryBalancingEnabled: normalized.categoryBalancing
     };
 
     // Count enabled types by category
@@ -344,6 +537,99 @@ class SearchAlongRouteService {
   }
 
   /**
+   * Create SAR-compatible preferences from DiscoveryPreferencesScreen data
+   * This method bridges the gap between the DiscoveryPreferencesScreen hook and SAR service
+   * @param {Object} discoveryPreferences - Preferences from useDiscoveryPreferences hook
+   * @param {number} minRating - Minimum rating from useDiscoveryPreferences hook
+   * @param {Object} additionalPrefs - Additional preferences (optional)
+   * @returns {Object} SAR-compatible preferences object
+   */
+  createSARPreferencesFromDiscoveryScreen(discoveryPreferences, minRating, additionalPrefs = {}) {
+    if (!discoveryPreferences || typeof discoveryPreferences !== 'object') {
+      console.warn('Invalid discovery preferences provided to createSARPreferencesFromDiscoveryScreen');
+      return this.validateAndNormalizePreferences({
+        minRating: typeof minRating === 'number' && !isNaN(minRating) ? minRating : 0
+      });
+    }
+
+    // Create structured preferences object for SAR
+    const sarPreferences = {
+      placeTypes: discoveryPreferences, // The preferences object from useDiscoveryPreferences contains place type selections
+      minRating: typeof minRating === 'number' && !isNaN(minRating) ? minRating : 0,
+      allTypes: false, // Will be determined by validation
+      categoryBalancing: additionalPrefs.categoryBalancing !== false,
+      enhancedDataPreferences: additionalPrefs.enhancedDataPreferences || null,
+      userBehaviorPreferences: additionalPrefs.userBehaviorPreferences || null
+    };
+
+    // Validate and normalize the preferences
+    const normalized = this.validateAndNormalizePreferences(sarPreferences);
+
+    console.log('Created SAR preferences from DiscoveryPreferencesScreen:', {
+      enabledTypes: this.buildPlaceTypesFromPreferences(normalized).length,
+      minRating: normalized.minRating,
+      allTypes: normalized.allTypes,
+      categoryBalancing: normalized.categoryBalancing
+    });
+
+    return normalized;
+  }
+
+  /**
+   * Validate preferences compatibility with DiscoveryPreferencesScreen
+   * @param {Object} preferences - Preferences to validate
+   * @returns {Object} Validation result with errors and warnings
+   */
+  validateDiscoveryScreenCompatibility(preferences) {
+    const validation = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      suggestions: []
+    };
+
+    if (!preferences || typeof preferences !== 'object') {
+      validation.isValid = false;
+      validation.errors.push('Preferences object is required');
+      return validation;
+    }
+
+    // Check for required structure
+    if (!preferences.placeTypes && !Object.keys(PLACE_TYPES).some(type => preferences.hasOwnProperty(type))) {
+      validation.warnings.push('No place type preferences found, will default to all types');
+    }
+
+    // Validate minimum rating
+    const minRating = this.getMinRatingFromPreferences(preferences);
+    if (minRating > 4.5) {
+      validation.warnings.push('Very high minimum rating may result in few discoveries');
+    }
+
+    // Check for enabled place types
+    const enabledTypes = this.buildPlaceTypesFromPreferences(preferences);
+    if (enabledTypes.length === 0) {
+      validation.warnings.push('No place types enabled, will default to all types');
+    } else if (enabledTypes.length < 3) {
+      validation.suggestions.push('Consider enabling more place types for diverse discoveries');
+    }
+
+    // Check category distribution
+    const categoryStats = {};
+    enabledTypes.forEach(type => {
+      const category = PLACE_TYPE_TO_CATEGORY[type];
+      if (category) {
+        categoryStats[category] = (categoryStats[category] || 0) + 1;
+      }
+    });
+
+    if (Object.keys(categoryStats).length < 2) {
+      validation.suggestions.push('Consider enabling place types from multiple categories for varied discoveries');
+    }
+
+    return validation;
+  }
+
+  /**
    * Build Search Along Route API request payload
    * @param {string} encodedPolyline - Google encoded polyline string
    * @param {Object} preferences - User's discovery preferences
@@ -352,7 +638,7 @@ class SearchAlongRouteService {
    */
   buildSARRequest(encodedPolyline, preferences = {}, minRating = 0) {
     const placeTypes = this.buildPlaceTypesFromPreferences(preferences);
-    
+
     const request = {
       polyline: {
         encodedPolyline: encodedPolyline
@@ -411,7 +697,7 @@ class SearchAlongRouteService {
       }
 
       const data = await response.json();
-      
+
       if (!data.places || !Array.isArray(data.places)) {
         console.log('No places found in SAR response');
         return [];
@@ -450,7 +736,7 @@ class SearchAlongRouteService {
         discoveredAt: new Date().toISOString(),
         saved: false,
         dismissed: false,
-        
+
         // Schema versioning and metadata
         schemaVersion: 1,
         lastUpdated: new Date().toISOString(),
@@ -485,8 +771,9 @@ class SearchAlongRouteService {
 
   /**
    * Main Search Along Route function with enhanced preference integration
+   * Enhanced to work seamlessly with DiscoveryPreferencesScreen
    * @param {Array<{latitude: number, longitude: number}>} coordinates - Route coordinates
-   * @param {Object} preferences - User's discovery preferences (structured object)
+   * @param {Object} preferences - User's discovery preferences (structured object from DiscoveryPreferencesScreen)
    * @param {number} minRating - Minimum rating threshold (optional, overrides preferences)
    * @returns {Promise<Array<Object>>} Array of discovered places
    * @throws {Error} If coordinates are invalid or API fails
@@ -504,11 +791,29 @@ class SearchAlongRouteService {
         return [];
       }
 
+      // Validate preferences compatibility
+      const validation = this.validateDiscoveryScreenCompatibility(preferences);
+      if (!validation.isValid) {
+        console.error('Invalid preferences for SAR:', validation.errors);
+        throw new Error(`Invalid preferences: ${validation.errors.join(', ')}`);
+      }
+
+      // Log warnings and suggestions
+      validation.warnings.forEach(warning => console.warn(`SAR preference warning: ${warning}`));
+      validation.suggestions.forEach(suggestion => console.log(`SAR preference suggestion: ${suggestion}`));
+
+      // Normalize preferences for consistent processing
+      const normalizedPreferences = this.validateAndNormalizePreferences(preferences);
+
       // Determine minimum rating from preferences or parameter
-      const effectiveMinRating = minRating !== null ? minRating : this.getMinRatingFromPreferences(preferences);
+      const effectiveMinRating = minRating !== null ? minRating : normalizedPreferences.minRating;
+
+      // Log preference statistics for debugging
+      const prefStats = this.getPreferenceStats(normalizedPreferences);
+      console.log('SAR preference statistics:', prefStats);
 
       // Check cache first
-      const cacheKey = this.generateCacheKey(coordinates, preferences, effectiveMinRating);
+      const cacheKey = this.generateCacheKey(coordinates, normalizedPreferences, effectiveMinRating);
       const cached = this.getCachedData(cacheKey);
       if (cached) {
         console.log('Returning cached SAR results');
@@ -520,20 +825,21 @@ class SearchAlongRouteService {
       console.log('Encoded route for SAR:', {
         coordinateCount: coordinates.length,
         polylineLength: encodedPolyline.length,
-        enabledPlaceTypes: this.buildPlaceTypesFromPreferences(preferences).length,
-        minRating: effectiveMinRating
+        enabledPlaceTypes: this.buildPlaceTypesFromPreferences(normalizedPreferences).length,
+        minRating: effectiveMinRating,
+        categoryBalancing: normalizedPreferences.categoryBalancing
       });
 
-      // Perform SAR API request with preferences
-      const rawPlaces = await this.performSARRequest(encodedPolyline, preferences, effectiveMinRating);
+      // Perform SAR API request with normalized preferences
+      const rawPlaces = await this.performSARRequest(encodedPolyline, normalizedPreferences, effectiveMinRating);
 
-      // Apply additional client-side preference filtering
-      const filteredPlaces = this.applyPreferenceFiltering(rawPlaces, preferences);
+      // Apply comprehensive client-side preference filtering
+      const filteredPlaces = this.applyPreferenceFiltering(rawPlaces, normalizedPreferences);
 
       // Cache the results
       this.setCachedData(cacheKey, filteredPlaces);
 
-      console.log(`SAR completed: ${rawPlaces.length} raw places -> ${filteredPlaces.length} filtered places`);
+      console.log(`SAR completed successfully: ${rawPlaces.length} raw places -> ${filteredPlaces.length} filtered places`);
       return filteredPlaces;
 
     } catch (error) {
@@ -552,6 +858,33 @@ class SearchAlongRouteService {
   }
 
   /**
+   * Convenience method for Search Along Route with DiscoveryPreferencesScreen integration
+   * This method provides a simple interface for components using useDiscoveryPreferences hook
+   * @param {Array<{latitude: number, longitude: number}>} coordinates - Route coordinates
+   * @param {Object} discoveryPreferences - Preferences object from useDiscoveryPreferences hook
+   * @param {number} minRating - Minimum rating from useDiscoveryPreferences hook
+   * @param {Object} options - Additional options for SAR
+   * @returns {Promise<Array<Object>>} Array of discovered places
+   */
+  async searchAlongRouteWithDiscoveryPreferences(coordinates, discoveryPreferences, minRating, options = {}) {
+    try {
+      // Create SAR-compatible preferences from DiscoveryPreferencesScreen data
+      const sarPreferences = this.createSARPreferencesFromDiscoveryScreen(
+        discoveryPreferences,
+        minRating,
+        options
+      );
+
+      // Perform search with enhanced preferences
+      return await this.searchAlongRoute(coordinates, sarPreferences);
+
+    } catch (error) {
+      console.error('Search Along Route with Discovery Preferences failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Generate cache key for SAR results
    * @param {Array<{latitude: number, longitude: number}>} coordinates - Route coordinates
    * @param {Object} preferences - User preferences
@@ -560,8 +893,8 @@ class SearchAlongRouteService {
    */
   generateCacheKey(coordinates, preferences, minRating) {
     // Create a simple hash of the route and preferences
-    const routeHash = coordinates.length > 0 ? 
-      `${coordinates[0].latitude},${coordinates[0].longitude}-${coordinates[coordinates.length - 1].latitude},${coordinates[coordinates.length - 1].longitude}` : 
+    const routeHash = coordinates.length > 0 ?
+      `${coordinates[0].latitude},${coordinates[0].longitude}-${coordinates[coordinates.length - 1].latitude},${coordinates[coordinates.length - 1].longitude}` :
       'empty';
     const prefsHash = JSON.stringify(preferences);
     return `sar-${routeHash}-${prefsHash}-${minRating}`;

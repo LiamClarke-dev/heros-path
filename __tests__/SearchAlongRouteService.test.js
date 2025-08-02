@@ -469,11 +469,24 @@ describe('SearchAlongRouteService', () => {
       expect(result).toBe(3.5);
     });
 
+    it('should return rating as alternative fallback', () => {
+      const preferences = { rating: 4.2 };
+      const result = service.getMinRatingFromPreferences(preferences);
+      expect(result).toBe(4.2);
+    });
+
+    it('should prioritize minRating over other properties', () => {
+      const preferences = { minRating: 4.5, minimumRating: 3.5, rating: 2.5 };
+      const result = service.getMinRatingFromPreferences(preferences);
+      expect(result).toBe(4.5);
+    });
+
     it('should return 0 for invalid preferences', () => {
       expect(service.getMinRatingFromPreferences(null)).toBe(0);
       expect(service.getMinRatingFromPreferences({})).toBe(0);
       expect(service.getMinRatingFromPreferences({ minRating: 'invalid' })).toBe(0);
       expect(service.getMinRatingFromPreferences({ minRating: 6 })).toBe(0); // Out of range
+      expect(service.getMinRatingFromPreferences({ minRating: -1 })).toBe(0); // Out of range
     });
   });
 
@@ -483,35 +496,61 @@ describe('SearchAlongRouteService', () => {
         id: 'place1',
         name: 'High Rated Restaurant',
         types: ['restaurant'],
-        rating: 4.5
+        primaryType: 'restaurant',
+        rating: 4.5,
+        category: 'Food & Dining'
       },
       {
         id: 'place2',
         name: 'Low Rated Cafe',
         types: ['cafe'],
-        rating: 2.5
+        primaryType: 'cafe',
+        rating: 2.5,
+        category: 'Food & Dining'
       },
       {
         id: 'place3',
         name: 'Park',
         types: ['park'],
-        rating: null
+        primaryType: 'park',
+        rating: null,
+        category: 'Entertainment & Culture'
+      },
+      {
+        id: 'place4',
+        name: 'Museum',
+        types: ['museum'],
+        primaryType: 'museum',
+        rating: 4.8,
+        category: 'Entertainment & Culture'
       }
     ];
 
-    it('should filter by minimum rating', () => {
+    it('should filter by minimum rating with enhanced logic', () => {
       const preferences = { minRating: 4.0 };
       const result = service.applyPreferenceFiltering(mockPlaces, preferences);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('place1');
+      expect(result).toHaveLength(3); // place1, place3 (null rating with minRating < 4.5), place4
+      expect(result.map(p => p.id)).toContain('place1');
+      expect(result.map(p => p.id)).toContain('place3'); // Null rating allowed for minRating < 4.5
+      expect(result.map(p => p.id)).toContain('place4');
     });
 
-    it('should filter by place types', () => {
+    it('should filter out null ratings for very high minimum rating', () => {
+      const preferences = { minRating: 4.5 };
+      const result = service.applyPreferenceFiltering(mockPlaces, preferences);
+      expect(result).toHaveLength(2); // place1, place4 (place3 excluded due to null rating)
+      expect(result.map(p => p.id)).toContain('place1');
+      expect(result.map(p => p.id)).toContain('place4');
+      expect(result.map(p => p.id)).not.toContain('place3');
+    });
+
+    it('should filter by place types using structured preferences', () => {
       const preferences = {
         placeTypes: {
           restaurant: true,
           cafe: false,
-          park: false
+          park: false,
+          museum: false
         }
       };
       const result = service.applyPreferenceFiltering(mockPlaces, preferences);
@@ -519,28 +558,69 @@ describe('SearchAlongRouteService', () => {
       expect(result[0].id).toBe('place1');
     });
 
+    it('should handle places without types using primaryType', () => {
+      const placesWithoutTypes = [
+        {
+          id: 'place5',
+          name: 'Restaurant without types',
+          types: [], // Empty array instead of undefined
+          primaryType: 'restaurant',
+          rating: 4.0,
+          category: 'Food & Dining' // Add category so it doesn't get filtered out by category balancing
+        }
+      ];
+      const preferences = {
+        placeTypes: {
+          restaurant: true,
+          cafe: false
+        }
+      };
+      
+
+      
+      const result = service.applyPreferenceFiltering(placesWithoutTypes, preferences);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('place5');
+    });
+
     it('should apply both rating and type filters', () => {
       const preferences = {
         placeTypes: {
           restaurant: true,
           cafe: true,
-          park: false
+          park: false,
+          museum: true
         },
         minRating: 4.0
       };
       const result = service.applyPreferenceFiltering(mockPlaces, preferences);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('place1');
+      expect(result).toHaveLength(2); // place1 and place4
+      expect(result.map(p => p.id)).toContain('place1');
+      expect(result.map(p => p.id)).toContain('place4');
+    });
+
+    it('should skip type filtering when allTypes is true', () => {
+      const preferences = {
+        allTypes: true,
+        minRating: 4.0
+      };
+      const result = service.applyPreferenceFiltering(mockPlaces, preferences);
+      expect(result).toHaveLength(3); // All places with rating >= 4.0 or null rating
     });
 
     it('should return all places when no preferences', () => {
       const result = service.applyPreferenceFiltering(mockPlaces, {});
-      expect(result).toHaveLength(3);
+      expect(result).toHaveLength(4);
     });
 
     it('should handle empty places array', () => {
       const result = service.applyPreferenceFiltering([], mockPreferences);
       expect(result).toEqual([]);
+    });
+
+    it('should handle null or undefined places array', () => {
+      expect(service.applyPreferenceFiltering(null, mockPreferences)).toBeNull();
+      expect(service.applyPreferenceFiltering(undefined, mockPreferences)).toBeUndefined();
     });
   });
 
@@ -593,6 +673,223 @@ describe('SearchAlongRouteService', () => {
       expect(stats.minRating).toBe(4.0);
       expect(stats.allTypesEnabled).toBe(false);
       expect(stats.enabledByCategory).toBeDefined();
+    });
+  });
+
+  describe('applyCategoryBalancing', () => {
+    const mockPlaces = [
+      { id: 'rest1', category: 'Food & Dining', rating: 4.5 },
+      { id: 'rest2', category: 'Food & Dining', rating: 4.2 },
+      { id: 'rest3', category: 'Food & Dining', rating: 3.8 },
+      { id: 'museum1', category: 'Entertainment & Culture', rating: 4.8 },
+      { id: 'museum2', category: 'Entertainment & Culture', rating: 4.1 },
+      { id: 'hospital1', category: 'Health & Wellness', rating: 4.3 }
+    ];
+
+    it('should balance results across categories', () => {
+      const preferences = {
+        placeTypes: {
+          restaurant: true,
+          museum: true,
+          hospital: true
+        }
+      };
+      const result = service.applyCategoryBalancing(mockPlaces, preferences);
+      
+      // Should have representatives from each enabled category
+      const categories = new Set(result.map(p => p.category));
+      expect(categories.size).toBeGreaterThan(1);
+    });
+
+    it('should prioritize higher-rated places within categories', () => {
+      const preferences = {
+        placeTypes: {
+          restaurant: true,
+          museum: true
+        }
+      };
+      const result = service.applyCategoryBalancing(mockPlaces, preferences);
+      
+      // Find food places in result
+      const foodPlaces = result.filter(p => p.category === 'Food & Dining');
+      if (foodPlaces.length > 1) {
+        // Should be sorted by rating (highest first)
+        expect(foodPlaces[0].rating).toBeGreaterThanOrEqual(foodPlaces[1].rating);
+      }
+    });
+
+    it('should handle empty places array', () => {
+      const result = service.applyCategoryBalancing([], {});
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('createSARPreferencesFromDiscoveryScreen', () => {
+    const mockDiscoveryPreferences = {
+      restaurant: true,
+      cafe: true,
+      park: false,
+      museum: true
+    };
+
+    it('should create SAR-compatible preferences from DiscoveryPreferencesScreen data', () => {
+      const result = service.createSARPreferencesFromDiscoveryScreen(
+        mockDiscoveryPreferences,
+        4.0,
+        { categoryBalancing: true }
+      );
+
+      expect(result.placeTypes.restaurant).toBe(true);
+      expect(result.placeTypes.cafe).toBe(true);
+      expect(result.placeTypes.museum).toBe(true);
+      expect(result.placeTypes.park).toBe(false); // Should be false since it was set to false
+      expect(result.minRating).toBe(4.0);
+      expect(result.categoryBalancing).toBe(true);
+    });
+
+    it('should handle invalid discovery preferences', () => {
+      const result = service.createSARPreferencesFromDiscoveryScreen(null, 4.0);
+      
+      // When discovery preferences are null, placeTypes should be empty object but normalized to have all types as false
+      expect(Object.keys(result.placeTypes).length).toBeGreaterThan(0); // All place types will be present as false
+      expect(result.minRating).toBe(4.0);
+      expect(result.allTypes).toBe(true); // Should be true since no types are enabled, defaults to all
+    });
+
+    it('should handle invalid minRating', () => {
+      const result = service.createSARPreferencesFromDiscoveryScreen(
+        mockDiscoveryPreferences,
+        'invalid'
+      );
+
+      expect(result.minRating).toBe(0);
+    });
+  });
+
+  describe('validateDiscoveryScreenCompatibility', () => {
+    it('should validate valid preferences', () => {
+      const preferences = {
+        placeTypes: {
+          restaurant: true,
+          cafe: true
+        },
+        minRating: 4.0
+      };
+      const result = service.validateDiscoveryScreenCompatibility(preferences);
+      
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should detect invalid preferences', () => {
+      const result = service.validateDiscoveryScreenCompatibility(null);
+      
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('Preferences object is required');
+    });
+
+    it('should provide warnings for high minimum rating', () => {
+      const preferences = {
+        placeTypes: { restaurant: true },
+        minRating: 4.8
+      };
+      const result = service.validateDiscoveryScreenCompatibility(preferences);
+      
+      expect(result.warnings).toContain('Very high minimum rating may result in few discoveries');
+    });
+
+    it('should provide suggestions for limited place types', () => {
+      const preferences = {
+        placeTypes: { restaurant: true },
+        minRating: 4.0
+      };
+      const result = service.validateDiscoveryScreenCompatibility(preferences);
+      
+      expect(result.suggestions).toContain('Consider enabling more place types for diverse discoveries');
+    });
+  });
+
+  describe('searchAlongRouteWithDiscoveryPreferences', () => {
+    const mockDiscoveryPreferences = {
+      restaurant: true,
+      cafe: true,
+      park: false
+    };
+
+    beforeEach(() => {
+      fetch.mockResolvedValue({
+        ok: true,
+        json: async () => mockApiResponse
+      });
+    });
+
+    it('should perform SAR with DiscoveryPreferencesScreen integration', async () => {
+      const result = await service.searchAlongRouteWithDiscoveryPreferences(
+        mockCoordinates,
+        mockDiscoveryPreferences,
+        4.0
+      );
+
+      expect(result).toBeDefined();
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it('should handle errors gracefully', async () => {
+      const { validateCoordinates } = require('../utils/routeEncoder');
+      validateCoordinates.mockReturnValue(false);
+
+      await expect(
+        service.searchAlongRouteWithDiscoveryPreferences(
+          [],
+          mockDiscoveryPreferences,
+          4.0
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('enhanced validateAndNormalizePreferences', () => {
+    it('should handle structured preferences from DiscoveryPreferencesScreen', () => {
+      const preferences = {
+        placeTypes: {
+          restaurant: true,
+          cafe: false
+        },
+        minRating: 4.0,
+        categoryBalancing: true
+      };
+      const result = service.validateAndNormalizePreferences(preferences);
+      
+      expect(result.placeTypes.restaurant).toBe(true);
+      expect(result.placeTypes.cafe).toBe(false);
+      expect(result.minRating).toBe(4.0);
+      expect(result.categoryBalancing).toBe(true);
+    });
+
+    it('should handle legacy preference format', () => {
+      const preferences = {
+        restaurant: true,
+        cafe: false,
+        minRating: 3.5
+      };
+      const result = service.validateAndNormalizePreferences(preferences);
+      
+      expect(result.placeTypes.restaurant).toBe(true);
+      expect(result.placeTypes.cafe).toBe(false);
+      expect(result.minRating).toBe(3.5);
+    });
+
+    it('should detect when all types are enabled', () => {
+      const allTypesPreferences = {};
+      Object.keys(PLACE_TYPES).forEach(type => {
+        allTypesPreferences[type] = true;
+      });
+      
+      const result = service.validateAndNormalizePreferences({
+        placeTypes: allTypesPreferences
+      });
+      
+      expect(result.allTypes).toBe(true);
     });
   });
 

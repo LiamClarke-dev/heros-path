@@ -200,7 +200,7 @@ export const PLACE_CATEGORIES = {
     },
     'Religious': {
         title: 'Religious',
-        icon: 'account-balance', // Material icon for religious sites
+        icon: 'temple-buddhist', // Material icon for religious sites
         types: [
             'church', 'mosque', 'synagogue', 'hindu_temple', 'place_of_worship'
         ],

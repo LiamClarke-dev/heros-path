@@ -58,7 +58,12 @@
 
 
 
-  - [ ] 3.2 Add preference filtering to SAR
+  - [x] 3.2 Add preference filtering to SAR
+
+
+
+
+
     - Integrate with user discovery preferences from DiscoveryPreferencesScreen
     - Filter place types based on user selections
     - Implement minimum rating filtering

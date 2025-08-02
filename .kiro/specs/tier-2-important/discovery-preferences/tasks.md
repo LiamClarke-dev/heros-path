@@ -161,7 +161,12 @@
   - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 6.3, 6.4_
 
-- [ ] 6. Add navigation and access points
+- [x] 6. Add navigation and access points
+
+
+
+
+
   - Add preferences access from Settings screen
   - Add preferences access from Map screen (dedicated button in map controls)
   - Create navigation links
@@ -169,13 +174,17 @@
   - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 1.1, 1.4, 2.1, 2.4_
 
-- [ ] 6.1 Add preferences access from Settings screen
+- [x] 6.1 Add preferences access from Settings screen
+
+
   - Create navigation link in SettingsScreen.js
   - Implement navigation to DiscoveryPreferencesScreen
   - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
   - _Requirements: 1.1, 1.4_
 
-- [ ] 6.2 Update app navigation structure
+- [x] 6.2 Update app navigation structure
+
+
   - Add DiscoveryPreferencesScreen to navigation stack
   - Configure proper navigation options and transitions
   - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md

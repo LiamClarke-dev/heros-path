@@ -26,6 +26,9 @@ import DebugInstructions from '../components/ui/DebugInstructions';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 
+// Navigation
+import { useNavigation } from '@react-navigation/native';
+
 // CRITICAL FIX: Use centralized distance calculation
 import { calculateDistance } from '../utils/distanceUtils';
 import { calculateJourneyDistance } from '../utils/distanceUtils';
@@ -77,6 +80,7 @@ const MapScreen = () => {
   // Context
   const { isAuthenticated } = useUser();
   const { currentTheme } = useTheme();
+  const navigation = useNavigation();
 
   // Refs
   const mapRef = useRef(null);
@@ -180,6 +184,13 @@ const MapScreen = () => {
     await locationTracking.locateMe(mapRef);
   }, [locationTracking.locateMe]);
 
+  const handleOpenDiscoveryPreferences = useCallback(() => {
+    // Navigate to the Settings drawer, then to the DiscoveryPreferences screen
+    navigation.navigate('Settings', {
+      screen: 'DiscoveryPreferences'
+    });
+  }, [navigation]);
+
   // Debug calculations for SERVICE-PROCESSED DATA
   const debugDistances = useMemo(() => {
     // CRITICAL FIX: Handle undefined/null journeyPath gracefully
@@ -268,6 +279,7 @@ const MapScreen = () => {
         onToggleSavedPlaces={savedPlaces.toggleVisibility}
         onToggleMapStyle={mapStyle.toggleSelector}
         onGPSStatusPress={useCallback(() => setGpsExpanded(prev => !prev), [])}
+        onOpenDiscoveryPreferences={handleOpenDiscoveryPreferences}
       />
 
       <MapStatusDisplays

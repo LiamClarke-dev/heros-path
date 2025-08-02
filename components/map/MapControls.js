@@ -6,6 +6,7 @@ import SavedRoutesToggle from './SavedRoutesToggle';
 import SavedPlacesToggle from './SavedPlacesToggle';
 import MapStyleButton from './MapStyleButton';
 import TrackingStatusIndicator from './TrackingStatusIndicator';
+import DiscoveryPreferencesButton from './DiscoveryPreferencesButton';
 
 /**
  * MapControls Component
@@ -74,6 +75,7 @@ const MapControls = ({
   onToggleSavedPlaces,
   onToggleMapStyle,
   onGPSStatusPress,
+  onOpenDiscoveryPreferences,
 }) => {
   // Show locate button even if permissions aren't granted so users can request them
   // Other controls are hidden until permissions are granted
@@ -108,6 +110,10 @@ const MapControls = ({
           onPress={onToggleMapStyle}
           currentStyle={mapStyleState?.currentStyle}
           isVisible={mapStyleState?.selectorVisible}
+        />
+        <DiscoveryPreferencesButton
+          onPress={onOpenDiscoveryPreferences}
+          isAuthenticated={trackingState?.isAuthenticated}
         />
       </View>
 

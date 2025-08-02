@@ -15,26 +15,35 @@ export function SettingsStack() {
   return (
     <Stack.Navigator
       screenOptions={{
+        headerShown: true, // Ensure headers are shown
         headerStyle: {
           backgroundColor: theme.colors.surface,
           borderBottomColor: theme.colors.border,
+          borderBottomWidth: 1,
         },
         headerTintColor: theme.colors.text,
         headerTitleStyle: {
           fontWeight: '600',
           fontSize: 18,
         },
+        headerBackTitleVisible: false, // Hide back title on iOS
       }}
     >
       <Stack.Screen 
         name="SettingsMain" 
         component={SettingsScreen}
-        options={{ title: 'Settings' }}
+        options={{ 
+          title: 'Settings',
+          headerShown: false, // Settings screen doesn't need header (accessed via drawer)
+        }}
       />
       <Stack.Screen 
         name="DiscoveryPreferences" 
         component={DiscoveryPreferencesScreen}
-        options={{ title: 'Discovery Preferences' }}
+        options={{ 
+          title: 'Discovery Preferences',
+          headerShown: true, // Show header with back button for preferences
+        }}
       />
     </Stack.Navigator>
   );

@@ -30,15 +30,8 @@
     - Add battery optimization strategies
     - _Requirements: 1.6, 5.4, 7.1, 7.4, 7.8_
 
-- [ ] 3. Develop JourneyService for journey data management
-
-
-
-
-
+- [x] 3. Develop JourneyService for journey data management
   - [x] 3.1 Implement journey CRUD operations
-
-
     - Create createJourney() method with Firestore integration
     - Implement getJourney() and getUserJourneys() methods
     - Add updateJourney() for journey metadata updates
@@ -89,12 +82,7 @@
     - _Requirements: 2.1, 2.5, 2.6_
 
 - [-] 5. Develop PastJourneysScreen for journey management
-
-
-
   - [x] 5.1 Implement journey list display
-
-
     - Create journey list component with sorting
     - Add journey metadata display (name, date, distance, duration)
     - Implement loading states and error handling
@@ -103,11 +91,6 @@
     - _Requirements: 3.1, 3.2_
 
   - [x] 5.2 Implement journey management functions
-
-
-
-
-
     - Add journey deletion with confirmation
     - Create navigation to journey discoveries
     - Implement journey completion status indicators

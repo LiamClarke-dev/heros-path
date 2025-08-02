@@ -17,6 +17,7 @@ const STORAGE_PREFIXES = {
   SETTINGS: 'settings_',
   MIGRATION: 'migration_',
   DEV: 'dev_',
+  DISCOVERY: 'discovery_',
 };
 
 /**
@@ -96,6 +97,30 @@ export const CACHE_STORAGE_KEYS = {
 };
 
 /**
+ * Discovery preferences storage keys
+ */
+export const DISCOVERY_STORAGE_KEYS = {
+  // Core preferences
+  PLACE_TYPE_PREFERENCES: `${STORAGE_PREFIXES.DISCOVERY}place_types`,
+  MIN_RATING_PREFERENCE: `${STORAGE_PREFIXES.DISCOVERY}min_rating`,
+  PREFERENCES_VERSION: `${STORAGE_PREFIXES.DISCOVERY}version`,
+  LAST_PREFERENCES_UPDATE: `${STORAGE_PREFIXES.DISCOVERY}last_update`,
+  
+  // Preference synchronization
+  PREFERENCES_SYNC_STATUS: `${STORAGE_PREFIXES.DISCOVERY}sync_status`,
+  LAST_CLOUD_SYNC: `${STORAGE_PREFIXES.DISCOVERY}last_cloud_sync`,
+  PENDING_PREFERENCE_CHANGES: `${STORAGE_PREFIXES.DISCOVERY}pending_changes`,
+  
+  // Cache for preferences
+  PREFERENCES_CACHE: `${STORAGE_PREFIXES.CACHE}discovery_preferences`,
+  PREFERENCES_CACHE_TIMESTAMP: `${STORAGE_PREFIXES.CACHE}discovery_timestamp`,
+  
+  // Migration support
+  PREFERENCES_SCHEMA_VERSION: `${STORAGE_PREFIXES.MIGRATION}discovery_schema`,
+  PREFERENCES_MIGRATION_STATUS: `${STORAGE_PREFIXES.MIGRATION}discovery_status`,
+};
+
+/**
  * Default values for storage keys
  */
 export const STORAGE_DEFAULTS = {
@@ -128,6 +153,13 @@ export const STORAGE_DEFAULTS = {
   // Developer defaults
   [JOURNEY_STORAGE_KEYS.DEV_MODE_ENABLED]: false,
   [JOURNEY_STORAGE_KEYS.DEBUG_LOGGING]: false,
+  
+  // Discovery preferences defaults
+  [DISCOVERY_STORAGE_KEYS.MIN_RATING_PREFERENCE]: 4.0,
+  [DISCOVERY_STORAGE_KEYS.PREFERENCES_VERSION]: 1,
+  [DISCOVERY_STORAGE_KEYS.PREFERENCES_SYNC_STATUS]: 'pending',
+  [DISCOVERY_STORAGE_KEYS.PREFERENCES_SCHEMA_VERSION]: 1,
+  [DISCOVERY_STORAGE_KEYS.PREFERENCES_MIGRATION_STATUS]: 'up_to_date',
 };
 
 /**
@@ -267,6 +299,7 @@ export default {
   JOURNEY_STORAGE_KEYS,
   LOCATION_STORAGE_KEYS,
   CACHE_STORAGE_KEYS,
+  DISCOVERY_STORAGE_KEYS,
   STORAGE_DEFAULTS,
   STORAGE_KEY_PATTERNS,
   CACHE_EXPIRATION,

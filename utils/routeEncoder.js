@@ -139,27 +139,6 @@ function calculateHaversineDistance(coord1, coord2) {
 }
 
 /**
- * Calculates the total distance of a route in meters
- * @param {Array<{latitude: number, longitude: number}>} coordinates - Array of GPS coordinates
- * @returns {number} - Total distance in meters
- */
-export function calculateRouteDistance(coordinates) {
-  if (!validateCoordinates(coordinates) || coordinates.length < 2) {
-    return 0;
-  }
-
-  let totalDistance = 0;
-
-  for (let i = 1; i < coordinates.length; i++) {
-    const prev = coordinates[i - 1];
-    const curr = coordinates[i];
-    totalDistance += calculateHaversineDistance(prev, curr);
-  }
-
-  return totalDistance;
-}
-
-/**
  * Checks if a route meets the minimum length requirement for Search Along Route
  * @param {Array<{latitude: number, longitude: number}>} coordinates - Array of GPS coordinates
  * @param {number} minLength - Minimum length in meters (default: 50)
@@ -178,13 +157,43 @@ export function isRouteLongEnoughForSAR(coordinates, minLength = 50) {
  * @throws {Error} - If coordinates are invalid or empty
  */
 export function calculateCenterPoint(coordinates) {
-  // Validate input coordinates
-  if (!validateCoordinates(coordinates)) {
+  // Check for non-array input first
+  if (!Array.isArray(coordinates)) {
     throw new Error('Invalid coordinates provided. Coordinates must be an array of objects with valid latitude and longitude values.');
   }
 
+  // Check for empty array
   if (coordinates.length === 0) {
     throw new Error('Cannot calculate center point of empty coordinates array.');
+  }
+
+  // Validate coordinate contents (create a temporary array to avoid the empty array check in validateCoordinates)
+  const isValid = coordinates.every(coord => {
+    // Check if coordinate has required properties
+    if (!coord || typeof coord.latitude !== 'number' || typeof coord.longitude !== 'number') {
+      return false;
+    }
+
+    // Validate latitude range (-90 to 90)
+    if (coord.latitude < -90 || coord.latitude > 90) {
+      return false;
+    }
+
+    // Validate longitude range (-180 to 180)
+    if (coord.longitude < -180 || coord.longitude > 180) {
+      return false;
+    }
+
+    // Check for NaN or infinite values
+    if (!isFinite(coord.latitude) || !isFinite(coord.longitude)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (!isValid) {
+    throw new Error('Invalid coordinates provided. Coordinates must be an array of objects with valid latitude and longitude values.');
   }
 
   // Handle single coordinate

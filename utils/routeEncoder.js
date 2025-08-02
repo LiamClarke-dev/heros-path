@@ -139,6 +139,32 @@ function calculateHaversineDistance(coord1, coord2) {
 }
 
 /**
+ * Calculates the total distance of a route in meters
+ * @param {Array<{latitude: number, longitude: number}>} coordinates - Array of GPS coordinates
+ * @returns {number} - Total distance in meters
+ */
+export function calculateRouteDistance(coordinates) {
+  if (!Array.isArray(coordinates) || coordinates.length < 2) {
+    return 0;
+  }
+
+  // Validate coordinates
+  if (!validateCoordinates(coordinates)) {
+    return 0;
+  }
+
+  let totalDistance = 0;
+
+  // Calculate distance between consecutive coordinates
+  for (let i = 1; i < coordinates.length; i++) {
+    const distance = calculateHaversineDistance(coordinates[i - 1], coordinates[i]);
+    totalDistance += distance;
+  }
+
+  return totalDistance;
+}
+
+/**
  * Checks if a route meets the minimum length requirement for Search Along Route
  * @param {Array<{latitude: number, longitude: number}>} coordinates - Array of GPS coordinates
  * @param {number} minLength - Minimum length in meters (default: 50)
@@ -164,7 +190,7 @@ export function calculateCenterPoint(coordinates) {
 
   // Check for empty array
   if (coordinates.length === 0) {
-    throw new Error('Cannot calculate center point of empty coordinates array.');
+    throw new Error('Invalid coordinates provided. Coordinates must be an array of objects with valid latitude and longitude values.');
   }
 
   // Validate coordinate contents (create a temporary array to avoid the empty array check in validateCoordinates)

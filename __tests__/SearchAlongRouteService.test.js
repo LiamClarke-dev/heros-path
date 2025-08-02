@@ -28,7 +28,8 @@ jest.mock('../utils/routeEncoder', () => ({
   validateCoordinates: jest.fn(),
   encodeRoute: jest.fn(),
   isRouteLongEnoughForSAR: jest.fn(),
-  calculateCenterPoint: jest.fn()
+  calculateCenterPoint: jest.fn(),
+  calculateRouteDistance: jest.fn()
 }));
 
 // Mock fetch
@@ -914,6 +915,403 @@ describe('SearchAlongRouteService', () => {
       expect(PLACE_TYPE_TO_CATEGORY).toBeDefined();
       expect(PLACE_TYPE_TO_CATEGORY.restaurant).toBe(PLACE_CATEGORIES.FOOD_DINING);
       expect(PLACE_TYPE_TO_CATEGORY.park).toBe(PLACE_CATEGORIES.ENTERTAINMENT_CULTURE);
+    });
+  });
+
+  describe('Fallback Center-Point Search', () => {
+    const mockCenterPoint = { latitude: 37.7849, longitude: -122.4094 };
+    const mockNearbyResponse = {
+      places: [
+        {
+          id: 'nearby1',
+          displayName: { text: 'Nearby Restaurant' },
+          types: ['restaurant'],
+          primaryType: 'restaurant',
+          location: { latitude: 37.7850, longitude: -122.4095 },
+          rating: 4.3
+        },
+        {
+          id: 'nearby2',
+          displayName: { text: 'Nearby Cafe' },
+          types: ['cafe'],
+          primaryType: 'cafe',
+          location: { latitude: 37.7848, longitude: -122.4093 },
+          rating: 4.1
+        }
+      ]
+    };
+
+    beforeEach(() => {
+      const { calculateCenterPoint, calculateRouteDistance } = require('../utils/routeEncoder');
+      calculateCenterPoint.mockReturnValue(mockCenterPoint);
+      calculateRouteDistance.mockReturnValue(150); // Mock route distance
+    });
+
+    describe('performCenterPointSearch', () => {
+      it('should perform center-point search successfully', async () => {
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockNearbyResponse
+        });
+
+        const result = await service.performCenterPointSearch(
+          mockCoordinates,
+          mockPreferences,
+          4.0
+        );
+
+        expect(result).toHaveLength(2);
+        expect(result[0]).toMatchObject({
+          id: 'nearby1',
+          name: 'Nearby Restaurant',
+          discoverySource: 'center-point',
+          fallbackReason: 'SAR API failure'
+        });
+      });
+
+      it('should calculate center point correctly', async () => {
+        const { calculateCenterPoint } = require('../utils/routeEncoder');
+        
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => ({ places: [] })
+        });
+
+        await service.performCenterPointSearch(mockCoordinates, mockPreferences);
+
+        expect(calculateCenterPoint).toHaveBeenCalledWith(mockCoordinates);
+      });
+
+      it('should search for each enabled place type separately', async () => {
+        const preferences = {
+          placeTypes: {
+            restaurant: true,
+            cafe: true,
+            park: false
+          }
+        };
+
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => ({ places: [] })
+        });
+
+        await service.performCenterPointSearch(mockCoordinates, preferences);
+
+        // Should make 2 API calls (restaurant and cafe)
+        expect(fetch).toHaveBeenCalledTimes(2);
+      });
+
+      it('should handle API errors for individual place types gracefully', async () => {
+        const preferences = {
+          placeTypes: {
+            restaurant: true,
+            cafe: true
+          }
+        };
+
+        // Mock first call to succeed, second to fail
+        fetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ places: [mockNearbyResponse.places[0]] })
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+            text: async () => 'Server error'
+          });
+
+        const result = await service.performCenterPointSearch(mockCoordinates, preferences);
+
+        // Should still return results from successful call
+        expect(result).toHaveLength(1);
+        expect(result[0].name).toBe('Nearby Restaurant');
+      });
+
+      it('should apply preference filtering to results', async () => {
+        const preferences = {
+          placeTypes: {
+            restaurant: true,
+            cafe: false // Cafe disabled
+          },
+          minRating: 4.2
+        };
+
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockNearbyResponse
+        });
+
+        const result = await service.performCenterPointSearch(mockCoordinates, preferences, 4.2);
+
+        // Should filter out cafe and low-rated places
+        expect(result.length).toBeLessThanOrEqual(1);
+        if (result.length > 0) {
+          expect(result[0].types).toContain('restaurant');
+          expect(result[0].rating).toBeGreaterThanOrEqual(4.2);
+        }
+      });
+
+      it('should deduplicate results', async () => {
+        const duplicateResponse = {
+          places: [
+            mockNearbyResponse.places[0],
+            mockNearbyResponse.places[0], // Duplicate
+            mockNearbyResponse.places[1]
+          ]
+        };
+
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => duplicateResponse
+        });
+
+        const result = await service.performCenterPointSearch(mockCoordinates, mockPreferences);
+
+        expect(result).toHaveLength(2); // Duplicates removed
+      });
+    });
+
+    describe('performNearbySearch', () => {
+      it('should make correct Nearby Search API request', async () => {
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockNearbyResponse
+        });
+
+        await service.performNearbySearch(
+          mockCenterPoint,
+          ['restaurant'],
+          500,
+          4.0
+        );
+
+        expect(fetch).toHaveBeenCalledWith(
+          'https://places.googleapis.com/v1/places:searchNearby',
+          expect.objectContaining({
+            method: 'POST',
+            headers: expect.objectContaining({
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': 'test-ios-key',
+              'X-Goog-FieldMask': 'places.id,places.displayName,places.types,places.location,places.rating,places.priceLevel,places.primaryType'
+            }),
+            body: expect.stringContaining('"includedTypes":["restaurant"]')
+          })
+        );
+      });
+
+      it('should include location restriction with correct radius', async () => {
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockNearbyResponse
+        });
+
+        await service.performNearbySearch(mockCenterPoint, ['restaurant'], 500);
+
+        const requestBody = JSON.parse(fetch.mock.calls[0][1].body);
+        expect(requestBody.locationRestriction.circle.radius).toBe(500);
+        expect(requestBody.locationRestriction.circle.center).toEqual(mockCenterPoint);
+      });
+
+      it('should include minimum rating when specified', async () => {
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockNearbyResponse
+        });
+
+        await service.performNearbySearch(mockCenterPoint, ['restaurant'], 500, 4.0);
+
+        const requestBody = JSON.parse(fetch.mock.calls[0][1].body);
+        expect(requestBody.minRating).toBe(4.0);
+      });
+
+      it('should handle API errors', async () => {
+        fetch.mockResolvedValue({
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          text: async () => 'Invalid request'
+        });
+
+        await expect(
+          service.performNearbySearch(mockCenterPoint, ['restaurant'], 500)
+        ).rejects.toThrow('Nearby Search API request failed: 400 Bad Request');
+      });
+
+      it('should handle empty response', async () => {
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => ({ places: [] })
+        });
+
+        const result = await service.performNearbySearch(mockCenterPoint, ['restaurant'], 500);
+        expect(result).toEqual([]);
+      });
+    });
+
+    describe('deduplicateResults', () => {
+      it('should remove duplicate places by place ID', () => {
+        const duplicateResults = [
+          { id: 'place1', placeId: 'place1', name: 'Restaurant A' },
+          { id: 'place2', placeId: 'place2', name: 'Cafe B' },
+          { id: 'place1', placeId: 'place1', name: 'Restaurant A Duplicate' },
+          { id: 'place3', placeId: 'place3', name: 'Park C' }
+        ];
+
+        const result = service.deduplicateResults(duplicateResults);
+
+        expect(result).toHaveLength(3);
+        expect(result.map(p => p.placeId)).toEqual(['place1', 'place2', 'place3']);
+      });
+
+      it('should handle empty array', () => {
+        const result = service.deduplicateResults([]);
+        expect(result).toEqual([]);
+      });
+
+      it('should handle null/undefined input', () => {
+        expect(service.deduplicateResults(null)).toBeNull();
+        expect(service.deduplicateResults(undefined)).toBeUndefined();
+      });
+
+      it('should handle places without placeId using id field', () => {
+        const results = [
+          { id: 'place1', name: 'Restaurant A' },
+          { id: 'place1', name: 'Restaurant A Duplicate' }
+        ];
+
+        const result = service.deduplicateResults(results);
+        expect(result).toHaveLength(1);
+      });
+    });
+
+    describe('searchAlongRouteWithFallback', () => {
+      beforeEach(() => {
+        const { calculateRouteDistance } = require('../utils/routeEncoder');
+        calculateRouteDistance.mockReturnValue(150); // Mock route distance for logging
+      });
+
+      it('should use SAR when successful', async () => {
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockApiResponse
+        });
+
+        const result = await service.searchAlongRouteWithFallback(
+          mockCoordinates,
+          mockPreferences,
+          4.0
+        );
+
+        expect(result).toHaveLength(2);
+        expect(result[0].discoverySource).toBe('SAR');
+      });
+
+      it('should fallback to center-point search when SAR fails', async () => {
+        // Mock SAR to fail
+        fetch
+          .mockRejectedValueOnce(new Error('SAR API failed'))
+          .mockResolvedValue({
+            ok: true,
+            json: async () => mockNearbyResponse
+          });
+
+        const result = await service.searchAlongRouteWithFallback(
+          mockCoordinates,
+          mockPreferences,
+          4.0
+        );
+
+        expect(result).toHaveLength(2);
+        expect(result[0].discoverySource).toBe('center-point');
+        expect(result[0].fallbackReason).toBe('SAR API failure');
+      });
+
+      it('should use center-point search for short routes', async () => {
+        const { isRouteLongEnoughForSAR } = require('../utils/routeEncoder');
+        isRouteLongEnoughForSAR.mockReturnValue(false);
+
+        fetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockNearbyResponse
+        });
+
+        const result = await service.searchAlongRouteWithFallback(
+          mockCoordinates,
+          mockPreferences,
+          4.0
+        );
+
+        expect(result).toHaveLength(2);
+        expect(result[0].discoverySource).toBe('center-point');
+      });
+
+      it('should handle invalid coordinates', async () => {
+        const { validateCoordinates } = require('../utils/routeEncoder');
+        validateCoordinates.mockReturnValue(false);
+
+        await expect(
+          service.searchAlongRouteWithFallback([], mockPreferences)
+        ).rejects.toThrow('Invalid coordinates provided for Search Along Route');
+      });
+
+      it('should return empty results when both SAR and fallback fail', async () => {
+        // Mock both SAR and nearby search to fail
+        fetch.mockRejectedValue(new Error('API completely unavailable'));
+
+        const result = await service.searchAlongRouteWithFallback(mockCoordinates, mockPreferences);
+        
+        // Should return empty array when all API calls fail, not throw error
+        expect(result).toEqual([]);
+      });
+    });
+
+    describe('logFallbackOperation', () => {
+      it('should log fallback operation with correct information', () => {
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+        const sarError = new Error('SAR API failed');
+
+        service.logFallbackOperation(mockCoordinates, mockPreferences, sarError);
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+          'SAR Fallback Operation:',
+          expect.objectContaining({
+            operation: 'SAR_FALLBACK_TO_CENTER_POINT',
+            routeInfo: expect.objectContaining({
+              coordinateCount: mockCoordinates.length
+            }),
+            sarError: expect.objectContaining({
+              message: 'SAR API failed',
+              name: 'Error'
+            }),
+            fallbackReason: 'SAR API failure',
+            fallbackMethod: 'center-point search with 500m radius'
+          })
+        );
+
+        consoleSpy.mockRestore();
+      });
+
+      it('should include route distance when available', () => {
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+        const { calculateRouteDistance } = require('../utils/routeEncoder');
+        calculateRouteDistance.mockReturnValue(250);
+
+        service.logFallbackOperation(mockCoordinates, mockPreferences, new Error('Test'));
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+          'SAR Fallback Operation:',
+          expect.objectContaining({
+            routeInfo: expect.objectContaining({
+              routeDistance: 250
+            })
+          })
+        );
+
+        consoleSpy.mockRestore();
+      });
     });
   });
 });

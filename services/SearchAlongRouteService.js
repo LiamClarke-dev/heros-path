@@ -14,7 +14,7 @@
 
 import { Platform } from 'react-native';
 import { GOOGLE_MAPS_API_KEY_ANDROID, GOOGLE_MAPS_API_KEY_IOS } from '../config';
-import { encodeRoute, validateCoordinates, isRouteLongEnoughForSAR, calculateCenterPoint } from '../utils/routeEncoder';
+import { encodeRoute, validateCoordinates, isRouteLongEnoughForSAR, calculateCenterPoint, calculateRouteDistance } from '../utils/routeEncoder';
 
 /**
  * Google Places API supported place types for Search Along Route
@@ -920,6 +920,267 @@ class SearchAlongRouteService {
 
   clearCache() {
     this.cache.clear();
+  }
+
+  /**
+   * Perform center-point search as fallback when SAR fails
+   * Requirements: 2.1, 2.2, 2.3, 2.4, 2.5
+   * @param {Array<{latitude: number, longitude: number}>} coordinates - Route coordinates
+   * @param {Object} preferences - User's discovery preferences
+   * @param {number} minRating - Minimum rating threshold
+   * @returns {Promise<Array<Object>>} Array of discovered places
+   */
+  async performCenterPointSearch(coordinates, preferences = {}, minRating = 0) {
+    try {
+      console.log('Performing center-point fallback search');
+
+      // Calculate center point of the route
+      const centerPoint = calculateCenterPoint(coordinates);
+      console.log('Calculated center point:', centerPoint);
+
+      // Get enabled place types from preferences
+      const enabledTypes = this.buildPlaceTypesFromPreferences(preferences);
+      console.log(`Center-point search for ${enabledTypes.length} place types`);
+
+      // Search for each enabled place type separately
+      const allResults = [];
+      const searchRadius = 500; // 500-meter radius as per requirements
+
+      for (const placeType of enabledTypes) {
+        try {
+          console.log(`Searching for ${placeType} within ${searchRadius}m of center point`);
+          
+          const results = await this.performNearbySearch(
+            centerPoint,
+            [placeType],
+            searchRadius,
+            minRating
+          );
+
+          // Mark results as center-point discoveries
+          const markedResults = results.map(place => ({
+            ...place,
+            discoverySource: 'center-point',
+            fallbackReason: 'SAR API failure'
+          }));
+
+          allResults.push(...markedResults);
+          console.log(`Found ${results.length} ${placeType} places`);
+
+        } catch (typeError) {
+          console.error(`Error searching for ${placeType}:`, typeError);
+          // Continue with other types even if one fails
+        }
+      }
+
+      // Apply preference filtering to combined results
+      const filteredResults = this.applyPreferenceFiltering(allResults, preferences);
+
+      // Deduplicate results by place ID
+      const deduplicatedResults = this.deduplicateResults(filteredResults);
+
+      console.log(`Center-point search completed: ${allResults.length} raw -> ${deduplicatedResults.length} final results`);
+      return deduplicatedResults;
+
+    } catch (error) {
+      console.error('Center-point fallback search failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Perform nearby search using Google Places API Nearby Search
+   * @param {{latitude: number, longitude: number}} location - Center point for search
+   * @param {Array<string>} placeTypes - Array of place types to search for
+   * @param {number} radius - Search radius in meters
+   * @param {number} minRating - Minimum rating threshold
+   * @returns {Promise<Array<Object>>} Array of discovered places
+   */
+  async performNearbySearch(location, placeTypes, radius, minRating = 0) {
+    try {
+      const apiKey = this.getApiKey();
+      const baseUrl = 'https://places.googleapis.com/v1/places:searchNearby';
+
+      const requestPayload = {
+        includedTypes: placeTypes,
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude: location.latitude,
+              longitude: location.longitude
+            },
+            radius: radius
+          }
+        },
+        rankPreference: 'DISTANCE'
+      };
+
+      // Add minimum rating filter if specified
+      if (minRating > 0 && minRating <= 5) {
+        requestPayload.minRating = minRating;
+      }
+
+      console.log('Making Nearby Search API request:', {
+        url: baseUrl,
+        location: location,
+        radius: radius,
+        placeTypes: placeTypes,
+        minRating: minRating || 'none'
+      });
+
+      const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.types,places.location,places.rating,places.priceLevel,places.primaryType'
+        },
+        body: JSON.stringify(requestPayload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Nearby Search API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`Nearby Search API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.places || !Array.isArray(data.places)) {
+        console.log('No places found in Nearby Search response');
+        return [];
+      }
+
+      console.log(`Nearby Search found ${data.places.length} places`);
+      return this.processRawPlaces(data.places);
+
+    } catch (error) {
+      console.error('Error performing Nearby Search request:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Deduplicate discovery results by place ID
+   * Requirements: 1.5, 5.2
+   * @param {Array<Object>} results - Discovery results
+   * @returns {Array<Object>} Deduplicated results
+   */
+  deduplicateResults(results) {
+    if (!Array.isArray(results) || results.length === 0) {
+      return results;
+    }
+
+    const seenPlaceIds = new Set();
+    const deduplicatedResults = [];
+
+    for (const place of results) {
+      const placeId = place.placeId || place.id;
+      
+      if (!seenPlaceIds.has(placeId)) {
+        seenPlaceIds.add(placeId);
+        deduplicatedResults.push(place);
+      } else {
+        console.log(`Duplicate place filtered out: ${place.name} (${placeId})`);
+      }
+    }
+
+    console.log(`Deduplication: ${results.length} -> ${deduplicatedResults.length} places`);
+    return deduplicatedResults;
+  }
+
+  /**
+   * Enhanced Search Along Route with automatic fallback to center-point search
+   * Requirements: 1.1, 2.1, 2.2, 2.3, 2.4, 2.5
+   * @param {Array<{latitude: number, longitude: number}>} coordinates - Route coordinates
+   * @param {Object} preferences - User's discovery preferences
+   * @param {number} minRating - Minimum rating threshold
+   * @returns {Promise<Array<Object>>} Array of discovered places
+   */
+  async searchAlongRouteWithFallback(coordinates, preferences = {}, minRating = null) {
+    try {
+      // Validate input coordinates
+      if (!validateCoordinates(coordinates)) {
+        throw new Error('Invalid coordinates provided for Search Along Route');
+      }
+
+      // Check if route is long enough for SAR
+      if (!isRouteLongEnoughForSAR(coordinates)) {
+        console.log('Route too short for Search Along Route, using center-point search');
+        const effectiveMinRating = minRating !== null ? minRating : this.getMinRatingFromPreferences(preferences);
+        return await this.performCenterPointSearch(coordinates, preferences, effectiveMinRating);
+      }
+
+      // Normalize preferences
+      const normalizedPreferences = this.validateAndNormalizePreferences(preferences);
+      const effectiveMinRating = minRating !== null ? minRating : normalizedPreferences.minRating;
+
+      try {
+        // Attempt Search Along Route first
+        console.log('Attempting Search Along Route...');
+        const sarResults = await this.searchAlongRoute(coordinates, normalizedPreferences, effectiveMinRating);
+        
+        console.log(`Search Along Route successful: ${sarResults.length} places found`);
+        return sarResults;
+
+      } catch (sarError) {
+        // Log SAR failure and attempt fallback
+        console.warn('Search Along Route failed, falling back to center-point search:', sarError.message);
+        
+        // Log fallback operation for debugging
+        this.logFallbackOperation(coordinates, normalizedPreferences, sarError);
+
+        // Perform center-point fallback search
+        const fallbackResults = await this.performCenterPointSearch(
+          coordinates, 
+          normalizedPreferences, 
+          effectiveMinRating
+        );
+
+        console.log(`Fallback center-point search completed: ${fallbackResults.length} places found`);
+        return fallbackResults;
+      }
+
+    } catch (error) {
+      console.error('Search Along Route with fallback failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Log fallback operation for debugging purposes
+   * Requirements: 2.5
+   * @param {Array<{latitude: number, longitude: number}>} coordinates - Route coordinates
+   * @param {Object} preferences - User preferences
+   * @param {Error} sarError - The error that caused the fallback
+   */
+  logFallbackOperation(coordinates, preferences, sarError) {
+    const fallbackLog = {
+      timestamp: new Date().toISOString(),
+      operation: 'SAR_FALLBACK_TO_CENTER_POINT',
+      routeInfo: {
+        coordinateCount: coordinates.length,
+        routeDistance: calculateRouteDistance ? calculateRouteDistance(coordinates) : 'unknown'
+      },
+      preferences: this.getPreferenceStats(preferences),
+      sarError: {
+        message: sarError.message,
+        name: sarError.name,
+        stack: sarError.stack?.split('\n')[0] // First line of stack trace only
+      },
+      fallbackReason: 'SAR API failure',
+      fallbackMethod: 'center-point search with 500m radius'
+    };
+
+    console.log('SAR Fallback Operation:', fallbackLog);
+
+    // In a production environment, this could be sent to a logging service
+    // For now, we'll just log to console for debugging
   }
 }
 

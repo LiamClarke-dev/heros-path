@@ -39,16 +39,7 @@
     - _Requirements: 2.2, 3.4_
 
 - [x] 3. Create Search Along Route service
-
-
-
-
-
-
   - [x] 3.1 Implement core SAR API integration
-
-
-
     - Create function to build SAR API request with encoded polyline
     - Add support for user preferences and place types filtering
     - Implement error handling for API responses
@@ -56,14 +47,7 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.1, 1.3, 6.1, 6.2, 6.3_
 
-
-
   - [x] 3.2 Add preference filtering to SAR
-
-
-
-
-
     - Integrate with user discovery preferences from DiscoveryPreferencesScreen
     - Filter place types based on user selections
     - Implement minimum rating filtering
@@ -71,7 +55,7 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 1.4, 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 4. Implement fallback center-point search
+- [x] 4. Implement fallback center-point search
 
   - Create fallback service that triggers when SAR fails
   - Implement center-point search with 500m radius
@@ -84,7 +68,6 @@
 - [ ] 5. Develop results processing system
 
   - [ ] 5.1 Create deduplication algorithm
-
     - Implement function to deduplicate results by place_id
     - Ensure it handles large result sets efficiently
     - Write tests for deduplication logic

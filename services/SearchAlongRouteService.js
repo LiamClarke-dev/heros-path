@@ -341,26 +341,180 @@ class SearchAlongRouteService {
 
   /**
    * Apply category balancing to ensure diverse results
+   * Requirements: 7.2, 7.3, 7.4, 7.5
    * @param {Array<Object>} places - Array of places
    * @param {Object} preferences - User preferences
+   * @param {Object} options - Balancing options
+   * @param {number} options.maxResults - Maximum total results (default: 20)
+   * @param {number} options.minPerCategory - Minimum places per category (default: 1)
+   * @param {boolean} options.prioritizeByRating - Sort by rating within categories (default: true)
    * @returns {Array<Object>} Balanced places array
    */
-  applyCategoryBalancing(places, preferences) {
+  applyCategoryBalancing(places, preferences, options = {}) {
     if (!Array.isArray(places) || places.length === 0) {
       return places;
     }
 
-    // Group places by category
+    const {
+      maxResults = 20,
+      minPerCategory = 1,
+      prioritizeByRating = true
+    } = options;
+
+    // Group places by category with enhanced classification
+    const placesByCategory = this.groupPlacesByCategory(places);
+
+    // Get enabled categories based on user preferences
+    const enabledCategories = this.getEnabledCategories(preferences);
+
+    if (enabledCategories.size === 0) {
+      console.log('No enabled categories found, returning original places');
+      return places;
+    }
+
+    // Calculate balanced distribution
+    const distribution = this.calculateCategoryDistribution(
+      placesByCategory,
+      enabledCategories,
+      maxResults,
+      minPerCategory
+    );
+
+    // Select places from each category according to distribution
+    const balancedPlaces = this.selectPlacesFromCategories(
+      placesByCategory,
+      distribution,
+      prioritizeByRating
+    );
+
+    console.log(`Applied category balancing: ${places.length} -> ${balancedPlaces.length} places across ${enabledCategories.size} categories`);
+    this.logCategoryDistribution(balancedPlaces);
+
+    return balancedPlaces;
+  }
+
+  /**
+   * Group places by their primary category
+   * Requirements: 7.3, 7.5
+   * @param {Array<Object>} places - Array of places
+   * @returns {Object} Places grouped by category
+   */
+  groupPlacesByCategory(places) {
     const placesByCategory = {};
+
     places.forEach(place => {
-      const category = place.category || this.getPlaceCategory(place.types || []);
+      // Use existing category or classify the place
+      const category = place.category || this.classifyPlaceByPrimaryCategory(place);
+      
       if (!placesByCategory[category]) {
         placesByCategory[category] = [];
       }
+      
+      // Ensure place has category set for future reference
+      place.category = category;
       placesByCategory[category].push(place);
     });
 
-    // Get enabled categories based on user preferences
+    return placesByCategory;
+  }
+
+  /**
+   * Classify a place according to its primary category
+   * Requirements: 7.5
+   * @param {Object} place - Place object
+   * @returns {string} Primary category name
+   */
+  classifyPlaceByPrimaryCategory(place) {
+    if (!place || typeof place !== 'object') {
+      return PLACE_CATEGORIES.SERVICES_UTILITIES; // Default category
+    }
+
+    // Priority order for classification:
+    // 1. Use primaryType if available and mapped
+    // 2. Use first mapped type from types array
+    // 3. Use most specific type from types array
+    // 4. Default to Services & Utilities
+
+    // Check primaryType first
+    if (place.primaryType && PLACE_TYPE_TO_CATEGORY[place.primaryType]) {
+      return PLACE_TYPE_TO_CATEGORY[place.primaryType];
+    }
+
+    // Check types array
+    if (Array.isArray(place.types) && place.types.length > 0) {
+      // Find the first type that has a category mapping
+      for (const type of place.types) {
+        if (PLACE_TYPE_TO_CATEGORY[type]) {
+          return PLACE_TYPE_TO_CATEGORY[type];
+        }
+      }
+
+      // If no direct mapping found, try to infer from common patterns
+      const inferredCategory = this.inferCategoryFromTypes(place.types);
+      if (inferredCategory) {
+        return inferredCategory;
+      }
+    }
+
+    // Default fallback
+    return PLACE_CATEGORIES.SERVICES_UTILITIES;
+  }
+
+  /**
+   * Infer category from place types using common patterns
+   * @param {Array<string>} types - Array of place types
+   * @returns {string|null} Inferred category or null
+   */
+  inferCategoryFromTypes(types) {
+    if (!Array.isArray(types)) {
+      return null;
+    }
+
+    // Common type patterns for category inference
+    const categoryPatterns = {
+      [PLACE_CATEGORIES.FOOD_DINING]: [
+        'food', 'meal', 'restaurant', 'cafe', 'bar', 'bakery', 'dining'
+      ],
+      [PLACE_CATEGORIES.SHOPPING_RETAIL]: [
+        'store', 'shop', 'retail', 'mall', 'market', 'clothing', 'electronics'
+      ],
+      [PLACE_CATEGORIES.ENTERTAINMENT_CULTURE]: [
+        'entertainment', 'culture', 'museum', 'gallery', 'theater', 'cinema',
+        'park', 'attraction', 'zoo', 'aquarium'
+      ],
+      [PLACE_CATEGORIES.HEALTH_WELLNESS]: [
+        'health', 'medical', 'hospital', 'clinic', 'pharmacy', 'gym', 'spa',
+        'wellness', 'fitness'
+      ],
+      [PLACE_CATEGORIES.SERVICES_UTILITIES]: [
+        'service', 'bank', 'atm', 'gas', 'fuel', 'post', 'government',
+        'utility', 'repair', 'maintenance'
+      ],
+      [PLACE_CATEGORIES.OUTDOORS_RECREATION]: [
+        'outdoor', 'recreation', 'sport', 'stadium', 'golf', 'camping',
+        'nature', 'trail'
+      ]
+    };
+
+    // Check each category pattern
+    for (const [category, patterns] of Object.entries(categoryPatterns)) {
+      for (const type of types) {
+        const lowerType = type.toLowerCase();
+        if (patterns.some(pattern => lowerType.includes(pattern))) {
+          return category;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get enabled categories based on user preferences
+   * @param {Object} preferences - User preferences
+   * @returns {Set<string>} Set of enabled category names
+   */
+  getEnabledCategories(preferences) {
     const enabledTypes = this.buildPlaceTypesFromPreferences(preferences);
     const enabledCategories = new Set();
 
@@ -371,25 +525,133 @@ class SearchAlongRouteService {
       }
     });
 
-    // Balance results across enabled categories
-    const balancedPlaces = [];
-    const maxPerCategory = Math.max(1, Math.floor(20 / enabledCategories.size)); // Distribute 20 results across categories, minimum 1 per category
+    return enabledCategories;
+  }
 
-    Object.entries(placesByCategory).forEach(([category, categoryPlaces]) => {
-      if (enabledCategories.has(category)) {
-        // Sort by rating (highest first) and take top results for this category
-        const sortedPlaces = categoryPlaces.sort((a, b) => {
-          const ratingA = a.rating || 0;
-          const ratingB = b.rating || 0;
-          return ratingB - ratingA;
+  /**
+   * Calculate how many places to select from each category
+   * Requirements: 7.2
+   * @param {Object} placesByCategory - Places grouped by category
+   * @param {Set<string>} enabledCategories - Enabled categories
+   * @param {number} maxResults - Maximum total results
+   * @param {number} minPerCategory - Minimum places per category
+   * @returns {Object} Distribution map: category -> count
+   */
+  calculateCategoryDistribution(placesByCategory, enabledCategories, maxResults, minPerCategory) {
+    const distribution = {};
+    const availableCategories = [];
+
+    // Find categories that have places and are enabled
+    enabledCategories.forEach(category => {
+      if (placesByCategory[category] && placesByCategory[category].length > 0) {
+        availableCategories.push({
+          category,
+          count: placesByCategory[category].length
         });
-
-        balancedPlaces.push(...sortedPlaces.slice(0, maxPerCategory));
       }
     });
 
-    console.log(`Applied category balancing: ${places.length} -> ${balancedPlaces.length} places across ${enabledCategories.size} categories`);
-    return balancedPlaces;
+    if (availableCategories.length === 0) {
+      return distribution;
+    }
+
+    // Ensure minimum allocation per category
+    let remainingResults = maxResults;
+    availableCategories.forEach(({ category }) => {
+      const minAllocation = Math.min(minPerCategory, placesByCategory[category].length);
+      distribution[category] = minAllocation;
+      remainingResults -= minAllocation;
+    });
+
+    // Distribute remaining results proportionally based on available places
+    if (remainingResults > 0) {
+      // Sort categories by number of available places (descending)
+      availableCategories.sort((a, b) => b.count - a.count);
+
+      // Distribute remaining results proportionally
+      const totalAvailablePlaces = availableCategories.reduce((sum, { count }) => sum + count, 0);
+      
+      availableCategories.forEach(({ category, count }) => {
+        if (remainingResults > 0) {
+          const proportion = count / totalAvailablePlaces;
+          const additionalAllocation = Math.floor(remainingResults * proportion);
+          const maxPossible = placesByCategory[category].length - distribution[category];
+          
+          const actualAllocation = Math.min(additionalAllocation, maxPossible);
+          distribution[category] += actualAllocation;
+          remainingResults -= actualAllocation;
+        }
+      });
+
+      // Distribute any remaining results to categories with available space
+      while (remainingResults > 0) {
+        let distributed = false;
+        for (const { category } of availableCategories) {
+          if (remainingResults > 0 && distribution[category] < placesByCategory[category].length) {
+            distribution[category]++;
+            remainingResults--;
+            distributed = true;
+          }
+        }
+        if (!distributed) break; // No more space available
+      }
+    }
+
+    return distribution;
+  }
+
+  /**
+   * Select places from categories according to distribution
+   * @param {Object} placesByCategory - Places grouped by category
+   * @param {Object} distribution - Category distribution map
+   * @param {boolean} prioritizeByRating - Whether to prioritize by rating
+   * @returns {Array<Object>} Selected places
+   */
+  selectPlacesFromCategories(placesByCategory, distribution, prioritizeByRating) {
+    const selectedPlaces = [];
+
+    Object.entries(distribution).forEach(([category, count]) => {
+      if (count > 0 && placesByCategory[category]) {
+        let categoryPlaces = [...placesByCategory[category]];
+
+        if (prioritizeByRating) {
+          // Sort by rating (highest first), then by name for consistency
+          categoryPlaces.sort((a, b) => {
+            const ratingA = a.rating || 0;
+            const ratingB = b.rating || 0;
+            
+            if (ratingA !== ratingB) {
+              return ratingB - ratingA; // Higher rating first
+            }
+            
+            // Secondary sort by name for consistent ordering
+            const nameA = a.name || '';
+            const nameB = b.name || '';
+            return nameA.localeCompare(nameB);
+          });
+        }
+
+        // Take the specified number of places from this category
+        selectedPlaces.push(...categoryPlaces.slice(0, count));
+      }
+    });
+
+    return selectedPlaces;
+  }
+
+  /**
+   * Log category distribution for debugging
+   * @param {Array<Object>} places - Final balanced places
+   */
+  logCategoryDistribution(places) {
+    const categoryStats = {};
+    
+    places.forEach(place => {
+      const category = place.category || 'Unknown';
+      categoryStats[category] = (categoryStats[category] || 0) + 1;
+    });
+
+    console.log('Category distribution in balanced results:', categoryStats);
   }
 
   /**
@@ -713,12 +975,16 @@ class SearchAlongRouteService {
   }
 
   /**
-   * Process raw places data from Google Places API
+   * Process raw places data from Google Places API with enhanced category classification
+   * Requirements: 7.3, 7.5
    * @param {Array<Object>} rawPlaces - Raw places from API response
    * @returns {Array<Object>} Processed places data
    */
   processRawPlaces(rawPlaces) {
     return rawPlaces.map(place => {
+      // Enhanced category mapping
+      const categoryMapping = this.mapGoogleTypesToAppCategories(place.types || []);
+      
       const processedPlace = {
         id: place.id,
         placeId: place.id, // Google Places v1 uses 'id' instead of 'place_id'
@@ -731,7 +997,13 @@ class SearchAlongRouteService {
         },
         rating: place.rating || null,
         priceLevel: place.priceLevel || null,
-        category: this.getPlaceCategory(place.types || []),
+        
+        // Enhanced category classification
+        category: categoryMapping.primaryCategory,
+        allCategories: categoryMapping.allCategories,
+        mappedTypes: categoryMapping.mappedTypes,
+        unmappedTypes: categoryMapping.unmappedTypes,
+        
         discoverySource: 'SAR',
         discoveredAt: new Date().toISOString(),
         saved: false,
@@ -740,7 +1012,13 @@ class SearchAlongRouteService {
         // Schema versioning and metadata
         schemaVersion: 1,
         lastUpdated: new Date().toISOString(),
-        metadata: {},
+        metadata: {
+          categoryClassification: {
+            method: 'enhanced_mapping',
+            confidence: categoryMapping.mappedTypes.length > 0 ? 'high' : 'inferred',
+            alternativeCategories: categoryMapping.allCategories.filter(cat => cat !== categoryMapping.primaryCategory)
+          }
+        },
         extensions: {}
       };
 
@@ -750,6 +1028,7 @@ class SearchAlongRouteService {
 
   /**
    * Get category for a place based on its types
+   * Requirements: 7.3, 7.5
    * @param {Array<string>} types - Array of place types
    * @returns {string} Category name
    */
@@ -765,8 +1044,119 @@ class SearchAlongRouteService {
       }
     }
 
+    // Try to infer category from type patterns if no direct mapping found
+    const inferredCategory = this.inferCategoryFromTypes(types);
+    if (inferredCategory) {
+      return inferredCategory;
+    }
+
     // Fallback to default category
     return PLACE_CATEGORIES.SERVICES_UTILITIES;
+  }
+
+  /**
+   * Map Google Places API types to app categories with comprehensive coverage
+   * Requirements: 7.3
+   * @param {Array<string>} googleTypes - Array of Google Places API types
+   * @returns {Object} Mapping result with primary category and all applicable categories
+   */
+  mapGoogleTypesToAppCategories(googleTypes) {
+    if (!Array.isArray(googleTypes) || googleTypes.length === 0) {
+      return {
+        primaryCategory: PLACE_CATEGORIES.SERVICES_UTILITIES,
+        allCategories: [PLACE_CATEGORIES.SERVICES_UTILITIES],
+        mappedTypes: [],
+        unmappedTypes: []
+      };
+    }
+
+    const mappedTypes = [];
+    const unmappedTypes = [];
+    const categoriesFound = new Set();
+
+    // Process each Google type
+    googleTypes.forEach(type => {
+      if (PLACE_TYPE_TO_CATEGORY[type]) {
+        mappedTypes.push(type);
+        categoriesFound.add(PLACE_TYPE_TO_CATEGORY[type]);
+      } else {
+        unmappedTypes.push(type);
+      }
+    });
+
+    // Try to infer categories for unmapped types
+    if (unmappedTypes.length > 0) {
+      const inferredCategory = this.inferCategoryFromTypes(unmappedTypes);
+      if (inferredCategory) {
+        categoriesFound.add(inferredCategory);
+      }
+    }
+
+    // Determine primary category (first mapped type or inferred)
+    let primaryCategory = PLACE_CATEGORIES.SERVICES_UTILITIES;
+    if (mappedTypes.length > 0) {
+      primaryCategory = PLACE_TYPE_TO_CATEGORY[mappedTypes[0]];
+    } else if (categoriesFound.size > 0) {
+      primaryCategory = Array.from(categoriesFound)[0];
+    }
+
+    return {
+      primaryCategory,
+      allCategories: Array.from(categoriesFound),
+      mappedTypes,
+      unmappedTypes
+    };
+  }
+
+  /**
+   * Get comprehensive category statistics for places
+   * Requirements: 7.2, 7.4
+   * @param {Array<Object>} places - Array of places
+   * @returns {Object} Category statistics
+   */
+  getCategoryStatistics(places) {
+    if (!Array.isArray(places) || places.length === 0) {
+      return {
+        totalPlaces: 0,
+        categoryCounts: {},
+        categoryPercentages: {},
+        mostCommonCategory: null,
+        leastCommonCategory: null,
+        categoryDiversity: 0
+      };
+    }
+
+    const categoryCounts = {};
+    const totalPlaces = places.length;
+
+    // Count places by category
+    places.forEach(place => {
+      const category = place.category || this.classifyPlaceByPrimaryCategory(place);
+      categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+    });
+
+    // Calculate percentages
+    const categoryPercentages = {};
+    Object.entries(categoryCounts).forEach(([category, count]) => {
+      categoryPercentages[category] = Math.round((count / totalPlaces) * 100 * 100) / 100; // Round to 2 decimal places
+    });
+
+    // Find most and least common categories
+    const sortedCategories = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]);
+    const mostCommonCategory = sortedCategories.length > 0 ? sortedCategories[0][0] : null;
+    const leastCommonCategory = sortedCategories.length > 0 ? sortedCategories[sortedCategories.length - 1][0] : null;
+
+    // Calculate diversity (number of different categories)
+    const categoryDiversity = Object.keys(categoryCounts).length;
+
+    return {
+      totalPlaces,
+      categoryCounts,
+      categoryPercentages,
+      mostCommonCategory,
+      leastCommonCategory,
+      categoryDiversity
+    };
   }
 
   /**

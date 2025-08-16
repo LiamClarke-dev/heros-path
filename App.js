@@ -1,30 +1,19 @@
+/**
+ * Hero's Path MVP - Main App Component
+ * 
+ * Root component that sets up theme provider and navigation
+ */
+
 import React from 'react';
-import { StyleSheet, Text, View, StatusBar } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { ThemeProvider } from './src/contexts/ThemeContext';
+import AppNavigator from './src/navigation/AppNavigator';
 
 export default function App() {
   return (
-    <View style={styles.container}>
+    <ThemeProvider>
       <StatusBar style="auto" />
-      <Text style={styles.title}>Hero's Path MVP</Text>
-      <Text style={styles.subtitle}>Coming Soon</Text>
-    </View>
+      <AppNavigator />
+    </ThemeProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-  },
-});

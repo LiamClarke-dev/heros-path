@@ -1,30 +1,21 @@
-# Hero's Path MVP v0.1 - Clean Build Implementation Tasks
+# Implementation Plan
 
-## Implementation Plan
+- [x] 1. Set up new project
 
-This document provides a step-by-step implementation plan for building Hero's Path MVP v0.1 from scratch. Each task builds incrementally on the previous ones, ensuring a stable development process.
-
-## Phase 1: Project Setup and Foundation
-
-### Task 1: Clean Project Setup and Configuration
-
-**Objective**: Set up a clean project structure and configure all external services
-
-**Sub-tasks**:
-- [ ] 1.1 Clean existing source code while preserving configuration
+- [x] 1.1 Clean existing source code while preserving configuration
   - Remove all directories: `components/`, `contexts/`, `hooks/`, `screens/`, `services/`, `utils/`, `styles/`, `constants/`
   - Keep: `package.json`, `app.json`, `eas.json`, `babel.config.js`, `.env`, `config.js`, `firebase.js`, `assets/`, `.kiro/`
   - Create minimal `App.js` that just shows "Hero's Path MVP - Coming Soon"
   - _Requirements: All requirements (foundation for everything)_
 
-- [ ] 1.2 Create Google Cloud Project first (ensures proper linking)
+- [x] 1.2 Create Google Cloud Project first (ensures proper linking)
   - Go to [Google Cloud Console](https://console.cloud.google.com/)
   - Click "New Project" and name it "heros-path-mvp"
   - Note the Project ID (will be auto-generated, like "heros-path-mvp-123456")
   - Wait for project creation to complete
   - _Requirements: Foundation for Firebase and Google APIs_
 
-- [ ] 1.3 Create Firebase project from Google Cloud project
+- [x] 1.3 Create Firebase project from Google Cloud project
   - Go to [Firebase Console](https://console.firebase.google.com/)
   - Click "Add project"
   - Select "Choose an existing Google Cloud Platform (GCP) project"
@@ -33,38 +24,35 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - This ensures proper Firebase ↔ Google Cloud linking
   - _Requirements: 1.1 (User Authentication)_
 
-- [ ] 1.4 Configure Firebase services
+- [x] 1.4 Configure Firebase services
   - Enable Authentication with Google provider
   - Create Firestore database in test mode
   - Get Firebase configuration object from Project Settings
   - Update `.env` with Firebase configuration keys
   - _Requirements: 1.1 (User Authentication)_
 
-- [ ] 1.5 Configure Google Cloud Console APIs
+- [x] 1.5 Configure Google Cloud Console APIs
   - In Google Cloud Console (same project), go to "APIs & Services" → "Library"
   - Enable **Google Places API (New)**, Google Maps SDK for iOS/Android, Geocoding API
   - Create restricted API keys for iOS and Android
   - Update `.env` with new Google API keys
   - _Requirements: 2.1, 4.1 (Map Navigation, Place Discovery)_
 
-- [ ] 1.6 Update Expo configuration
+- [x] 1.6 Update Expo configuration
   - Update `app.json` with new project name and bundle identifiers
   - Add environment variables to Expo dashboard
   - Test that `expo start` works with clean setup
   - _Requirements: All requirements (foundation)_
 
-- [ ] 1.7 Create clean Git branch
+- [x] 1.7 Create clean Git branch
   - Create `mvp-clean-build` branch
   - Commit clean project structure
   - Set as default branch temporarily
   - _Requirements: All requirements (version control)_
 
-### Task 2: Set Up Development Infrastructure
+- [x] 2. Set Up Development Infrastructure
 
-**Objective**: Establish development tools, testing, and quality assurance infrastructure before building features
-
-**Sub-tasks**:
-- [ ] 2.1 Set up development environment consistency and GitHub workflow
+- [x] 2.1 Set up development environment consistency and GitHub workflow
   - Install and configure ESLint with React Native and Expo rules
   - Install and configure Prettier for code formatting
   - Create `.eslintrc.js` and `.prettierrc` configuration files
@@ -74,60 +62,54 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Set up commit message linting with conventional commits
   - _Requirements: All requirements (code quality and workflow foundation)_
 
-- [ ] 2.2 Set up comprehensive testing infrastructure
+- [x] 2.2 Set up comprehensive testing infrastructure
   - Install testing dependencies: `@testing-library/react-native`, `@testing-library/jest-native`, `jest-expo`
   - Create `src/test/` directory with `setup.js`, `testUtils.js`, and mock factories
   - Configure `jest.config.js` with coverage thresholds (85% minimum)
   - Create GitHub Actions workflow for automated testing on commits
   - _Requirements: All requirements (quality assurance foundation)_
 
-- [ ] 2.3 Create directory structure and basic utilities
+- [x] 2.3 Create directory structure and basic utilities
   - Create `src/` directory with subdirectories: `components/`, `contexts/`, `screens/`, `services/`, `utils/`, `hooks/`, `navigation/`
   - Create `src/components/ui/` and `src/components/map/` subdirectories
   - Create `src/utils/constants.js`, `src/utils/helpers.js`, `src/utils/ErrorHandler.js`
   - Update import paths in `App.js` to use `src/` structure
   - _Requirements: All requirements (architecture foundation)_
 
-- [ ] 2.4 Validate external service connections
+- [x] 2.4 Create Firebase configuration and validate external service connections
+  - Create `src/config/firebase.js` with Firebase initialization using environment variables
+  - Install Firebase dependencies: `firebase`, `@react-native-firebase/app`, `@react-native-firebase/auth`, `@react-native-firebase/firestore`
   - Test Firebase connection with minimal read/write operation
   - Test Google Maps API key with simple geocoding request
   - Test Google Places API (New) with basic search request
   - Create connection validation utility for troubleshooting
   - _Requirements: 1.1, 2.1, 4.1 (service validation)_
 
-### Task 3: Create Minimal Theme and Navigation Foundation
-
-**Objective**: Create simple, extensible theme and navigation systems (avoid over-engineering for MVP)
-
-**Sub-tasks**:
-- [ ] 3.1 Create simple theme system
+- [x] 3. Set Up Navigation Structure and Theme/Styles
+- [x] 3.1 Create simple theme system
   - Create `src/styles/theme.js` with all theme configuration in one file (colors, typography, spacing)
   - Create `src/contexts/ThemeContext.js` with theme provider and useTheme hook
   - Keep theme simple for MVP - can be split into separate files later if needed
   - _Requirements: All requirements (consistent theming foundation)_
 
-- [ ] 3.2 Create basic navigation structure
+- [x] 3.2 Create basic navigation structure
   - Install React Navigation v7 dependencies
   - Create `src/navigation/AppNavigator.js` as root navigation component
   - Create simple stack navigation (can upgrade to drawer later if needed)
   - Test navigation works with basic placeholder screens
   - _Requirements: All requirements (navigation foundation)_
 
-- [ ] 3.3 Create essential UI components
+- [x] 3.3 Create essential UI components
   - Create `src/components/ui/Screen.js` as base screen wrapper
   - Create `src/components/ui/Button.js` with primary/secondary variants
   - Create `src/components/ui/LoadingSpinner.js` and `src/components/ui/ErrorMessage.js`
   - Test all components work with theme system
   - _Requirements: All requirements (UI consistency foundation)_
 
-## Phase 2: Authentication System
+- [ ] 4. Set Up Auth System
 
-### Task 4: Implement User Authentication
-
-**Objective**: Create complete authentication system with Google OAuth
-
-**Sub-tasks**:
-- [ ] 4.1 Create AuthService using Expo SDK
+- [ ] 4.1 Install authentication dependencies and create AuthService
+  - Install required dependencies: `expo-auth-session`, `expo-crypto`, `expo-secure-store`, `expo-web-browser`
   - Implement `src/services/AuthService.js` using **Expo AuthSession** for simplified OAuth
   - Use **Expo SecureStore** for secure token storage
   - Methods: `signInWithGoogle()`, `signOut()`, `getCurrentUser()`, `storeToken()`
@@ -156,11 +138,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Test navigation flow works correctly
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5 (User Authentication)_
 
-### Task 5: Set Up Monitoring and Cost Controls
-
-**Objective**: Implement monitoring and cost controls before heavy API usage begins
-
-**Sub-tasks**:
+- [ ] 5. Set Up API & Testing Infra
 - [ ] 5.1 Set up API usage monitoring
   - Create `src/utils/ApiMonitor.js` to track Google Places API calls and costs
   - Implement request logging and rate limiting for development
@@ -182,14 +160,11 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Document security guidelines for the team
   - _Requirements: Security requirements_
 
-## Phase 3: Map and Location System
+- [ ] 6. Map and Location System
 
-### Task 6: Implement Map Navigation
-
-**Objective**: Create map screen with GPS location and basic navigation
-
-**Sub-tasks**:
-- [ ] 6.1 Create LocationService using Expo SDK
+- [ ] 6.1 Install location dependencies and create LocationService
+  - Install required dependencies: `expo-location`, `expo-task-manager`
+  - Update `app.json` plugins to include `expo-location` and `expo-task-manager`
   - Implement `src/services/LocationService.js` using **Expo Location** and **Expo TaskManager**
   - Use Expo's simplified permission handling and background location tracking
   - Methods: `requestPermissions()`, `getCurrentLocation()`, `startTracking()`, `stopTracking()`
@@ -228,13 +203,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - **Update documentation**: Document map integration patterns and performance learnings
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5 (Map Navigation and Location)_
 
-## Phase 4: Journey Tracking System
-
-### Task 7: Implement Journey Recording
-
-**Objective**: Add GPS route tracking and visualization functionality
-
-**Sub-tasks**:
+- [ ] 7. Journey Tracking System
 - [ ] 7.1 Extend LocationService for tracking
   - Add continuous location tracking with background support
   - Implement route path collection and management
@@ -265,11 +234,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Handle journey naming and saving after completion
   - _Requirements: 3.1, 3.2, 3.4, 3.5 (Journey Tracking)_
 
-### Task 8: Create Journey Naming and Saving
-
-**Objective**: Allow users to name and save completed journeys
-
-**Sub-tasks**:
+- [ ] 8. Journey Naming & Saving
 - [ ] 8.1 Create journey naming modal
   - Implement `src/components/ui/JourneyNamingModal.js`
   - Allow user to enter custom name for journey
@@ -288,14 +253,10 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Provide option to discard journey if desired
   - _Requirements: 3.4, 3.5, 5.1, 5.2 (Journey Tracking and Management)_
 
-## Phase 5: Place Discovery System
+- [ ] 9. Place Discovery System
 
-### Task 9: Implement Place Discovery
-
-**Objective**: Add automatic place discovery along completed routes
-
-**Sub-tasks**:
-- [ ] 9.1 Create PlacesService
+- [ ] 9.1 Install places API dependencies and create PlacesService
+  - Install required dependencies for HTTP requests: `axios` or use built-in `fetch`
   - Implement `src/services/PlacesService.js` for **Google Places API (New)** integration
   - Methods: `searchAlongRoute()`, `getPlaceDetails()`, `savePlaceToUser()`, `getUserSavedPlaces()`, `searchNearbyPlaces()`
   - Use new searchNearby endpoint for better performance and enhanced place data
@@ -321,11 +282,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Allow user to save places to personal collection
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5 (Place Discovery)_
 
-### Task 10: Implement Saved Places Management
-
-**Objective**: Allow users to manage their collection of saved places
-
-**Sub-tasks**:
+- [ ] 10. Saved Places
 - [ ] 10.1 Create saved places data management
   - Extend PlacesService with saved places CRUD operations
   - Store saved places in Firestore with user association
@@ -350,13 +307,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Show place details and associated journey information
   - _Requirements: 6.4, 6.5 (Saved Places Management)_
 
-## Phase 6: Journey History and Management
-
-### Task 11: Create Journey History Screen
-
-**Objective**: Allow users to view and manage their past journeys
-
-**Sub-tasks**:
+- [ ] 11. Journey History and Management
 - [ ] 11.1 Create JourneyHistoryScreen
   - Implement `src/screens/JourneyHistoryScreen.js` for journey browsing
   - Show list of past journeys with preview information
@@ -382,11 +333,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - **Update documentation**: Document navigation patterns and screen flow established
   - _Requirements: 5.3, 5.4, 5.5 (Journey Management)_
 
-### Task 12: Polish and Optimization
-
-**Objective**: Optimize performance, add error handling, and polish user experience
-
-**Sub-tasks**:
+- [ ] 12. Error Handling and Performance Optimization
 - [ ] 12.1 Implement comprehensive error handling
   - Add error boundaries for crash prevention
   - Implement user-friendly error messages for all failure scenarios
@@ -417,13 +364,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Test on multiple devices and operating systems
   - _Requirements: All requirements (quality assurance)_
 
-## Phase 7: Final Testing and Deployment
-
-### Task 13: Testing and Quality Assurance
-
-**Objective**: Ensure MVP meets all requirements and quality standards
-
-**Sub-tasks**:
+- [ ] 13. Final Testing and Deployment
 - [ ] 13.1 Complete automated testing suite and consolidate documentation
   - Achieve >85% test coverage across all components and services
   - Write integration tests for complete user flows (sign-in → journey → discovery)
@@ -453,11 +394,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
   - Ensure all UI interactions are intuitive
   - _Requirements: Success criteria_
 
-### Task 14: Deployment Preparation
-
-**Objective**: Prepare MVP for production deployment
-
-**Sub-tasks**:
+- [ ] 14. Production Readiness Checks
 - [ ] 14.1 Production configuration
   - Update Firebase security rules for production
   - Configure production API keys and rate limits
@@ -487,6 +424,7 @@ This document provides a step-by-step implementation plan for building Hero's Pa
 Before considering the MVP complete, validate:
 
 ### Functional Requirements
+
 - [ ] User can sign in with Google OAuth
 - [ ] Map loads and shows current location within 3 seconds
 - [ ] Journey tracking works in foreground and background
@@ -498,6 +436,7 @@ Before considering the MVP complete, validate:
 - [ ] Saved places appear as markers on map
 
 ### Performance Requirements
+
 - [ ] App startup time < 3 seconds
 - [ ] GPS acquisition < 5 seconds
 - [ ] Journey save < 2 seconds
@@ -505,6 +444,7 @@ Before considering the MVP complete, validate:
 - [ ] Battery usage < 20% per hour during tracking
 
 ### Quality Requirements
+
 - [ ] App crash rate < 1%
 - [ ] GPS accuracy ± 5 meters
 - [ ] Test coverage > 85%
@@ -512,6 +452,7 @@ Before considering the MVP complete, validate:
 - [ ] Offline journey tracking works
 
 ### User Experience
+
 - [ ] User can complete first journey within 5 minutes of signup
 - [ ] All interactions feel responsive and intuitive
 - [ ] Error messages are clear and helpful

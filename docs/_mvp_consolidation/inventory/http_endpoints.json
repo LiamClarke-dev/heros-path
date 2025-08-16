@@ -1,0 +1,385 @@
+{
+  "metadata": {
+    "generation_timestamp": "2024-12-28T10:00:00Z",
+    "repository_head_sha": "965caea6bcca512353cdc7e4208bc9c3ceb16a0f",
+    "analysis_scope": "All HTTP/API endpoints and external service integrations",
+    "source_files_analyzed": [
+      "firebase.js",
+      "services/*.js",
+      "utils/GoogleOAuthConfig.js"
+    ]
+  },
+  "firebase_endpoints": {
+    "description": "Firebase Backend-as-a-Service integration",
+    "authentication": {
+      "service": "Firebase Auth",
+      "base_url": "https://identitytoolkit.googleapis.com/v1/",
+      "endpoints": [
+        {
+          "operation": "signInWithEmailAndPassword", 
+          "method": "POST",
+          "path": "accounts:signInWithPassword",
+          "usage": "User email/password authentication",
+          "source_file": "firebase.js",
+          "called_from": ["screens/SignInScreen.js", "screens/EmailAuthScreen.js"]
+        },
+        {
+          "operation": "createUserWithEmailAndPassword",
+          "method": "POST", 
+          "path": "accounts:signUp",
+          "usage": "New user account creation",
+          "source_file": "firebase.js",
+          "called_from": ["screens/EmailAuthScreen.js"]
+        },
+        {
+          "operation": "signInWithCredential",
+          "method": "POST",
+          "path": "accounts:signInWithIdp",
+          "usage": "OAuth provider authentication (Google)", 
+          "source_file": "firebase.js",
+          "called_from": ["screens/SignInScreen.js"]
+        },
+        {
+          "operation": "signOut",
+          "method": "POST",
+          "path": "accounts:signOut",
+          "usage": "User session termination",
+          "source_file": "firebase.js",
+          "called_from": ["contexts/UserContext.js"]
+        },
+        {
+          "operation": "getIdToken",
+          "method": "POST",
+          "path": "accounts:lookup",
+          "usage": "Token refresh and validation",
+          "source_file": "firebase.js",
+          "called_from": ["contexts/UserContext.js"]
+        }
+      ]
+    },
+    "firestore": {
+      "service": "Cloud Firestore",
+      "base_url": "https://firestore.googleapis.com/v1/",
+      "collections": [
+        {
+          "collection": "users",
+          "path": "projects/{project}/databases/(default)/documents/users/{userId}",
+          "operations": [
+            {
+              "operation": "createProfile",
+              "method": "PATCH",
+              "usage": "Create new user profile",
+              "source_file": "services/UserProfileService.js",
+              "data_structure": {
+                "displayName": "string",
+                "email": "string", 
+                "createdAt": "timestamp",
+                "preferences": "object",
+                "stats": "object"
+              }
+            },
+            {
+              "operation": "updateProfile", 
+              "method": "PATCH",
+              "usage": "Update user profile data",
+              "source_file": "services/UserProfileService.js"
+            },
+            {
+              "operation": "readProfile",
+              "method": "GET", 
+              "usage": "Retrieve user profile",
+              "source_file": "services/UserProfileService.js"
+            }
+          ]
+        },
+        {
+          "collection": "journeys",
+          "path": "projects/{project}/databases/(default)/documents/users/{userId}/journeys/{journeyId}",
+          "operations": [
+            {
+              "operation": "saveJourney",
+              "method": "POST",
+              "usage": "Save completed journey",
+              "source_file": "services/JourneyService.js",
+              "data_structure": {
+                "name": "string",
+                "startTime": "timestamp",
+                "endTime": "timestamp",
+                "distance": "number",
+                "path": "array of coordinates",
+                "discoveries": "array"
+              }
+            },
+            {
+              "operation": "getJourneys",
+              "method": "GET",
+              "usage": "Retrieve user's journey history",
+              "source_file": "services/JourneyService.js"
+            },
+            {
+              "operation": "deleteJourney",
+              "method": "DELETE",
+              "usage": "Remove saved journey",
+              "source_file": "services/JourneyService.js"
+            }
+          ]
+        },
+        {
+          "collection": "savedPlaces",
+          "path": "projects/{project}/databases/(default)/documents/users/{userId}/savedPlaces/{placeId}",
+          "operations": [
+            {
+              "operation": "savePlace",
+              "method": "POST", 
+              "usage": "Save discovered place",
+              "source_file": "services/SavedPlacesService.js",
+              "data_structure": {
+                "name": "string",
+                "placeId": "string",
+                "coordinates": "geopoint",
+                "category": "string",
+                "savedAt": "timestamp"
+              }
+            },
+            {
+              "operation": "getSavedPlaces",
+              "method": "GET",
+              "usage": "Retrieve user's saved places",
+              "source_file": "services/SavedPlacesService.js"
+            },
+            {
+              "operation": "removePlace",
+              "method": "DELETE",
+              "usage": "Remove saved place",
+              "source_file": "services/SavedPlacesService.js"
+            }
+          ]
+        },
+        {
+          "collection": "discoveryPreferences",
+          "path": "projects/{project}/databases/(default)/documents/users/{userId}/settings/discoveryPreferences",
+          "operations": [
+            {
+              "operation": "savePreferences",
+              "method": "PATCH",
+              "usage": "Save user discovery preferences",
+              "source_file": "services/DiscoveriesService.js",
+              "data_structure": {
+                "categories": "array",
+                "radius": "number",
+                "minimumRating": "number",
+                "priceLevel": "array"
+              }
+            },
+            {
+              "operation": "getPreferences",
+              "method": "GET",
+              "usage": "Retrieve discovery preferences", 
+              "source_file": "services/DiscoveriesService.js"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "google_services": {
+    "description": "Google Cloud Platform API integrations",
+    "places_api": {
+      "service": "Google Places API",
+      "base_url": "https://maps.googleapis.com/maps/api/place/",
+      "endpoints": [
+        {
+          "endpoint": "nearbysearch",
+          "method": "GET",
+          "path": "nearbysearch/json",
+          "usage": "Search for POIs along route",
+          "source_file": "services/SearchAlongRouteService.js",
+          "parameters": {
+            "location": "latitude,longitude",
+            "radius": "number (meters)",
+            "type": "place type filter",
+            "key": "API key"
+          },
+          "response_structure": {
+            "results": "array of places",
+            "status": "request status",
+            "next_page_token": "pagination token"
+          }
+        },
+        {
+          "endpoint": "details",
+          "method": "GET", 
+          "path": "details/json",
+          "usage": "Get detailed place information",
+          "source_file": "services/SearchAlongRouteService.js",
+          "parameters": {
+            "place_id": "Google place identifier",
+            "fields": "requested field list",
+            "key": "API key"
+          }
+        },
+        {
+          "endpoint": "textsearch",
+          "method": "GET",
+          "path": "textsearch/json", 
+          "usage": "Text-based place search",
+          "source_file": "services/DiscoveriesService.js",
+          "parameters": {
+            "query": "search query string",
+            "location": "latitude,longitude",
+            "radius": "search radius"
+          }
+        }
+      ],
+      "rate_limits": {
+        "requests_per_second": 50,
+        "requests_per_day": 100000,
+        "cost_per_request": "$0.017 for Nearby Search"
+      }
+    },
+    "maps_api": {
+      "service": "Google Maps JavaScript API",
+      "base_url": "https://maps.googleapis.com/maps/api/js",
+      "usage": "Map tiles and static map images",
+      "source_integration": "react-native-maps component",
+      "endpoints": [
+        {
+          "endpoint": "staticmap",
+          "method": "GET",
+          "path": "staticmap",
+          "usage": "Generate static map images",
+          "parameters": {
+            "center": "map center coordinates",
+            "zoom": "zoom level",
+            "size": "image dimensions",
+            "path": "polyline path for routes"
+          }
+        }
+      ]
+    },
+    "oauth": {
+      "service": "Google OAuth 2.0",
+      "base_url": "https://accounts.google.com/oauth/",
+      "endpoints": [
+        {
+          "endpoint": "authorize",
+          "method": "GET",
+          "path": "authorize",
+          "usage": "OAuth authorization flow",
+          "source_file": "utils/GoogleOAuthConfig.js",
+          "parameters": {
+            "client_id": "OAuth client ID",
+            "redirect_uri": "app redirect URI",
+            "scope": "requested permissions",
+            "response_type": "code"
+          }
+        },
+        {
+          "endpoint": "token",
+          "method": "POST",
+          "path": "token",
+          "usage": "Exchange authorization code for tokens",
+          "source_file": "utils/GoogleOAuthConfig.js"
+        }
+      ]
+    }
+  },
+  "external_apis": {
+    "description": "Third-party service integrations",
+    "expo_services": {
+      "location": {
+        "service": "Expo Location API",
+        "usage": "GPS location tracking",
+        "source_files": [
+          "services/BackgroundLocationService.js",
+          "hooks/useLocationTracking.js"
+        ],
+        "permissions_required": [
+          "ACCESS_FINE_LOCATION",
+          "ACCESS_COARSE_LOCATION", 
+          "ACCESS_BACKGROUND_LOCATION"
+        ]
+      },
+      "auth_session": {
+        "service": "Expo AuthSession",
+        "usage": "OAuth flow management",
+        "source_files": ["utils/GoogleOAuthConfig.js"]
+      },
+      "task_manager": {
+        "service": "Expo TaskManager",
+        "usage": "Background location tracking",
+        "source_files": ["services/BackgroundLocationService.js"]
+      }
+    }
+  },
+  "api_security": {
+    "authentication": {
+      "firebase": {
+        "method": "ID Tokens",
+        "description": "Firebase Auth ID tokens for Firestore access",
+        "token_refresh": "Automatic with 1-hour expiry"
+      },
+      "google_apis": {
+        "method": "API Keys", 
+        "description": "Restricted API keys for Places and Maps",
+        "restrictions": ["Android/iOS app restrictions", "API restrictions"]
+      }
+    },
+    "sensitive_data": {
+      "environment_variables": [
+        "GOOGLE_MAPS_API_KEY_IOS",
+        "GOOGLE_MAPS_API_KEY_ANDROID", 
+        "FIREBASE_API_KEY",
+        "FIREBASE_PROJECT_ID"
+      ],
+      "storage": "Environment variables and Expo SecureStore",
+      "best_practices": "No hardcoded keys in source code"
+    }
+  },
+  "performance_considerations": {
+    "caching": {
+      "places_data": "Local caching in AsyncStorage",
+      "journey_data": "Local caching with Firestore sync",
+      "user_preferences": "Context state with persistence"
+    },
+    "optimization": {
+      "batch_operations": "Firestore batch writes for journey saves",
+      "debouncing": "Location updates debounced to reduce API calls",
+      "pagination": "Large datasets use cursor-based pagination"
+    },
+    "offline_support": {
+      "journey_tracking": "Continues offline with local storage",
+      "data_sync": "Queued operations sync when online",
+      "place_discovery": "Requires internet connection"
+    }
+  },
+  "error_handling": {
+    "firebase_errors": {
+      "authentication": "Permission denied, invalid credentials",
+      "firestore": "Network errors, quota exceeded",
+      "retry_strategy": "Exponential backoff with max retries"
+    },
+    "google_api_errors": {
+      "places": "Rate limiting, quota exceeded, invalid requests",
+      "maps": "Authentication errors, service unavailable",
+      "fallback_strategy": "Graceful degradation with cached data"
+    },
+    "network_errors": {
+      "detection": "Network state monitoring", 
+      "user_feedback": "Appropriate error messages and retry options",
+      "offline_mode": "Limited functionality with local data"
+    }
+  },
+  "monitoring_and_analytics": {
+    "api_usage_tracking": {
+      "firebase": "Built-in Firebase Analytics",
+      "google_apis": "Google Cloud Console monitoring",
+      "custom_metrics": "Performance monitoring in utils/performanceMonitor.js"
+    },
+    "error_tracking": {
+      "logging": "Centralized logging via utils/Logger.js",
+      "error_reporting": "Console logging and user feedback",
+      "metrics": "Error frequency and recovery success rates"
+    }
+  }
+}

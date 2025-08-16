@@ -1,0 +1,797 @@
+openapi: 3.0.3
+info:
+  title: Hero's Path MVP External API Integrations
+  description: |
+    API specification for external service integrations used by Hero's Path MVP.
+    This documents the interfaces to Firebase, Google APIs, and Expo services.
+    
+    Source: Generated from repository analysis at 965caea6bcca512353cdc7e4208bc9c3ceb16a0f
+    Scope: MVP-focused external API contracts
+  version: 1.0.0
+  contact:
+    name: Hero's Path Development Team
+  license:
+    name: MIT
+
+servers:
+  - url: https://firestore.googleapis.com/v1
+    description: Firebase Firestore API
+  - url: https://maps.googleapis.com/maps/api
+    description: Google Maps and Places APIs
+  - url: https://identitytoolkit.googleapis.com/v1
+    description: Firebase Authentication API
+
+# ============================================================================
+# FIREBASE FIRESTORE PATHS
+# ============================================================================
+
+paths:
+  /projects/{projectId}/databases/(default)/documents/users/{userId}:
+    get:
+      summary: Get user profile
+      tags: [Firebase Firestore]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Firebase project ID
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Firebase user UID
+      responses:
+        '200':
+          description: User profile data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirestoreDocument'
+        '404':
+          description: User profile not found
+        '403':
+          description: Access denied
+
+    patch:
+      summary: Update user profile
+      tags: [Firebase Firestore]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirestoreDocument'
+
+  /projects/{projectId}/databases/(default)/documents/users/{userId}/journeys:
+    get:
+      summary: Get user journeys
+      tags: [Firebase Firestore]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 20
+        - name: orderBy
+          in: query
+          schema:
+            type: string
+            default: "endTime desc"
+      responses:
+        '200':
+          description: List of user journeys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JourneyList'
+
+    post:
+      summary: Create new journey
+      tags: [Firebase Firestore]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JourneyCreate'
+      responses:
+        '201':
+          description: Journey created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Journey'
+
+  /projects/{projectId}/databases/(default)/documents/users/{userId}/savedPlaces:
+    get:
+      summary: Get user saved places
+      tags: [Firebase Firestore]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of saved places
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedPlacesList'
+
+    post:
+      summary: Save a place
+      tags: [Firebase Firestore]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedPlaceCreate'
+      responses:
+        '201':
+          description: Place saved successfully
+
+# ============================================================================
+# GOOGLE PLACES API PATHS
+# ============================================================================
+
+  /place/nearbysearch/json:
+    get:
+      summary: Search for nearby places
+      tags: [Google Places API]
+      parameters:
+        - name: location
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Latitude,longitude coordinates"
+        - name: radius
+          in: query
+          required: true
+          schema:
+            type: integer
+            maximum: 50000
+          description: "Search radius in meters"
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: "Place type filter"
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Google API key"
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GooglePlacesSearchResponse'
+
+  /place/details/json:
+    get:
+      summary: Get place details
+      tags: [Google Places API]
+      parameters:
+        - name: place_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Google Place ID"
+        - name: fields
+          in: query
+          schema:
+            type: string
+          description: "Comma-separated list of fields"
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Place details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GooglePlaceDetailsResponse'
+
+  /place/textsearch/json:
+    get:
+      summary: Text search for places
+      tags: [Google Places API]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Search query text"
+        - name: location
+          in: query
+          schema:
+            type: string
+          description: "Latitude,longitude bias"
+        - name: radius
+          in: query
+          schema:
+            type: integer
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GooglePlacesSearchResponse'
+
+# ============================================================================
+# FIREBASE AUTHENTICATION PATHS
+# ============================================================================
+
+  /accounts:signInWithPassword:
+    post:
+      summary: Sign in with email and password
+      tags: [Firebase Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailPasswordSignIn'
+      responses:
+        '200':
+          description: Sign in successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /accounts:signUp:
+    post:
+      summary: Create new user account
+      tags: [Firebase Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailPasswordSignUp'
+      responses:
+        '200':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /accounts:signInWithIdp:
+    post:
+      summary: Sign in with OAuth provider
+      tags: [Firebase Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthSignIn'
+      responses:
+        '200':
+          description: OAuth sign in successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+# ============================================================================
+# SCHEMA DEFINITIONS
+# ============================================================================
+
+components:
+  schemas:
+    # Firestore Schemas
+    FirestoreDocument:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Document path
+        fields:
+          type: object
+          description: Document fields
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+
+    UserProfileUpdate:
+      type: object
+      properties:
+        fields:
+          type: object
+          properties:
+            displayName:
+              $ref: '#/components/schemas/StringValue'
+            preferences:
+              $ref: '#/components/schemas/MapValue'
+            stats:
+              $ref: '#/components/schemas/MapValue'
+            updatedAt:
+              $ref: '#/components/schemas/TimestampValue'
+
+    StringValue:
+      type: object
+      properties:
+        stringValue:
+          type: string
+
+    MapValue:
+      type: object
+      properties:
+        mapValue:
+          type: object
+          properties:
+            fields:
+              type: object
+
+    TimestampValue:
+      type: object
+      properties:
+        timestampValue:
+          type: string
+          format: date-time
+
+    Journey:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        distance:
+          type: number
+          description: Distance in meters
+        duration:
+          type: number
+          description: Duration in seconds
+        path:
+          type: array
+          items:
+            $ref: '#/components/schemas/Coordinate'
+        stats:
+          $ref: '#/components/schemas/JourneyStats'
+
+    JourneyCreate:
+      type: object
+      required:
+        - name
+        - startTime
+        - endTime
+        - path
+      properties:
+        name:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        path:
+          type: array
+          items:
+            $ref: '#/components/schemas/Coordinate'
+        stats:
+          $ref: '#/components/schemas/JourneyStats'
+
+    JourneyList:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/FirestoreDocument'
+        nextPageToken:
+          type: string
+
+    JourneyStats:
+      type: object
+      properties:
+        averageSpeed:
+          type: number
+        maxSpeed:
+          type: number
+        elevationGain:
+          type: number
+        calories:
+          type: number
+        steps:
+          type: number
+
+    Coordinate:
+      type: object
+      required:
+        - latitude
+        - longitude
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        accuracy:
+          type: number
+          description: Accuracy in meters
+        timestamp:
+          type: string
+          format: date-time
+
+    SavedPlace:
+      type: object
+      properties:
+        id:
+          type: string
+        placeId:
+          type: string
+          description: Google Places ID
+        name:
+          type: string
+        category:
+          type: string
+          enum: [restaurant, cafe, park, museum, shop, landmark, entertainment, services, other]
+        coordinates:
+          $ref: '#/components/schemas/Coordinate'
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+        savedAt:
+          type: string
+          format: date-time
+
+    SavedPlaceCreate:
+      type: object
+      required:
+        - placeId
+        - name
+        - category
+        - coordinates
+      properties:
+        placeId:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        coordinates:
+          $ref: '#/components/schemas/Coordinate'
+        rating:
+          type: number
+        notes:
+          type: string
+
+    SavedPlacesList:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/FirestoreDocument'
+
+    # Google Places API Schemas
+    GooglePlacesSearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/GooglePlace'
+        status:
+          type: string
+          enum: [OK, ZERO_RESULTS, OVER_QUERY_LIMIT, REQUEST_DENIED, INVALID_REQUEST]
+        next_page_token:
+          type: string
+        error_message:
+          type: string
+
+    GooglePlace:
+      type: object
+      properties:
+        place_id:
+          type: string
+        name:
+          type: string
+        types:
+          type: array
+          items:
+            type: string
+        geometry:
+          type: object
+          properties:
+            location:
+              type: object
+              properties:
+                lat:
+                  type: number
+                lng:
+                  type: number
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+        price_level:
+          type: integer
+          minimum: 0
+          maximum: 4
+        formatted_address:
+          type: string
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/GooglePlacePhoto'
+
+    GooglePlaceDetailsResponse:
+      type: object
+      properties:
+        result:
+          $ref: '#/components/schemas/GooglePlaceDetails'
+        status:
+          type: string
+
+    GooglePlaceDetails:
+      allOf:
+        - $ref: '#/components/schemas/GooglePlace'
+        - type: object
+          properties:
+            formatted_phone_number:
+              type: string
+            website:
+              type: string
+            opening_hours:
+              type: object
+            reviews:
+              type: array
+              items:
+                $ref: '#/components/schemas/GooglePlaceReview'
+
+    GooglePlacePhoto:
+      type: object
+      properties:
+        photo_reference:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+
+    GooglePlaceReview:
+      type: object
+      properties:
+        author_name:
+          type: string
+        rating:
+          type: number
+        text:
+          type: string
+        time:
+          type: integer
+
+    # Firebase Auth Schemas
+    EmailPasswordSignIn:
+      type: object
+      required:
+        - email
+        - password
+        - returnSecureToken
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        returnSecureToken:
+          type: boolean
+          default: true
+
+    EmailPasswordSignUp:
+      type: object
+      required:
+        - email
+        - password
+        - returnSecureToken
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        displayName:
+          type: string
+        returnSecureToken:
+          type: boolean
+          default: true
+
+    OAuthSignIn:
+      type: object
+      required:
+        - requestUri
+        - postBody
+        - returnSecureToken
+      properties:
+        requestUri:
+          type: string
+        postBody:
+          type: string
+        returnSecureToken:
+          type: boolean
+          default: true
+
+    AuthResponse:
+      type: object
+      properties:
+        idToken:
+          type: string
+          description: Firebase ID token
+        refreshToken:
+          type: string
+          description: Refresh token
+        expiresIn:
+          type: string
+          description: Token expiration time
+        localId:
+          type: string
+          description: User UID
+        email:
+          type: string
+        displayName:
+          type: string
+        registered:
+          type: boolean
+
+  # Security Schemes
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: query
+      name: key
+      description: Google API key
+
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Firebase ID token
+
+# Security Requirements
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+# ============================================================================
+# API USAGE PATTERNS AND EXAMPLES
+# ============================================================================
+
+# Example Usage Patterns:
+#
+# 1. Create Journey Flow:
+#    POST /users/{userId}/journeys
+#    → Save journey to Firestore
+#    → Trigger place discovery
+#    → GET /place/nearbysearch/json (for each route segment)
+#    → POST /users/{userId}/savedPlaces (for saved discoveries)
+#
+# 2. Load User Data Flow:
+#    GET /users/{userId} (user profile)
+#    GET /users/{userId}/journeys (journey history)
+#    GET /users/{userId}/savedPlaces (saved places)
+#
+# 3. Place Discovery Flow:
+#    GET /place/nearbysearch/json (nearby search along route)
+#    GET /place/details/json (detailed place information)
+#    POST /users/{userId}/savedPlaces (save interesting places)
+#
+# 4. Authentication Flow:
+#    POST /accounts:signInWithPassword (email/password)
+#    OR POST /accounts:signInWithIdp (OAuth)
+#    → Use returned idToken for subsequent API calls
+
+# Rate Limiting Considerations:
+# - Google Places API: 100 requests per second per user
+# - Firebase Firestore: 1 write per second per document
+# - Firebase Auth: 500 requests per minute per IP
+
+# Error Handling:
+# - Google APIs: Check status field in response
+# - Firebase: HTTP status codes + error messages
+# - Implement exponential backoff for rate limiting
+
+# Cost Optimization:
+# - Cache Google Places results locally
+# - Use appropriate fields parameter for Places API
+# - Batch Firestore operations when possible
+# - Implement request deduplication

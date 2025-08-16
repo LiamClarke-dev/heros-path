@@ -1,0 +1,531 @@
+{
+  "metadata": {
+    "generation_timestamp": "2024-12-28T10:00:00Z",
+    "repository_head_sha": "965caea6bcca512353cdc7e4208bc9c3ceb16a0f",
+    "analysis_scope": "All events, state changes, and data flows in the application",
+    "source_analysis": "contexts/, hooks/, services/, and component event handlers"
+  },
+  "event_categories": {
+    "user_authentication_events": {
+      "description": "User authentication state changes and session management",
+      "context": "UserContext.js",
+      "events": [
+        {
+          "event_name": "onAuthStateChange",
+          "trigger": "Firebase authentication state change",
+          "source": "firebase.js",
+          "handler": "contexts/UserContext.js:387",
+          "payload": {
+            "user": "Firebase user object or null",
+            "isAuthenticated": "boolean"
+          },
+          "side_effects": [
+            "Update user state in context",
+            "Load or clear user profile",
+            "Trigger profile loading",
+            "Update navigation state"
+          ],
+          "error_handling": "Try/catch with error state updates"
+        },
+        {
+          "event_name": "profileCreated",
+          "trigger": "New user profile creation", 
+          "source": "services/UserProfileService.js",
+          "handler": "contexts/UserContext.js:createOrUpdateProfile",
+          "payload": {
+            "profile": "User profile object",
+            "isNewUser": "boolean"
+          },
+          "side_effects": [
+            "Set userProfile state",
+            "Log profile creation",
+            "Clear loading state"
+          ]
+        },
+        {
+          "event_name": "signOut",
+          "trigger": "User-initiated sign out",
+          "source": "User interaction",
+          "handler": "contexts/UserContext.js:signOut",
+          "payload": null,
+          "side_effects": [
+            "Clear user state",
+            "Clear userProfile state",
+            "Firebase token cleanup",
+            "Navigate to auth screen"
+          ]
+        },
+        {
+          "event_name": "tokenRefresh",
+          "trigger": "Automatic or manual token refresh",
+          "source": "Firebase token expiry or manual call",
+          "handler": "contexts/UserContext.js:refreshAuthToken",
+          "payload": {
+            "token": "New ID token string"
+          },
+          "side_effects": [
+            "Update stored token",
+            "Log refresh success",
+            "Continue authenticated operations"
+          ]
+        }
+      ]
+    },
+    "navigation_events": {
+      "description": "Navigation state changes and routing events",
+      "context": "NavigationContext.js",
+      "events": [
+        {
+          "event_name": "navigationStateChange",
+          "trigger": "React Navigation state change",
+          "source": "@react-navigation/native",
+          "handler": "contexts/NavigationContext.js:34",
+          "payload": {
+            "state": "Navigation state object",
+            "currentRoute": "Current route name"
+          },
+          "side_effects": [
+            "Update navigation history",
+            "Trigger deep link processing",
+            "Update screen focus state",
+            "Process navigation queue"
+          ]
+        },
+        {
+          "event_name": "deepLinkReceived",
+          "trigger": "External deep link activation",
+          "source": "App URL scheme or intent",
+          "handler": "contexts/NavigationContext.js:handleDeepLink",
+          "payload": {
+            "url": "Deep link URL",
+            "params": "Parsed parameters"
+          },
+          "side_effects": [
+            "Parse URL parameters",
+            "Navigate to target screen",
+            "Update navigation state",
+            "Log deep link usage"
+          ]
+        },
+        {
+          "event_name": "navigationQueueUpdate",
+          "trigger": "Pending navigation operations",
+          "source": "Navigation queue management",
+          "handler": "contexts/NavigationContext.js:processNavigationQueue",
+          "payload": {
+            "queue": "Array of pending navigations"
+          },
+          "side_effects": [
+            "Process next navigation",
+            "Update queue state",
+            "Handle navigation timeout"
+          ]
+        }
+      ]
+    },
+    "theme_events": {
+      "description": "Theme changes and visual state updates",
+      "context": "ThemeContext.js", 
+      "events": [
+        {
+          "event_name": "themeChanged",
+          "trigger": "User theme selection or system change",
+          "source": "User interaction or system color scheme",
+          "handler": "contexts/ThemeContext.js:setTheme",
+          "payload": {
+            "themeName": "light | dark | adventure | system",
+            "previousTheme": "Previous theme name"
+          },
+          "side_effects": [
+            "Update theme state",
+            "Persist theme preference",
+            "Update navigation theme",
+            "Re-render all themed components"
+          ]
+        },
+        {
+          "event_name": "systemColorSchemeChange",
+          "trigger": "Device color scheme change",
+          "source": "React Native useColorScheme",
+          "handler": "contexts/ThemeContext.js:getEffectiveTheme",
+          "payload": {
+            "colorScheme": "light | dark"
+          },
+          "side_effects": [
+            "Update effective theme if system mode",
+            "Re-calculate navigation theme",
+            "Update theme-dependent styles"
+          ]
+        }
+      ]
+    },
+    "location_events": {
+      "description": "GPS location updates and tracking state changes",
+      "sources": ["services/BackgroundLocationService.js", "hooks/useLocationTracking.js"],
+      "events": [
+        {
+          "event_name": "locationUpdate",
+          "trigger": "GPS location change",
+          "source": "expo-location",
+          "handler": "services/BackgroundLocationService.js:handleLocationUpdate",
+          "payload": {
+            "coords": "Latitude, longitude, accuracy",
+            "timestamp": "Location timestamp"
+          },
+          "side_effects": [
+            "Process location through filters",
+            "Update journey and display paths",
+            "Calculate distance and stats",
+            "Trigger UI updates"
+          ],
+          "frequency": "1-5 seconds during tracking"
+        },
+        {
+          "event_name": "trackingStarted",
+          "trigger": "User starts journey tracking",
+          "source": "User interaction",
+          "handler": "services/BackgroundLocationService.js:startTracking",
+          "payload": {
+            "journeyId": "Unique journey identifier"
+          },
+          "side_effects": [
+            "Initialize location tracking",
+            "Reset path data",
+            "Start background task",
+            "Update tracking state"
+          ]
+        },
+        {
+          "event_name": "trackingStopped",
+          "trigger": "User stops journey tracking",
+          "source": "User interaction",
+          "handler": "services/BackgroundLocationService.js:stopTracking",
+          "payload": {
+            "journeyData": "Complete journey information",
+            "displayData": "Processed path for display"
+          },
+          "side_effects": [
+            "Stop location tracking",
+            "Process final journey data",
+            "Trigger save journey flow",
+            "Clean up background task"
+          ]
+        },
+        {
+          "event_name": "permissionGranted",
+          "trigger": "Location permission granted",
+          "source": "expo-location permission request",
+          "handler": "hooks/useMapPermissions.js",
+          "payload": {
+            "permission": "granted | denied | undetermined"
+          },
+          "side_effects": [
+            "Update permission state",
+            "Enable location features",
+            "Show/hide permission prompts"
+          ]
+        }
+      ]
+    },
+    "journey_events": {
+      "description": "Journey lifecycle and management events",
+      "sources": ["hooks/useJourneyTracking.js", "services/JourneyService.js"],
+      "events": [
+        {
+          "event_name": "journeyStarted",
+          "trigger": "User initiates journey tracking",
+          "source": "User interaction",
+          "handler": "hooks/useJourneyTracking.js:toggleTracking",
+          "payload": {
+            "journeyId": "Generated journey ID",
+            "startTime": "Journey start timestamp"
+          },
+          "side_effects": [
+            "Update tracking state",
+            "Initialize journey data",
+            "Start location tracking",
+            "Show tracking UI"
+          ]
+        },
+        {
+          "event_name": "journeySaved",
+          "trigger": "User saves completed journey",
+          "source": "User interaction in naming modal",
+          "handler": "hooks/useJourneyTracking.js:saveJourney",
+          "payload": {
+            "journey": "Complete journey object",
+            "name": "User-provided name"
+          },
+          "side_effects": [
+            "Save to Firestore",
+            "Update journey list",
+            "Clear current journey",
+            "Show success feedback"
+          ]
+        },
+        {
+          "event_name": "pathUpdated",
+          "trigger": "New location added to journey path",
+          "source": "Location tracking",
+          "handler": "hooks/useJourneyTracking.js:addToPath",
+          "payload": {
+            "position": "New GPS coordinate",
+            "pathLength": "Updated path length"
+          },
+          "side_effects": [
+            "Update journey statistics",
+            "Re-render map path",
+            "Update distance display"
+          ]
+        }
+      ]
+    },
+    "discovery_events": {
+      "description": "Place discovery and search events",
+      "sources": ["services/DiscoveriesService.js", "hooks/useSavedPlaces.js"],
+      "events": [
+        {
+          "event_name": "searchAlongRoute",
+          "trigger": "Journey completion or manual search",
+          "source": "Journey completion or user action",
+          "handler": "services/DiscoveriesService.js:searchAlongRoute", 
+          "payload": {
+            "route": "Journey path coordinates",
+            "preferences": "User discovery preferences"
+          },
+          "side_effects": [
+            "Query Google Places API",
+            "Filter results by preferences",
+            "Update discoveries state",
+            "Show discovery results"
+          ]
+        },
+        {
+          "event_name": "placeSelected",
+          "trigger": "User taps on discovered place",
+          "source": "User interaction",
+          "handler": "hooks/useSavedPlaces.js:handleMarkerPress",
+          "payload": {
+            "place": "Google Places API place object"
+          },
+          "side_effects": [
+            "Show place detail modal",
+            "Load place details",
+            "Update modal state"
+          ]
+        },
+        {
+          "event_name": "placeSaved",
+          "trigger": "User saves a discovered place",
+          "source": "User interaction in place modal",
+          "handler": "hooks/useSavedPlaces.js:savePlace",
+          "payload": {
+            "place": "Place object to save"
+          },
+          "side_effects": [
+            "Save to Firestore",
+            "Update saved places list",
+            "Show success feedback",
+            "Close detail modal"
+          ]
+        },
+        {
+          "event_name": "preferencesUpdated",
+          "trigger": "User changes discovery preferences",
+          "source": "Settings screen interaction",
+          "handler": "services/DiscoveriesService.js:savePreferences",
+          "payload": {
+            "preferences": "Updated preference object"
+          },
+          "side_effects": [
+            "Save to Firestore",
+            "Update context state",
+            "Apply to future searches"
+          ]
+        }
+      ]
+    },
+    "ui_events": {
+      "description": "User interface interactions and state changes",
+      "sources": ["components/", "screens/"],
+      "events": [
+        {
+          "event_name": "modalOpened",
+          "trigger": "User interaction opens modal",
+          "source": "Various UI components",
+          "payload": {
+            "modalType": "journey-naming | place-detail | settings",
+            "context": "Additional modal context"
+          },
+          "side_effects": [
+            "Update modal visibility state",
+            "Load modal content",
+            "Handle keyboard interactions"
+          ]
+        },
+        {
+          "event_name": "mapInteraction",
+          "trigger": "User interacts with map",
+          "source": "MapScreen gestures",
+          "payload": {
+            "interaction": "pan | zoom | marker-press",
+            "coordinates": "Map coordinates if relevant"
+          },
+          "side_effects": [
+            "Update map state",
+            "Handle marker clustering",
+            "Update visible region"
+          ]
+        },
+        {
+          "event_name": "buttonPressed",
+          "trigger": "User presses action button",
+          "source": "Various UI components",
+          "payload": {
+            "buttonType": "tracking | locate | saved-places | map-style",
+            "state": "Current button/feature state"
+          },
+          "side_effects": [
+            "Execute button action",
+            "Update visual state",
+            "Trigger related workflows"
+          ]
+        }
+      ]
+    },
+    "error_events": {
+      "description": "Error conditions and recovery events",
+      "sources": ["services/NavigationErrorService.js", "error boundaries"],
+      "events": [
+        {
+          "event_name": "navigationError",
+          "trigger": "Navigation operation failure",
+          "source": "React Navigation errors",
+          "handler": "services/NavigationErrorService.js:handleNavigationError",
+          "payload": {
+            "error": "Error object",
+            "context": "Navigation context",
+            "severity": "low | medium | high | critical"
+          },
+          "side_effects": [
+            "Log error details",
+            "Attempt error recovery",
+            "Show user feedback",
+            "Track error metrics"
+          ]
+        },
+        {
+          "event_name": "apiError",
+          "trigger": "External API request failure",
+          "source": "Firebase, Google APIs",
+          "handler": "Service-specific error handling",
+          "payload": {
+            "service": "firebase | google-places | google-maps",
+            "operation": "Specific operation that failed",
+            "error": "Error details"
+          },
+          "side_effects": [
+            "Implement retry logic",
+            "Show error message",
+            "Fallback to cached data",
+            "Log for monitoring"
+          ]
+        },
+        {
+          "event_name": "componentError",
+          "trigger": "React component error boundary",
+          "source": "Component render errors",
+          "handler": "Error boundary components",
+          "payload": {
+            "error": "React error object",
+            "errorInfo": "Error boundary info"
+          },
+          "side_effects": [
+            "Show error fallback UI",
+            "Log error details",
+            "Prevent app crash"
+          ]
+        }
+      ]
+    }
+  },
+  "data_flow_patterns": {
+    "authentication_flow": {
+      "description": "User authentication and session management data flow",
+      "sequence": [
+        "User login → Firebase Auth → onAuthStateChange event",
+        "UserContext updates → Profile loading → UI re-render",
+        "Token refresh → Automatic session maintenance"
+      ],
+      "state_dependencies": [
+        "UserContext.user",
+        "UserContext.userProfile", 
+        "NavigationContext routing"
+      ]
+    },
+    "journey_tracking_flow": {
+      "description": "Journey recording and location tracking data flow",
+      "sequence": [
+        "User starts tracking → BackgroundLocationService.startTracking",
+        "Location updates → Process through filters → Update journey data",
+        "User stops tracking → Process final data → Trigger save flow",
+        "Save journey → Firestore → Update journey list"
+      ],
+      "state_dependencies": [
+        "BackgroundLocationService internal state",
+        "useJourneyTracking hook state",
+        "MapScreen rendering state"
+      ]
+    },
+    "discovery_flow": {
+      "description": "Place discovery and search-along-route data flow",
+      "sequence": [
+        "Journey completion → Extract route coordinates",
+        "Query Google Places API → Filter by preferences",
+        "Display results → User interaction → Save places"
+      ],
+      "state_dependencies": [
+        "DiscoveriesService search state",
+        "ExplorationContext preferences",
+        "useSavedPlaces hook state"
+      ]
+    }
+  },
+  "performance_considerations": {
+    "high_frequency_events": [
+      {
+        "event": "locationUpdate",
+        "frequency": "1-5 seconds",
+        "optimization": "Debouncing and filtering in BackgroundLocationService"
+      },
+      {
+        "event": "mapInteraction", 
+        "frequency": "User-dependent",
+        "optimization": "React memo and useCallback patterns"
+      }
+    ],
+    "state_update_batching": [
+      {
+        "context": "NavigationContext",
+        "strategy": "Queue navigation updates to prevent rapid state changes"
+      },
+      {
+        "context": "Location updates",
+        "strategy": "Batch location processing in service layer"
+      }
+    ]
+  },
+  "testing_considerations": {
+    "mockable_events": [
+      "Firebase auth state changes",
+      "Location updates",
+      "Google API responses",
+      "Navigation state changes"
+    ],
+    "event_simulation": [
+      "User interactions for UI testing",
+      "Location tracking for journey testing", 
+      "Error conditions for error handling testing"
+    ]
+  }
+}

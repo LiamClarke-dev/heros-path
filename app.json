@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "heros-path-fresh",
-    "slug": "heros-path",
-    "version": "1.0.1",
+    "name": "Hero's Path MVP",
+    "slug": "heros-path-mvp",
+    "version": "0.1.0",
     "assetBundlePatterns": [
       "assets/**/*.gif"
     ],
@@ -10,7 +10,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "scheme": "com.liamclarke.herospath",
+    "scheme": "com.herospath.mvp",
     "owner": "liamclarke-dev",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -19,7 +19,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.liamclarke.herospath",
+      "bundleIdentifier": "com.herospath.mvp",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "This app uses your location to show your journey and nearby places.",
@@ -30,9 +30,9 @@
         ],
         "CFBundleURLTypes": [
           {
-            "CFBundleURLName": "com.liamclarke.herospath",
+            "CFBundleURLName": "com.herospath.mvp",
             "CFBundleURLSchemes": [
-              "com.liamclarke.herospath"
+              "com.herospath.mvp"
             ]
           }
         ]
@@ -47,7 +47,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.liamclarke.herospath",
+      "package": "com.herospath.mvp",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -60,7 +60,7 @@
           "action": "VIEW",
           "data": [
             {
-              "scheme": "com.liamclarke.herospath"
+              "scheme": "com.herospath.mvp"
             }
           ],
           "category": [

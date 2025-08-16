@@ -1,0 +1,431 @@
+---
+# Hero's Path MVP Specification
+# Consolidated from repository analysis and existing documentation
+# Focus: Minimal viable product for core journey tracking and discovery
+
+metadata:
+  title: "Hero's Path MVP Specification"
+  version: "1.0.0"
+  date: "2024-12-28"
+  repository_sha: "965caea6bcca512353cdc7e4208bc9c3ceb16a0f"
+  scope: "Minimum viable product - core journey tracking and place discovery"
+  audience: "Execution agent for MVP-first refactor"
+
+# ============================================================================
+# MVP VISION AND SCOPE
+# ============================================================================
+
+vision:
+  statement: "Transform daily walks into engaging adventures through simple journey tracking and meaningful place discovery"
+  
+user_value_proposition:
+  primary: "Record your walking routes and discover interesting places along the way"
+  secondary: "Build a personal collection of journeys and favorite places"
+  
+mvp_boundaries:
+  included:
+    - "Core journey tracking with GPS"
+    - "Route visualization on map"
+    - "Place discovery along completed routes"  
+    - "Save and manage journeys"
+    - "Save and manage discovered places"
+    - "Basic user authentication"
+    - "Essential app navigation"
+  
+  excluded_from_mvp:
+    - "Social sharing and friend features"
+    - "Gamification and achievements"
+    - "Advanced discovery preferences" 
+    - "Custom place lists and collections"
+    - "Real-time collaborative features"
+    - "Analytics and developer tools"
+    - "Complex theming and customization"
+
+# ============================================================================
+# USER PERSONAS AND SCENARIOS
+# ============================================================================
+
+primary_persona:
+  name: "Daily Walker"
+  description: "Person who enjoys walking for exercise and exploration"
+  characteristics:
+    - "Takes walks 3-5 times per week"
+    - "Interested in discovering new places"
+    - "Values simplicity and ease of use"
+    - "Uses smartphone for basic apps"
+  
+  pain_points:
+    - "Walks become routine and boring"
+    - "Doesn't know about interesting places nearby"
+    - "Forgets good routes and places discovered"
+    - "Wants motivation to walk more"
+
+mvp_user_journey:
+  title: "Core Journey Tracking and Discovery Flow"
+  steps:
+    1:
+      action: "User opens app and signs in"
+      system_response: "Show map with current location"
+      success_criteria: "User sees map within 3 seconds"
+      
+    2:
+      action: "User starts journey tracking"
+      system_response: "Begin GPS tracking and route visualization"
+      success_criteria: "Route appears on map in real-time"
+      
+    3:
+      action: "User walks and completes journey"
+      system_response: "Track route continuously in background"
+      success_criteria: "Accurate route captured with good GPS quality"
+      
+    4:
+      action: "User stops tracking"
+      system_response: "Show journey summary and trigger place discovery"
+      success_criteria: "Journey saved and discoveries found within 5 seconds"
+      
+    5:
+      action: "User reviews discovered places"
+      system_response: "Display nearby points of interest"
+      success_criteria: "At least 3-5 relevant places shown"
+      
+    6:
+      action: "User saves interesting places"
+      system_response: "Add places to personal collection"
+      success_criteria: "Places saved and accessible later"
+      
+    7:
+      action: "User views past journeys"
+      system_response: "Show journey history with routes and places"
+      success_criteria: "Can browse and revisit previous journeys"
+
+# ============================================================================
+# FUNCTIONAL REQUIREMENTS
+# ============================================================================
+
+core_features:
+  
+  user_authentication:
+    priority: "critical"
+    description: "Basic user account management"
+    requirements:
+      - "Sign in with email/password"
+      - "Sign in with Google OAuth"
+      - "Persistent login sessions"
+      - "Basic profile management"
+    acceptance_criteria:
+      - "User can create account in under 30 seconds"
+      - "Login persists across app restarts"
+      - "Clear error messages for auth failures"
+    
+  map_navigation:
+    priority: "critical"
+    description: "Map interface with GPS location"
+    requirements:
+      - "Display map with user's current location"
+      - "Show user position indicator"
+      - "Pan and zoom map controls"
+      - "Locate user button"
+    acceptance_criteria:
+      - "Map loads within 2 seconds"
+      - "GPS accuracy within 5 meters"
+      - "Smooth map interactions"
+      
+  journey_tracking:
+    priority: "critical"
+    description: "GPS route recording and visualization"
+    requirements:
+      - "Start/stop journey tracking"
+      - "Real-time route visualization"
+      - "Background location tracking"
+      - "Journey statistics (distance, time)"
+    acceptance_criteria:
+      - "Route appears on map within 1 second of movement"
+      - "Tracking continues when app is backgrounded"
+      - "Accurate distance calculation (±5%)"
+      - "Battery usage optimized for 2+ hour tracking"
+      
+  place_discovery:
+    priority: "critical"
+    description: "Find interesting places along journey routes"
+    requirements:
+      - "Search for POIs along completed route"
+      - "Filter by basic categories (food, attractions, etc.)"
+      - "Show place details (name, rating, category)"
+      - "Display places on map"
+    acceptance_criteria:
+      - "Discovery completes within 5 seconds"
+      - "Returns 3-10 relevant places per journey"
+      - "Place information is accurate and current"
+      
+  journey_management:
+    priority: "high"
+    description: "Save, view, and manage completed journeys"
+    requirements:
+      - "Save journey with custom name"
+      - "View journey history list"
+      - "Display saved journey on map"
+      - "Basic journey statistics"
+    acceptance_criteria:
+      - "Journey saves within 2 seconds"
+      - "Can browse 50+ past journeys smoothly"
+      - "Journey details load quickly"
+      
+  saved_places:
+    priority: "high"
+    description: "Manage collection of interesting places"
+    requirements:
+      - "Save places from discoveries"
+      - "View saved places list"
+      - "Show saved places on map"
+      - "Remove places from collection"
+    acceptance_criteria:
+      - "Places save instantly with feedback"
+      - "Can manage 100+ saved places"
+      - "Quick access to place details"
+
+# ============================================================================
+# TECHNICAL REQUIREMENTS
+# ============================================================================
+
+platform_requirements:
+  target_platforms: ["iOS", "Android"]
+  minimum_versions:
+    ios: "14.0"
+    android: "API 24 (Android 7.0)"
+  
+  framework: "React Native 0.79.5 with Expo SDK 53"
+  
+performance_requirements:
+  app_launch: "< 3 seconds to map view"
+  gps_acquisition: "< 5 seconds to first location"
+  journey_save: "< 2 seconds for typical journey"
+  discovery_search: "< 5 seconds for route analysis"
+  offline_capability: "Journey tracking continues without internet"
+  
+quality_requirements:
+  gps_accuracy: "± 5 meters for route tracking"
+  battery_usage: "< 20% per hour during active tracking"
+  data_usage: "< 1 MB per journey (excluding map tiles)"
+  reliability: "99% successful journey saves"
+  
+security_requirements:
+  authentication: "Firebase Auth with secure token management"
+  data_protection: "User data encrypted in transit and at rest"
+  permissions: "Minimal required permissions only"
+  privacy: "No user data sharing without explicit consent"
+
+# ============================================================================
+# TECHNICAL ARCHITECTURE
+# ============================================================================
+
+architecture_overview:
+  pattern: "Service-oriented architecture with React Context state management"
+  data_flow: "Unidirectional data flow with centralized services"
+  
+core_components:
+  
+  presentation_layer:
+    description: "React Native components and screens"
+    components:
+      - "MapScreen (main interface)"
+      - "SignInScreen (authentication)"
+      - "PastJourneysScreen (journey history)"
+      - "UI components (modals, buttons, etc.)"
+    
+  state_management:
+    description: "React Context providers for app state"
+    contexts:
+      - "UserContext (authentication and profile)"
+      - "ThemeContext (app theming)"
+      - "NavigationContext (routing state)"
+    
+  business_logic:
+    description: "Service classes for core functionality"
+    services:
+      - "BackgroundLocationService (GPS tracking)"
+      - "JourneyService (journey CRUD operations)"
+      - "DiscoveriesService (place discovery)"
+      - "UserProfileService (user data)"
+      - "SavedPlacesService (place management)"
+    
+  data_persistence:
+    description: "Firebase backend integration"
+    storage:
+      - "Firebase Auth (user authentication)"
+      - "Firestore (user data, journeys, places)"
+      - "AsyncStorage (local caching and preferences)"
+    
+  external_integrations:
+    description: "Third-party service integrations"
+    services:
+      - "Google Places API (place discovery)"
+      - "Google Maps API (map rendering)"
+      - "Expo Location (GPS services)"
+
+# ============================================================================
+# DATA MODEL
+# ============================================================================
+
+data_entities:
+  
+  user:
+    description: "User account and profile information"
+    fields:
+      id: "string (Firebase UID)"
+      email: "string"
+      displayName: "string"
+      createdAt: "timestamp"
+      preferences: "object (basic app preferences)"
+    
+  journey:
+    description: "Recorded walking route with metadata"
+    fields:
+      id: "string (auto-generated)"
+      userId: "string (owner reference)"
+      name: "string (user-provided or auto-generated)"
+      startTime: "timestamp"
+      endTime: "timestamp"
+      distance: "number (meters)"
+      path: "array of coordinates"
+      stats: "object (time, avg speed, etc.)"
+      createdAt: "timestamp"
+    
+  saved_place:
+    description: "User's saved place from discoveries"
+    fields:
+      id: "string (auto-generated)"
+      userId: "string (owner reference)"
+      placeId: "string (Google Places ID)"
+      name: "string"
+      category: "string"
+      coordinates: "geopoint"
+      savedAt: "timestamp"
+      
+data_relationships:
+  - "User has many Journeys (1:N)"
+  - "User has many SavedPlaces (1:N)"
+  - "Journey can reference discovered places (journey metadata)"
+
+# ============================================================================
+# USER INTERFACE REQUIREMENTS
+# ============================================================================
+
+ui_principles:
+  simplicity: "Minimal interface focused on core actions"
+  accessibility: "WCAG 2.1 AA compliance for inclusive design"
+  responsiveness: "Fast, fluid interactions with immediate feedback"
+  consistency: "Unified design language across all screens"
+
+screen_specifications:
+  
+  map_screen:
+    description: "Primary interface for journey tracking and place viewing"
+    layout:
+      - "Full-screen map view"
+      - "Floating control buttons (top-right)"
+      - "Journey tracking button (bottom-center)"
+      - "Current location indicator"
+    controls:
+      - "Start/Stop tracking button (prominent)"
+      - "Locate me button"
+      - "Saved places toggle"
+      - "Menu/drawer access"
+    
+  sign_in_screen:
+    description: "User authentication interface"
+    layout:
+      - "App logo and branding"
+      - "Email/password form"
+      - "Google sign-in button"
+      - "Create account option"
+    
+  journey_history_screen:
+    description: "Browse and select past journeys"
+    layout:
+      - "Journey list with preview info"
+      - "Date grouping and filtering"
+      - "Search/filter controls"
+      - "Journey detail navigation"
+
+# ============================================================================
+# NON-MVP FEATURES (FUTURE ROADMAP)
+# ============================================================================
+
+deferred_features:
+  
+  social_features:
+    description: "Sharing and community features"
+    items:
+      - "Share journeys on social media"
+      - "Friend connections and social feed"
+      - "Public journey sharing"
+      - "Community challenges"
+    
+  gamification:
+    description: "Achievement and motivation systems"
+    items:
+      - "Achievement badges and streaks"
+      - "Personal goals and challenges"
+      - "Leaderboards and competitions"
+      - "Experience points and levels"
+    
+  advanced_discovery:
+    description: "Enhanced place discovery features"
+    items:
+      - "Custom discovery preferences"
+      - "Historical and cultural content"
+      - "AI-powered recommendations"
+      - "Offline place database"
+    
+  customization:
+    description: "Personalization and advanced features"
+    items:
+      - "Custom map styles and themes"
+      - "Workout tracking integration"
+      - "Route planning and navigation"
+      - "Export and backup features"
+
+# ============================================================================
+# SUCCESS METRICS
+# ============================================================================
+
+mvp_success_criteria:
+  
+  user_engagement:
+    - "User completes first journey within 5 minutes of signup"
+    - "User saves at least 1 place from discoveries"
+    - "User returns to app within 7 days of first use"
+    
+  technical_performance:
+    - "App crash rate < 1%"
+    - "Journey tracking accuracy > 95%"
+    - "Place discovery success rate > 90%"
+    
+  user_satisfaction:
+    - "Core journey flow completes without confusion"
+    - "Discovery provides relevant, interesting places"
+    - "App feels responsive and reliable"
+
+# ============================================================================
+# IMPLEMENTATION NOTES
+# ============================================================================
+
+development_approach:
+  methodology: "Incremental development with continuous user testing"
+  testing_strategy: "Unit tests for services, integration tests for user flows"
+  rollout_plan: "Internal testing → closed beta → gradual public release"
+  
+key_risks:
+  - "GPS accuracy and battery usage optimization"
+  - "Google Places API rate limits and costs"
+  - "User onboarding and retention"
+  - "App store approval and compliance"
+  
+mitigation_strategies:
+  - "Comprehensive testing on various devices and conditions"
+  - "API usage monitoring and optimization"
+  - "User research and iterative UX improvements"
+  - "Early app store submission and compliance review"
+
+---
+# END OF MVP SPECIFICATION

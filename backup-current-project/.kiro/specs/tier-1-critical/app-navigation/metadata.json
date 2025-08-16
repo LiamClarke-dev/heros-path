@@ -1,0 +1,122 @@
+{
+  "feature": {
+    "name": "App Navigation",
+    "tier": "tier-1-critical",
+    "description": "Core navigation framework providing seamless access to all major app features including Map Screen, Past Journeys, Discoveries, Saved Places, Social features, and Settings through drawer and tab navigation patterns.",
+    "path": ".kiro/specs/tier-1-critical/app-navigation"
+  },
+  "documentation": {
+    "requirements": {
+      "status": "completed",
+      "path": ".kiro/specs/tier-1-critical/app-navigation/requirements.md",
+      "lastUpdated": "2025-01-24",
+      "userStories": [
+        "Primary Navigation Structure",
+        "Drawer Navigation Implementation", 
+        "Tab Navigation for Core Features",
+        "Authentication-Based Navigation",
+        "Deep Linking and URL Navigation",
+        "Navigation State Management",
+        "Theme Integration and Styling",
+        "Performance and Responsiveness",
+        "Accessibility and Usability",
+        "Error Handling and Recovery"
+      ],
+      "acceptanceCriteria": [
+        "Navigation responds within 100ms",
+        "Screen transitions complete within 300ms",
+        "Authentication state changes update navigation within 100ms",
+        "All touch targets meet 44pt accessibility minimum",
+        "Theme changes apply to navigation within 300ms",
+        "Deep links navigate to correct screens",
+        "Navigation maintains 60fps performance",
+        "Screen reader support for all navigation elements"
+      ]
+    },
+    "design": {
+      "status": "completed",
+      "path": ".kiro/specs/tier-1-critical/app-navigation/design.md",
+      "lastUpdated": "2025-01-24",
+      "components": [
+        "NavigationContainer",
+        "AuthNavigator", 
+        "MainNavigator (Drawer)",
+        "TabNavigator",
+        "NavigationContext",
+        "CustomDrawerContent",
+        "Navigation Stacks (Map, Journeys, Discoveries, SavedPlaces, Social, Settings)"
+      ],
+      "dataModels": [
+        "NavigationState",
+        "TabState", 
+        "DrawerState"
+      ],
+      "integrationPoints": [
+        "ThemeContext for styling",
+        "UserContext for authentication state",
+        "React Navigation v7 framework",
+        "Deep linking configuration",
+        "Accessibility services"
+      ]
+    },
+    "tasks": {
+      "status": "completed",
+      "path": ".kiro/specs/tier-1-critical/app-navigation/tasks.md",
+      "lastUpdated": "2025-01-24",
+      "majorTasks": [
+        "Set up core navigation infrastructure",
+        "Implement authentication-based navigation",
+        "Build main navigation structure",
+        "Implement navigation state management",
+        "Integrate theme system with navigation",
+        "Implement deep linking and URL navigation",
+        "Optimize navigation performance",
+        "Implement accessibility features",
+        "Add comprehensive error handling",
+        "Create custom navigation components",
+        "Integrate with existing app features",
+        "Testing and validation",
+        "Documentation and polish",
+        "Migration and deployment preparation"
+      ],
+      "totalTasks": 42
+    }
+  },
+  "process": {
+    "started": "2025-01-24",
+    "completed": "",
+    "currentPhase": "specification"
+  },
+  "codebase": {
+    "relevantFiles": [
+      "App.js",
+      "screens/MapScreen.js",
+      "components/ui/LocateButton.js",
+      "contexts/UserContext.js",
+      "contexts/ThemeContext.js"
+    ],
+    "primaryComponents": [
+      "navigation/NavigationContainer.js",
+      "navigation/AuthNavigator.js",
+      "navigation/MainNavigator.js",
+      "navigation/TabNavigator.js",
+      "navigation/stacks/MapStack.js",
+      "navigation/stacks/JourneysStack.js",
+      "navigation/stacks/DiscoveriesStack.js",
+      "navigation/stacks/SavedPlacesStack.js",
+      "navigation/stacks/SocialStack.js",
+      "navigation/stacks/SettingsStack.js",
+      "contexts/NavigationContext.js",
+      "components/navigation/CustomDrawerContent.js"
+    ],
+    "dependencies": [
+      "@react-navigation/native",
+      "@react-navigation/stack",
+      "@react-navigation/drawer", 
+      "@react-navigation/bottom-tabs",
+      "react-native-screens",
+      "react-native-safe-area-context",
+      "@expo/vector-icons"
+    ]
+  }
+}

@@ -3,15 +3,11 @@
     "name": "Hero's Path MVP",
     "slug": "heros-path-mvp",
     "version": "0.1.0",
-    "assetBundlePatterns": [
-      "assets/**/*.gif"
-    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "com.herospath.mvp",
-    "owner": "liamclarke-dev",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -73,13 +69,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "c1dd4c9b-e7b9-4aa0-bf73-a1c3f5846720"
-      }
-    },
     "plugins": [
       "expo-maps"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "436e1aea-369e-4ae6-a70c-aac464b1211a"
+      }
+    },
+    "owner": "liamclarke-dev"
   }
 }

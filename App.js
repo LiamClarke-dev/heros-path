@@ -6,6 +6,7 @@ import 'react-native-gesture-handler';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { UserProvider } from './contexts/UserContext';
 import { NavigationProvider } from './contexts/NavigationContext';
+import { ExplorationProvider } from './contexts/ExplorationContext';
 
 // Navigation
 import { NavigationContainer } from './navigation/NavigationContainer';
@@ -32,10 +33,12 @@ export default function App() {
   return (
     <ThemeProvider>
       <UserProvider>
-        <NavigationProvider>
-          <StatusBar style="auto" />
-          <NavigationContainer />
-        </NavigationProvider>
+        <ExplorationProvider>
+          <NavigationProvider>
+            <StatusBar style="auto" />
+            <NavigationContainer />
+          </NavigationProvider>
+        </ExplorationProvider>
       </UserProvider>
     </ThemeProvider>
   );

@@ -36,7 +36,8 @@
     "react-native-root-toast": "^4.0.1",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "^4.11.1",
-    "task-master-ai": "^0.21.0"
+    "task-master-ai": "^0.21.0",
+    "expo-blur": "~14.1.5"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

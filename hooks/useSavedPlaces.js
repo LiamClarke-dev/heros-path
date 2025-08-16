@@ -188,8 +188,10 @@ const useSavedPlaces = () => {
   /**
    * Save a new place
    * Implements place management as per requirement 2.2
+   * @param {Object} place - Place to save
+   * @param {function} onPlaceSaved - Optional callback for navigation after save
    */
-  const savePlace = useCallback(async (place) => {
+  const savePlace = useCallback(async (place, onPlaceSaved = null) => {
     if (!user) {
       throw new Error('User not authenticated');
     }
@@ -205,8 +207,19 @@ const useSavedPlaces = () => {
       Alert.alert(
         'Place Saved',
         `${place.name} has been saved to your places.`,
-        [{ text: 'OK' }]
+        [
+          { text: 'OK' },
+          ...(onPlaceSaved ? [{ 
+            text: 'View Saved Places', 
+            onPress: () => onPlaceSaved(place) 
+          }] : [])
+        ]
       );
+      
+      // Call navigation callback if provided
+      if (onPlaceSaved) {
+        setTimeout(() => onPlaceSaved(place), 100);
+      }
       
       console.log('Place saved successfully:', place.name);
     } catch (error) {

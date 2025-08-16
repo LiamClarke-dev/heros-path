@@ -9,19 +9,19 @@ const Stack = createStackNavigator();
  * Stack navigator for journey-related screens
  */
 export function JourneysStack() {
-  const { theme } = useTheme();
+  const { theme, navigationStyles } = useTheme();
   
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.surface,
-          borderBottomColor: theme.colors.border,
-        },
-        headerTintColor: theme.colors.text,
-        headerTitleStyle: {
-          fontWeight: '600',
-          fontSize: 18,
+        headerStyle: navigationStyles.header,
+        headerTintColor: navigationStyles.headerTint,
+        headerTitleStyle: navigationStyles.headerTitle,
+        headerBackTitleVisible: false,
+        cardStyle: navigationStyles.cardStyle,
+        transitionSpec: {
+          open: { animation: 'timing', config: { duration: 300 } },
+          close: { animation: 'timing', config: { duration: 250 } },
         },
       }}
     >

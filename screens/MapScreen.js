@@ -13,6 +13,7 @@ import useJourneyTracking from '../hooks/useJourneyTracking';
 import useSavedRoutes from '../hooks/useSavedRoutes';
 import useSavedPlaces from '../hooks/useSavedPlaces';
 import useMapStyle from '../hooks/useMapStyle';
+import useMapNavigation from '../hooks/useMapNavigation';
 
 // Components
 import MapRenderer from '../components/map/MapRenderer';
@@ -26,8 +27,11 @@ import DebugInstructions from '../components/ui/DebugInstructions';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 
+// Services
+import NavigationIntegrationService from '../services/NavigationIntegrationService';
+
 // Navigation
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 // CRITICAL FIX: Use centralized distance calculation
 import { calculateDistance } from '../utils/distanceUtils';
@@ -81,6 +85,9 @@ const MapScreen = () => {
   const { isAuthenticated } = useUser();
   const { currentTheme } = useTheme();
   const navigation = useNavigation();
+  
+  // Navigation integration
+  const mapNavigation = useMapNavigation();
 
   // Refs
   const mapRef = useRef(null);
@@ -185,11 +192,88 @@ const MapScreen = () => {
   }, [locationTracking.locateMe]);
 
   const handleOpenDiscoveryPreferences = useCallback(() => {
-    // Navigate to the Settings drawer, then to the DiscoveryPreferences screen
-    navigation.navigate('Settings', {
-      screen: 'DiscoveryPreferences'
-    });
-  }, [navigation]);
+    // Use navigation utility for consistent navigation
+    mapNavigation.navigateToSettings('DiscoveryPreferences');
+  }, [mapNavigation]);
+
+  // Navigation integration - handle screen focus events for location tracking
+  useFocusEffect(
+    useCallback(() => {
+      console.log('MapScreen focused - resuming location tracking if needed');
+      
+      // Resume location tracking when screen comes into focus
+      if (journeyTracking.state.isTracking && !locationTracking.isTracking) {
+        locationTracking.startTracking();
+      }
+      
+      // Register navigation callbacks for feature integration
+      NavigationIntegrationService.registerNavigationCallback('journey', handleJourneyCompleted);
+      NavigationIntegrationService.registerNavigationCallback('savedPlaces', handlePlaceSaved);
+      NavigationIntegrationService.registerNavigationCallback('discovery', handleDiscoveryMade);
+      
+      // Update navigation state
+      return () => {
+        console.log('MapScreen unfocused - maintaining background location if tracking');
+        // Don't stop location tracking when unfocused if journey is active
+        // Background location service will handle this
+        
+        // Unregister navigation callbacks
+        NavigationIntegrationService.unregisterNavigationCallback('journey');
+        NavigationIntegrationService.unregisterNavigationCallback('savedPlaces');
+        NavigationIntegrationService.unregisterNavigationCallback('discovery');
+      };
+    }, [journeyTracking.state.isTracking, locationTracking.isTracking, locationTracking.startTracking, handleJourneyCompleted, handlePlaceSaved, handleDiscoveryMade])
+  );
+
+  // Additional navigation handlers for map controls
+  const handleNavigateToJourneys = useCallback(() => {
+    mapNavigation.navigateToJourneys();
+  }, [mapNavigation]);
+
+  const handleNavigateToDiscoveries = useCallback(() => {
+    mapNavigation.navigateToDiscoveries();
+  }, [mapNavigation]);
+
+  const handleNavigateToSavedPlaces = useCallback(() => {
+    mapNavigation.navigateToSavedPlaces();
+  }, [mapNavigation]);
+
+  // Journey completion navigation handler
+  const handleJourneyCompleted = useCallback((savedJourney) => {
+    console.log('Journey completed, navigating to journeys screen:', savedJourney);
+    
+    // Use navigation integration service for proper data flow
+    const result = NavigationIntegrationService.handleJourneyCompleted(
+      savedJourney, 
+      { source: 'map_screen', action: 'journey_completed' }
+    );
+    
+    if (result.success) {
+      mapNavigation.navigateToJourneys('journey_completion');
+    }
+  }, [mapNavigation]);
+
+  // Discovery navigation handler
+  const handleDiscoveryMade = useCallback((discovery) => {
+    console.log('Discovery made, available for navigation:', discovery);
+    // Could navigate to discoveries screen or show discovery details
+    // For now, just log - actual discovery flow will be implemented in discovery features
+  }, []);
+
+  // Saved place navigation handler
+  const handlePlaceSaved = useCallback((savedPlace) => {
+    console.log('Place saved, navigating to saved places screen:', savedPlace);
+    
+    // Use navigation integration service for proper data flow
+    const result = NavigationIntegrationService.handlePlaceSaved(
+      savedPlace,
+      { source: 'map_screen', action: 'place_saved' }
+    );
+    
+    if (result.success) {
+      mapNavigation.navigateToSavedPlaces('place_saved');
+    }
+  }, [mapNavigation]);
 
   // Debug calculations for SERVICE-PROCESSED DATA
   const debugDistances = useMemo(() => {
@@ -300,7 +384,9 @@ const MapScreen = () => {
 
       <MapModals
         journeyNaming={journeyTracking.namingModal}
-        onSaveJourney={journeyTracking.saveJourney}
+        onSaveJourney={(journeyName, overrideValidation) => 
+          journeyTracking.saveJourney(journeyName, overrideValidation, handleJourneyCompleted)
+        }
         onCancelSaveJourney={journeyTracking.cancelSave}
         defaultJourneyName={useMemo(() => {
           const now = Date.now();
@@ -309,7 +395,7 @@ const MapScreen = () => {
         savingJourney={journeyTracking.savingJourney}
         placeDetail={savedPlaces.detailModal}
         onClosePlaceDetail={savedPlaces.closeDetailModal}
-        onSavePlace={savedPlaces.savePlace}
+        onSavePlace={(place) => savedPlaces.savePlace(place, handlePlaceSaved)}
         onUnsavePlace={savedPlaces.unsavePlace}
         onNavigateToPlace={useCallback((place) => savedPlaces.navigateToPlace(place, mapRef), [savedPlaces.navigateToPlace])}
         mapStyleSelector={mapStyle.selector}

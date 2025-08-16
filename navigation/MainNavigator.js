@@ -6,6 +6,9 @@ import { TabNavigator } from './TabNavigator';
 import { SocialStack } from './stacks/SocialStack';
 import { SettingsStack } from './stacks/SettingsStack';
 import { CustomDrawerContent } from '../components/navigation/CustomDrawerContent';
+// Performance utilities temporarily disabled
+// import { getAdaptiveAnimationConfig } from '../utils/navigationPerformance';
+// import { useResponsivePerformance } from '../utils/responsivePerformanceHandler';
 
 const Drawer = createDrawerNavigator();
 
@@ -14,7 +17,13 @@ const Drawer = createDrawerNavigator();
  * Provides access to all major app features
  */
 export function MainNavigator() {
-  const { theme } = useTheme();
+  const { theme, navigationStyles } = useTheme();
+  // Performance utilities temporarily disabled
+  // const { config, getAnimationConfig } = useResponsivePerformance();
+  // const adaptiveAnimationConfig = getAnimationConfig();
+  
+  // Don't render until responsive config is ready
+  // if (!config) return null;
   
   return (
     <Drawer.Navigator
@@ -22,14 +31,24 @@ export function MainNavigator() {
       screenOptions={{
         headerShown: false,
         drawerType: 'slide',
-        overlayColor: 'rgba(0,0,0,0.5)',
+        overlayColor: navigationStyles.overlayColor,
         drawerStyle: {
-          backgroundColor: theme.colors.surface,
+          ...navigationStyles.drawer,
           width: 280,
         },
-        drawerActiveTintColor: theme.colors.primary,
-        drawerInactiveTintColor: theme.colors.textSecondary,
-        drawerActiveBackgroundColor: `${theme.colors.primary}20`,
+        drawerActiveTintColor: navigationStyles.drawerActive,
+        drawerInactiveTintColor: navigationStyles.drawerInactive,
+        drawerActiveBackgroundColor: navigationStyles.drawerActiveBackground,
+        drawerItemStyle: {
+          borderRadius: 8,
+          marginHorizontal: 8,
+          marginVertical: 2,
+        },
+        drawerLabelStyle: {
+          fontSize: 16,
+          fontWeight: '500',
+          marginLeft: -16,
+        },
       }}
     >
       <Drawer.Screen 

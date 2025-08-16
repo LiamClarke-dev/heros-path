@@ -1,65 +1,180 @@
 /**
- * Centralized logging utility for Hero's Path
- * Provides consistent logging across the application with different log levels
+ * Logger utility for Hero's Path
+ * Provides centralized logging with different levels and error reporting
+ * Requirements: 10.7
  */
-
-const LOG_LEVELS = {
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3,
-};
 
 class Logger {
   constructor() {
-    // Set default log level based on environment
-    this.logLevel = __DEV__ ? LOG_LEVELS.DEBUG : LOG_LEVELS.WARN;
+    this.logLevel = __DEV__ ? 'debug' : 'error';
+    this.logs = [];
+    this.maxLogs = 1000; // Keep last 1000 logs in memory
   }
 
+  /**
+   * Log levels in order of severity
+   */
+  static LEVELS = {
+    debug: 0,
+    info: 1,
+    warn: 2,
+    error: 3,
+  };
+
+  /**
+   * Set the minimum log level
+   */
   setLogLevel(level) {
     this.logLevel = level;
   }
 
-  debug(...args) {
-    if (this.logLevel <= LOG_LEVELS.DEBUG) {
-      console.log('[DEBUG]', ...args);
+  /**
+   * Add a log entry
+   */
+  _addLog(level, message, data = null) {
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      level,
+      message,
+      data,
+    };
+
+    // Add to memory logs
+    this.logs.push(logEntry);
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift(); // Remove oldest log
     }
-  }
 
-  info(...args) {
-    if (this.logLevel <= LOG_LEVELS.INFO) {
-      console.info('[INFO]', ...args);
+    // Console output in development
+    if (__DEV__ || Logger.LEVELS[level] >= Logger.LEVELS[this.logLevel]) {
+      const consoleMethod = level === 'error' ? 'error' : 
+                           level === 'warn' ? 'warn' : 
+                           level === 'info' ? 'info' : 'log';
+      
+      if (data) {
+        console[consoleMethod](`[${level.toUpperCase()}] ${message}`, data);
+      } else {
+        console[consoleMethod](`[${level.toUpperCase()}] ${message}`);
+      }
     }
+
+    return logEntry;
   }
 
-  warn(...args) {
-    if (this.logLevel <= LOG_LEVELS.WARN) {
-      console.warn('[WARN]', ...args);
-    }
+  /**
+   * Debug level logging
+   */
+  debug(message, data = null) {
+    return this._addLog('debug', message, data);
   }
 
-  error(...args) {
-    if (this.logLevel <= LOG_LEVELS.ERROR) {
-      console.error('[ERROR]', ...args);
-    }
+  /**
+   * Info level logging
+   */
+  info(message, data = null) {
+    return this._addLog('info', message, data);
   }
 
-  // Convenience method for logging navigation events
-  navigation(action, screen, params = {}) {
-    this.debug(`Navigation: ${action} -> ${screen}`, params);
+  /**
+   * Warning level logging
+   */
+  warn(message, data = null) {
+    return this._addLog('warn', message, data);
   }
 
-  // Convenience method for logging API calls
-  api(method, endpoint, data = {}) {
-    this.debug(`API: ${method} ${endpoint}`, data);
+  /**
+   * Error level logging
+   */
+  error(message, data = null) {
+    return this._addLog('error', message, data);
   }
 
-  // Convenience method for logging user actions
-  userAction(action, data = {}) {
-    this.info(`User Action: ${action}`, data);
+  /**
+   * Log navigation errors specifically
+   */
+  navigationError(error, context = {}) {
+    const errorData = {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      context,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.error('Navigation Error', errorData);
+    
+    // In production, you might want to send this to a crash reporting service
+    // Example: Crashlytics.recordError(error);
+    
+    return errorData;
+  }
+
+  /**
+   * Log authentication errors
+   */
+  authError(error, context = {}) {
+    const errorData = {
+      name: error.name,
+      message: error.message,
+      context,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.error('Authentication Error', errorData);
+    return errorData;
+  }
+
+  /**
+   * Log network errors
+   */
+  networkError(error, context = {}) {
+    const errorData = {
+      name: error.name,
+      message: error.message,
+      context,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.error('Network Error', errorData);
+    return errorData;
+  }
+
+  /**
+   * Get recent logs
+   */
+  getRecentLogs(count = 50) {
+    return this.logs.slice(-count);
+  }
+
+  /**
+   * Get logs by level
+   */
+  getLogsByLevel(level) {
+    return this.logs.filter(log => log.level === level);
+  }
+
+  /**
+   * Clear all logs
+   */
+  clearLogs() {
+    this.logs = [];
+  }
+
+  /**
+   * Export logs for debugging
+   */
+  exportLogs() {
+    return {
+      timestamp: new Date().toISOString(),
+      logLevel: this.logLevel,
+      totalLogs: this.logs.length,
+      logs: this.logs,
+    };
   }
 }
 
-// Export a singleton instance
+// Create singleton instance
 const logger = new Logger();
+
 export default logger;

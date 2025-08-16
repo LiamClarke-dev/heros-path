@@ -1,17 +1,22 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUser } from '../../contexts/UserContext';
-import { Alert } from 'react-native';
+import { ThemeAwareNavigationWrapper, ThemeAwareText } from './ThemeAwareNavigationWrapper';
+import { useThemeAwareIcons } from '../../hooks/useThemeTransition';
+import { ThemeSwitcher } from './ThemeSwitcher';
 
 /**
  * Custom drawer content with user profile and navigation items
  */
 export function CustomDrawerContent(props) {
-  const { theme } = useTheme();
+  const { theme, navigationStyles } = useTheme();
   const { user, signOut } = useUser();
+  const { getNavigationIcons } = useThemeAwareIcons();
+  
+  const navigationIcons = getNavigationIcons();
   
   const styles = StyleSheet.create({
     container: {
@@ -19,10 +24,13 @@ export function CustomDrawerContent(props) {
       backgroundColor: theme.colors.surface,
     },
     header: {
-      backgroundColor: theme.colors.primary,
-      padding: 20,
-      paddingTop: 50,
+      ...navigationStyles.drawerHeader,
       marginBottom: 10,
+      // Add gradient-like effect for adventure theme
+      ...(theme.colors.primary === '#8B4513' && {
+        borderBottomWidth: 2,
+        borderBottomColor: theme.colors.secondary,
+      }),
     },
     userInfo: {
       flexDirection: 'row',
@@ -114,7 +122,7 @@ export function CustomDrawerContent(props) {
   };
   
   return (
-    <View style={styles.container}>
+    <ThemeAwareNavigationWrapper style={styles.container}>
       <View style={styles.header}>
         <View style={styles.userInfo}>
           <View style={styles.avatar}>
@@ -123,12 +131,12 @@ export function CustomDrawerContent(props) {
             </Text>
           </View>
           <View style={styles.userDetails}>
-            <Text style={styles.userName}>
+            <ThemeAwareText style={styles.userName} colorKey="text" enableTransitions={false}>
               {user?.displayName || 'Hero'}
-            </Text>
-            <Text style={styles.userEmail}>
+            </ThemeAwareText>
+            <ThemeAwareText style={styles.userEmail} colorKey="text" enableTransitions={false}>
               {user?.email || 'hero@example.com'}
-            </Text>
+            </ThemeAwareText>
           </View>
         </View>
       </View>
@@ -138,11 +146,15 @@ export function CustomDrawerContent(props) {
       </DrawerContentScrollView>
       
       <View style={styles.footer}>
+        <ThemeSwitcher style={{ marginBottom: 16 }} />
+        
         <TouchableOpacity style={styles.footerButton} onPress={handleSignOut}>
-          <Ionicons name="log-out-outline" size={24} color={theme.colors.text} />
-          <Text style={styles.footerButtonText}>Sign Out</Text>
+          <Ionicons name={navigationIcons.close} size={24} color={theme.colors.text} />
+          <ThemeAwareText style={styles.footerButtonText} colorKey="text">
+            Sign Out
+          </ThemeAwareText>
         </TouchableOpacity>
       </View>
-    </View>
+    </ThemeAwareNavigationWrapper>
   );
 }

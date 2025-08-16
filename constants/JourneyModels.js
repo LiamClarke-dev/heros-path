@@ -124,6 +124,25 @@
  */
 
 /**
+ * Represents a segment of a route for exploration tracking
+ * @typedef {Object} RouteSegment
+ * @property {string} [id] - Unique identifier for the segment
+ * @property {LocationCoordinates} start - Starting coordinate of segment
+ * @property {LocationCoordinates} end - Ending coordinate of segment
+ * @property {number} timestamp - Unix timestamp when segment was created
+ * @property {number} [distance] - Distance of the segment in meters
+ * @property {Object} [metadata] - Extensible metadata for segment
+ * @property {string} [metadata.journeyId] - Journey ID this segment belongs to
+ * @property {string[]} [metadata.discoveries] - Discovery IDs in this segment
+ * @property {string[]} [metadata.achievements] - Achievement IDs for this segment
+ * @property {Object} [metadata.socialData] - Social sharing data for segment
+ * @property {number} [metadata.startIndex] - Start index in coordinate array
+ * @property {number} [metadata.endIndex] - End index in coordinate array
+ * @property {number} [metadata.coordinateCount] - Number of coordinates in segment
+ * @property {number} [metadata.mergedSegments] - Number of segments merged into this one
+ */
+
+/**
  * Represents accuracy statistics for location tracking
  * @typedef {Object} AccuracyStats
  * @property {number} averageAccuracy - Average accuracy in meters
@@ -134,6 +153,16 @@
  * @property {number} streetCoveragePercentage - Percentage with street coverage
  * @property {number} totalCoordinates - Total number of coordinates
  * @property {number} filteredCoordinates - Number of filtered coordinates
+ */
+
+/**
+ * Represents an exploration history entry
+ * @typedef {Object} ExplorationHistoryEntry
+ * @property {string} id - Unique identifier for the history entry
+ * @property {string} type - Type of history entry (journey_start, journey_end, segment_added, etc.)
+ * @property {number} timestamp - Unix timestamp when entry was created
+ * @property {Object} data - Entry-specific data
+ * @property {string} createdAt - ISO string of creation time
  */
 
 // Schema version constants

@@ -62,7 +62,7 @@ const themes = {
   },
 };
 
-// React Navigation theme mapping
+// React Navigation theme mapping with enhanced styling
 const createNavigationTheme = (theme) => ({
   dark: theme.dark,
   colors: {
@@ -92,6 +92,92 @@ const createNavigationTheme = (theme) => ({
     },
   },
 });
+
+// Enhanced navigation styling configurations
+const createNavigationStyles = (theme) => ({
+  // Header styles
+  header: {
+    backgroundColor: theme.colors.surface,
+    borderBottomColor: theme.colors.border,
+    borderBottomWidth: 1,
+    elevation: 4,
+    shadowColor: theme.colors.text,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: theme.dark ? 0.3 : 0.1,
+    shadowRadius: 4,
+  },
+  headerTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  headerTint: theme.colors.text,
+  
+  // Tab bar styles
+  tabBar: {
+    backgroundColor: theme.colors.surface,
+    borderTopColor: theme.colors.border,
+    borderTopWidth: 1,
+    elevation: 8,
+    shadowColor: theme.colors.text,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: theme.dark ? 0.3 : 0.1,
+    shadowRadius: 8,
+  },
+  tabBarActive: theme.colors.primary,
+  tabBarInactive: theme.colors.textSecondary,
+  tabBarLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  
+  // Drawer styles
+  drawer: {
+    backgroundColor: theme.colors.surface,
+    width: 280,
+  },
+  drawerActive: theme.colors.primary,
+  drawerInactive: theme.colors.textSecondary,
+  drawerActiveBackground: `${theme.colors.primary}20`,
+  drawerHeader: {
+    backgroundColor: theme.colors.primary,
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  
+  // Animation and transition styles
+  cardStyle: {
+    backgroundColor: theme.colors.background,
+  },
+  overlayColor: theme.dark ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)',
+  
+  // Accessibility contrast ratios
+  contrastRatios: {
+    primaryOnBackground: getContrastRatio(theme.colors.primary, theme.colors.background),
+    textOnSurface: getContrastRatio(theme.colors.text, theme.colors.surface),
+    textOnPrimary: getContrastRatio('#FFFFFF', theme.colors.primary),
+  },
+});
+
+// Helper function to calculate contrast ratio for accessibility
+const getContrastRatio = (foreground, background) => {
+  // Simplified contrast ratio calculation
+  // In a real implementation, you'd use a proper color contrast library
+  const getLuminance = (color) => {
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16) / 255;
+    const g = parseInt(hex.substr(2, 2), 16) / 255;
+    const b = parseInt(hex.substr(4, 2), 16) / 255;
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  };
+  
+  const l1 = getLuminance(foreground);
+  const l2 = getLuminance(background);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+};
 
 export function ThemeProvider({ children }) {
   const systemColorScheme = useColorScheme();
@@ -138,10 +224,12 @@ export function ThemeProvider({ children }) {
 
   const theme = getEffectiveTheme();
   const navigationTheme = createNavigationTheme(theme);
+  const navigationStyles = createNavigationStyles(theme);
 
   const value = {
     theme,
     navigationTheme,
+    navigationStyles,
     currentTheme,
     setTheme,
     isLoading,

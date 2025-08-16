@@ -569,8 +569,11 @@ const useJourneyTracking = () => {
   /**
    * Handle journey save from naming modal
    * Implements journey saving functionality with enhanced error handling as per requirement 2.2
+   * @param {string} journeyName - Name for the journey
+   * @param {boolean} overrideValidation - Whether to skip validation
+   * @param {function} onJourneyCompleted - Optional callback for navigation after save
    */
-  const saveJourney = useCallback(async (journeyName, overrideValidation = false) => {
+  const saveJourney = useCallback(async (journeyName, overrideValidation = false, onJourneyCompleted = null) => {
     if (!namingModal.journey) {
       console.error('No journey data to save');
       Alert.alert(
@@ -645,8 +648,20 @@ const useJourneyTracking = () => {
       Alert.alert(
         'Journey Saved Successfully!',
         `"${savedJourney.name}" has been saved.\n\nDistance: ${distanceText}\nDuration: ${Math.round(savedJourney.duration / 60000)} minutes`,
-        [{ text: 'Great!' }]
+        [
+          { text: 'Great!' },
+          ...(onJourneyCompleted ? [{ 
+            text: 'View Journeys', 
+            onPress: () => onJourneyCompleted(savedJourney) 
+          }] : [])
+        ]
       );
+
+      // Call navigation callback if provided
+      if (onJourneyCompleted) {
+        // Small delay to let the alert show first
+        setTimeout(() => onJourneyCompleted(savedJourney), 100);
+      }
 
       return savedJourney;
     } catch (error) {

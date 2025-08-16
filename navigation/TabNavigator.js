@@ -1,13 +1,22 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useThemeAwareIcons } from '../hooks/useThemeTransition';
+// Temporarily disabled: import { ThemeAwareNavigationWrapper } from '../components/navigation/ThemeAwareNavigationWrapper';
 import { MapStack } from './stacks/MapStack';
 import { JourneysStack } from './stacks/JourneysStack';
 import { DiscoveriesStack } from './stacks/DiscoveriesStack';
 import { SavedPlacesStack } from './stacks/SavedPlacesStack';
+// Performance utilities temporarily disabled
+// import { 
+//   useOptimizedNavigation,
+//   withNavigationPerformance 
+// } from '../utils/navigationPerformance';
+// import { useNavigationTiming } from '../utils/navigationTimingMonitor';
+// import { useAdaptiveScreenSize } from '../utils/responsivePerformanceHandler';
 
 const Tab = createBottomTabNavigator();
 
@@ -16,28 +25,42 @@ const Tab = createBottomTabNavigator();
  * Enables quick switching between primary functions with badge support
  */
 export function TabNavigator() {
-  const { theme } = useTheme();
+  const { theme, navigationStyles } = useTheme();
+  const { getNavigationIcons } = useThemeAwareIcons();
   const insets = useSafeAreaInsets();
+  // Performance utilities temporarily disabled
+  // const { navigate } = useOptimizedNavigation();
+  // const { markPhase } = useNavigationTiming('TabNavigator');
+  // const { config, isSmallScreen, isLowEndDevice } = useAdaptiveScreenSize();
+  
+  const navigationIcons = getNavigationIcons();
+  
+  // Performance utilities temporarily disabled
+  // React.useEffect(() => {
+  //   markPhase('tabNavigatorReady');
+  // }, [markPhase]);
   
   // Mock badge data - in real implementation, this would come from context/state
-  const tabBadges = {
+  const tabBadges = useMemo(() => ({
     Map: null,
     Journeys: null,
     Discoveries: 3, // Example: 3 new discoveries
     SavedPlaces: null,
-  };
+  }), []);
   
-  const getTabIcon = (routeName, focused) => {
+  // Memoized icon mapping for performance
+  const getTabIcon = useCallback((routeName, focused) => {
     const iconMap = {
-      Map: focused ? 'map' : 'map-outline',
-      Journeys: focused ? 'trail-sign' : 'trail-sign-outline',
-      Discoveries: focused ? 'compass' : 'compass-outline',
-      SavedPlaces: focused ? 'bookmark' : 'bookmark-outline',
+      Map: focused ? navigationIcons.map : 'map-outline',
+      Journeys: focused ? navigationIcons.journeys : 'trail-sign-outline',
+      Discoveries: focused ? navigationIcons.discoveries : 'compass-outline',
+      SavedPlaces: focused ? navigationIcons.savedPlaces : 'bookmark-outline',
     };
     return iconMap[routeName] || 'help-circle-outline';
-  };
+  }, [navigationIcons]);
   
-  const TabIconWithBadge = ({ routeName, focused, color, size }) => {
+  // Memoized tab icon component for performance
+  const TabIconWithBadge = React.memo(({ routeName, focused, color, size }) => {
     const iconName = getTabIcon(routeName, focused);
     const badgeCount = tabBadges[routeName];
     
@@ -53,9 +76,17 @@ export function TabNavigator() {
         )}
       </View>
     );
-  };
+  });
   
-  const styles = StyleSheet.create({
+  // Mark tab navigator as interactive - temporarily disabled
+  // React.useEffect(() => {
+  //   if (config) {
+  //     markPhase('tabNavigatorReady');
+  //   }
+  // }, [markPhase, config]);
+
+  // Memoized styles for performance
+  const styles = useMemo(() => StyleSheet.create({
     badge: {
       position: 'absolute',
       right: -8,
@@ -73,7 +104,10 @@ export function TabNavigator() {
       fontWeight: 'bold',
       color: '#FFFFFF',
     },
-  });
+  }), [theme.colors.notification]);
+  
+  // Performance config temporarily disabled - render immediately
+  // if (!config) return null;
   
   return (
     <Tab.Navigator
@@ -88,20 +122,37 @@ export function TabNavigator() {
             />
           );
         },
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.textSecondary,
+        tabBarActiveTintColor: navigationStyles.tabBarActive,
+        tabBarInactiveTintColor: navigationStyles.tabBarInactive,
         tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.border,
-          borderTopWidth: 1,
-          paddingBottom: Math.max(insets.bottom, 10), // Ensure minimum 10pt buffer
+          ...navigationStyles.tabBar,
+          paddingBottom: Math.max(insets.bottom, 10),
           paddingTop: 5,
-          height: 60 + Math.max(insets.bottom, 10), // Adjust height for safe area
+          height: 60 + Math.max(insets.bottom, 10),
         },
         tabBarLabelStyle: {
+          ...navigationStyles.tabBarLabel,
           fontSize: 12,
-          fontWeight: '500',
+          display: 'flex',
         },
+        tabBarIconStyle: {
+          marginBottom: 0,
+        },
+        // Enhanced animation and interaction
+        tabBarButton: (props) => (
+          <TouchableOpacity
+            {...props}
+            activeOpacity={0.7}
+            style={[
+              props.style,
+              {
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+              },
+            ]}
+          />
+        ),
         headerShown: false,
         tabBarHideOnKeyboard: true,
       })}

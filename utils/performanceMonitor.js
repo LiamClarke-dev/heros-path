@@ -3,7 +3,10 @@
  * Measures rendering performance, memory usage, and component re-render frequency
  */
 
-import { performance } from 'perf_hooks';
+// React Native compatible performance API
+const performance = {
+  now: () => Date.now(),
+};
 
 class PerformanceMonitor {
   constructor() {

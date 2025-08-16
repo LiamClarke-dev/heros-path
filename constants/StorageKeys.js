@@ -54,6 +54,10 @@ export const JOURNEY_STORAGE_KEYS = {
   DEV_MODE_ENABLED: `${STORAGE_PREFIXES.DEV}mode_enabled`,
   MOCK_LOCATION_DATA: `${STORAGE_PREFIXES.DEV}mock_location`,
   DEBUG_LOGGING: `${STORAGE_PREFIXES.DEV}debug_logging`,
+
+  // Exploration context
+  EXPLORATION_SEGMENTS: `${STORAGE_PREFIXES.JOURNEY}exploration_segments`,
+  EXPLORATION_HISTORY: `${STORAGE_PREFIXES.JOURNEY}exploration_history`,
 };
 
 /**

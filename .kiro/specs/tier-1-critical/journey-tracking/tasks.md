@@ -81,7 +81,7 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 2.1, 2.5, 2.6_
 
-- [-] 5. Develop PastJourneysScreen for journey management
+- [x] 5. Develop PastJourneysScreen for journey management
   - [x] 5.1 Implement journey list display
     - Create journey list component with sorting
     - Add journey metadata display (name, date, distance, duration)
@@ -91,11 +91,6 @@
     - _Requirements: 3.1, 3.2_
 
   - [x] 5.2 Implement journey management functions
-
-
-
-
-
     - Add journey deletion with confirmation
     - Create navigation to journey discoveries
     - Implement journey completion status indicators
@@ -103,7 +98,7 @@
     - Please ensure you are following the instructions in .kiro\steering\modular-architecture.md
     - _Requirements: 3.3, 3.6, 4.1, 4.2, 4.5_
 
-- [ ] 6. Implement ExplorationContext enhancements
+- [x] 6. Implement ExplorationContext enhancements
   - Create segment tracking for explored routes
   - Add current journey state management
   - Implement persistence for exploration data

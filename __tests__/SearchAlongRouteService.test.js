@@ -85,7 +85,7 @@ describe('SearchAlongRouteService', () => {
     service = SearchAlongRouteService;
     service.clearCache();
     jest.clearAllMocks();
-    
+
     // Setup default mocks
     const { validateCoordinates, encodeRoute, isRouteLongEnoughForSAR } = require('../utils/routeEncoder');
     validateCoordinates.mockReturnValue(true);
@@ -104,10 +104,10 @@ describe('SearchAlongRouteService', () => {
       // Mock Platform.OS for this test
       const originalPlatform = require('react-native').Platform;
       require('react-native').Platform = { OS: 'android' };
-      
+
       const apiKey = service.getApiKey();
       expect(apiKey).toBe('test-android-key');
-      
+
       // Restore original platform
       require('react-native').Platform = originalPlatform;
     });
@@ -115,11 +115,11 @@ describe('SearchAlongRouteService', () => {
     it('should throw error when no API key is available', () => {
       // Test the fallback logic by temporarily modifying the service
       const originalGetApiKey = service.getApiKey;
-      service.getApiKey = function() {
+      service.getApiKey = function () {
         // Mock empty API keys
         const { Platform } = require('react-native');
         let apiKey;
-        
+
         if (Platform.OS === 'ios' && '') {
           apiKey = '';
         } else if (Platform.OS === 'android' && '') {
@@ -135,9 +135,9 @@ describe('SearchAlongRouteService', () => {
 
         return apiKey;
       };
-      
+
       expect(() => service.getApiKey()).toThrow('No Google Maps API key available for Search Along Route');
-      
+
       // Restore original method
       service.getApiKey = originalGetApiKey;
     });
@@ -390,7 +390,7 @@ describe('SearchAlongRouteService', () => {
     it('should use cached results when available', async () => {
       // First call
       const result1 = await service.searchAlongRoute(mockCoordinates, mockPreferences, 4.0);
-      
+
       // Second call should use cache
       const result2 = await service.searchAlongRoute(mockCoordinates, mockPreferences, 4.0);
 
@@ -405,7 +405,7 @@ describe('SearchAlongRouteService', () => {
       isRouteLongEnoughForSAR.mockReturnValue(true);
 
       const result = service.isRouteLongEnough(mockCoordinates);
-      
+
       expect(isRouteLongEnoughForSAR).toHaveBeenCalledWith(mockCoordinates);
       expect(result).toBe(true);
     });
@@ -427,7 +427,7 @@ describe('SearchAlongRouteService', () => {
     it('should store and retrieve cached data', () => {
       const testData = [{ id: 'test' }];
       service.setCachedData('test-key', testData);
-      
+
       const retrieved = service.getCachedData('test-key');
       expect(retrieved).toEqual(testData);
     });
@@ -435,13 +435,13 @@ describe('SearchAlongRouteService', () => {
     it('should return null for expired cache data', () => {
       const testData = [{ id: 'test' }];
       service.setCachedData('test-key', testData);
-      
+
       // Mock expired cache
       service.cache.set('test-key', {
         data: testData,
         timestamp: Date.now() - (11 * 60 * 1000) // 11 minutes ago
       });
-      
+
       const retrieved = service.getCachedData('test-key');
       expect(retrieved).toBeNull();
     });
@@ -449,9 +449,9 @@ describe('SearchAlongRouteService', () => {
     it('should clear all cache data', () => {
       service.setCachedData('test-key-1', [{ id: 'test1' }]);
       service.setCachedData('test-key-2', [{ id: 'test2' }]);
-      
+
       service.clearCache();
-      
+
       expect(service.getCachedData('test-key-1')).toBeNull();
       expect(service.getCachedData('test-key-2')).toBeNull();
     });
@@ -576,9 +576,9 @@ describe('SearchAlongRouteService', () => {
           cafe: false
         }
       };
-      
 
-      
+
+
       const result = service.applyPreferenceFiltering(placesWithoutTypes, preferences);
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('place5');
@@ -696,7 +696,7 @@ describe('SearchAlongRouteService', () => {
         }
       };
       const result = service.applyCategoryBalancing(mockPlaces, preferences);
-      
+
       // Should have representatives from each enabled category
       const categories = new Set(result.map(p => p.category));
       expect(categories.size).toBeGreaterThan(1);
@@ -710,7 +710,7 @@ describe('SearchAlongRouteService', () => {
         }
       };
       const result = service.applyCategoryBalancing(mockPlaces, preferences);
-      
+
       // Find food places in result
       const foodPlaces = result.filter(p => p.category === 'Food & Dining');
       if (foodPlaces.length > 1) {
@@ -750,7 +750,7 @@ describe('SearchAlongRouteService', () => {
 
     it('should handle invalid discovery preferences', () => {
       const result = service.createSARPreferencesFromDiscoveryScreen(null, 4.0);
-      
+
       // When discovery preferences are null, placeTypes should be empty object but normalized to have all types as false
       expect(Object.keys(result.placeTypes).length).toBeGreaterThan(0); // All place types will be present as false
       expect(result.minRating).toBe(4.0);
@@ -777,14 +777,14 @@ describe('SearchAlongRouteService', () => {
         minRating: 4.0
       };
       const result = service.validateDiscoveryScreenCompatibility(preferences);
-      
+
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
     it('should detect invalid preferences', () => {
       const result = service.validateDiscoveryScreenCompatibility(null);
-      
+
       expect(result.isValid).toBe(false);
       expect(result.errors).toContain('Preferences object is required');
     });
@@ -795,7 +795,7 @@ describe('SearchAlongRouteService', () => {
         minRating: 4.8
       };
       const result = service.validateDiscoveryScreenCompatibility(preferences);
-      
+
       expect(result.warnings).toContain('Very high minimum rating may result in few discoveries');
     });
 
@@ -805,7 +805,7 @@ describe('SearchAlongRouteService', () => {
         minRating: 4.0
       };
       const result = service.validateDiscoveryScreenCompatibility(preferences);
-      
+
       expect(result.suggestions).toContain('Consider enabling more place types for diverse discoveries');
     });
   });
@@ -860,7 +860,7 @@ describe('SearchAlongRouteService', () => {
         categoryBalancing: true
       };
       const result = service.validateAndNormalizePreferences(preferences);
-      
+
       expect(result.placeTypes.restaurant).toBe(true);
       expect(result.placeTypes.cafe).toBe(false);
       expect(result.minRating).toBe(4.0);
@@ -874,7 +874,7 @@ describe('SearchAlongRouteService', () => {
         minRating: 3.5
       };
       const result = service.validateAndNormalizePreferences(preferences);
-      
+
       expect(result.placeTypes.restaurant).toBe(true);
       expect(result.placeTypes.cafe).toBe(false);
       expect(result.minRating).toBe(3.5);
@@ -885,11 +885,11 @@ describe('SearchAlongRouteService', () => {
       Object.keys(PLACE_TYPES).forEach(type => {
         allTypesPreferences[type] = true;
       });
-      
+
       const result = service.validateAndNormalizePreferences({
         placeTypes: allTypesPreferences
       });
-      
+
       expect(result.allTypes).toBe(true);
     });
   });
@@ -898,7 +898,7 @@ describe('SearchAlongRouteService', () => {
     it('should have all required place types defined', () => {
       expect(PLACE_TYPES).toBeDefined();
       expect(Object.keys(PLACE_TYPES).length).toBeGreaterThan(0);
-      
+
       // Check some key place types
       expect(PLACE_TYPES.restaurant).toBe('Restaurant');
       expect(PLACE_TYPES.cafe).toBe('Cafe');
@@ -971,7 +971,7 @@ describe('SearchAlongRouteService', () => {
 
       it('should calculate center point correctly', async () => {
         const { calculateCenterPoint } = require('../utils/routeEncoder');
-        
+
         fetch.mockResolvedValue({
           ok: true,
           json: async () => ({ places: [] })
@@ -1262,7 +1262,7 @@ describe('SearchAlongRouteService', () => {
         fetch.mockRejectedValue(new Error('API completely unavailable'));
 
         const result = await service.searchAlongRouteWithFallback(mockCoordinates, mockPreferences);
-        
+
         // Should return empty array when all API calls fail, not throw error
         expect(result).toEqual([]);
       });

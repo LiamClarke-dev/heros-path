@@ -10,23 +10,32 @@ const Stack = createStackNavigator();
  * Stack navigator for settings-related screens
  */
 export function SettingsStack() {
-  const { theme } = useTheme();
+  const { theme, navigationStyles } = useTheme();
   
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: true, // Ensure headers are shown
-        headerStyle: {
-          backgroundColor: theme.colors.surface,
-          borderBottomColor: theme.colors.border,
-          borderBottomWidth: 1,
-        },
-        headerTintColor: theme.colors.text,
-        headerTitleStyle: {
-          fontWeight: '600',
-          fontSize: 18,
-        },
+        headerStyle: navigationStyles.header,
+        headerTintColor: navigationStyles.headerTint,
+        headerTitleStyle: navigationStyles.headerTitle,
         headerBackTitleVisible: false, // Hide back title on iOS
+        cardStyle: navigationStyles.cardStyle,
+        // Enhanced transition animations
+        transitionSpec: {
+          open: {
+            animation: 'timing',
+            config: {
+              duration: 300,
+            },
+          },
+          close: {
+            animation: 'timing',
+            config: {
+              duration: 250,
+            },
+          },
+        },
       }}
     >
       <Stack.Screen 

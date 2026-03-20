@@ -93,6 +93,19 @@ export default function JourneyScreen() {
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentJourneyIdRef = useRef<string | null>(null);
 
+  function handleLocateMe() {
+    if (!currentLocation) return;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: currentLocation.lat,
+        longitude: currentLocation.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      },
+      500,
+    );
+  }
+
   const apiBase = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
     : "http://localhost:3000/api";
@@ -597,6 +610,26 @@ export default function JourneyScreen() {
         </View>
       )}
 
+      {/* Floating map action buttons — Locate Me + Discovery Filter (idle only) */}
+      <View style={[styles.mapActions, { top: insets.top + 12, right: 12 }]}>
+        {journeyStatus === "idle" && (
+          <Pressable
+            style={styles.mapActionBtn}
+            onPress={() => router.push("/settings/preferences")}
+            accessibilityLabel="Discovery preferences"
+          >
+            <Feather name="sliders" size={18} color={Colors.parchment} />
+          </Pressable>
+        )}
+        <Pressable
+          style={styles.mapActionBtn}
+          onPress={handleLocateMe}
+          accessibilityLabel="Center map on my location"
+        >
+          <Feather name="crosshair" size={18} color={Colors.parchment} />
+        </Pressable>
+      </View>
+
       {/* Quest/XP celebration overlay */}
       {celebrationVisible && celebrationData && (
         <Animated.View
@@ -883,5 +916,25 @@ const styles = StyleSheet.create({
     color: Colors.background,
     fontFamily: "Inter_600SemiBold",
     flex: 1,
+  },
+  mapActions: {
+    position: "absolute",
+    flexDirection: "column",
+    gap: 8,
+    alignItems: "center",
+  },
+  mapActionBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(26,21,16,0.88)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 6,
   },
 });

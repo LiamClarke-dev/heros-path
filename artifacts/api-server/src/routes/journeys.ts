@@ -749,9 +749,22 @@ router.patch("/journeys/:journeyId", requireAuth, async (req: Request, res: Resp
         );
       }
       updates.totalDistanceM = totalDist.toFixed(2);
-      updates.polylineEncoded = encodePolyline(
-        allWaypoints.map((w) => ({ lat: Number(w.lat), lng: Number(w.lng) })),
-      );
+
+      const rawCoords = allWaypoints.map((w) => ({ lat: Number(w.lat), lng: Number(w.lng) }));
+      updates.polylineEncoded = encodePolyline(rawCoords);
+
+      // Attempt to snap the route to roads for smoother historical polylines on the map.
+      // Requires "Roads API" to be enabled in Google Cloud Console.
+      // If snapping fails the raw GPS polyline is kept — journey saving is never blocked.
+      try {
+        const snapped = await snapRouteToRoads(rawCoords);
+        if (snapped && snapped.length >= 2) {
+          updates.polylineEncoded = encodePolyline(snapped);
+          console.log(`[snap-to-roads] Snapped ${rawCoords.length} → ${snapped.length} points`);
+        }
+      } catch (err) {
+        console.warn("[snap-to-roads] Unexpected error — keeping raw polyline:", (err as Error)?.message);
+      }
     }
   }
 
@@ -1071,6 +1084,81 @@ router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request,
 // Default place type queries used when the user has no specific preferences set
 const DEFAULT_ROUTE_QUERIES = ["restaurant", "cafe", "museum", "park", "tourist_attraction"];
 
+/**
+ * Calls the Google Roads API `snapToRoads` to align raw GPS waypoints to the
+ * nearest roads. Returns snapped coordinates, or null if the API call fails.
+ *
+ * REQUIREMENTS: "Roads API" must be enabled in your Google Cloud project.
+ * Enable it at: https://console.cloud.google.com/apis/library/roads.googleapis.com
+ *
+ * Limits: Roads API accepts ≤ 100 points per request. We downsample if needed.
+ */
+async function snapRouteToRoads(
+  coords: { lat: number; lng: number }[],
+): Promise<{ lat: number; lng: number }[] | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return null;
+  if (coords.length < 2) return null;
+
+  // Downsample to the API's 100-point maximum
+  const MAX_POINTS = 100;
+  let points = coords;
+  if (points.length > MAX_POINTS) {
+    const step = (points.length - 1) / (MAX_POINTS - 1);
+    points = Array.from({ length: MAX_POINTS }, (_, i) =>
+      coords[Math.min(Math.round(i * step), coords.length - 1)],
+    );
+  }
+
+  const path = points.map((p) => `${p.lat},${p.lng}`).join("|");
+  const url =
+    `https://roads.googleapis.com/v1/snapToRoads?path=${encodeURIComponent(path)}` +
+    `&interpolate=true&key=${apiKey}`;
+
+  let res: Response | null = null;
+  try {
+    res = await fetch(url);
+  } catch (err) {
+    console.warn("[snap-to-roads] Network error:", (err as Error)?.message);
+    return null;
+  }
+
+  if (!res.ok) {
+    let body = "";
+    try {
+      body = await res.text();
+    } catch {
+      // ignore
+    }
+    console.warn(`[snap-to-roads] Failed: HTTP ${res.status}`, body.slice(0, 400));
+    if (
+      body.includes("SERVICE_DISABLED") ||
+      body.includes("API_NOT_ACTIVATED") ||
+      body.includes("REQUEST_DENIED") ||
+      res.status === 403
+    ) {
+      console.warn(
+        "[snap-to-roads] ⚠️  Roads API is not enabled. Enable it at: " +
+          "https://console.cloud.google.com/apis/library/roads.googleapis.com",
+      );
+    }
+    return null;
+  }
+
+  interface SnappedPoint {
+    location: { latitude: number; longitude: number };
+    originalIndex?: number;
+    placeId?: string;
+  }
+  const data = (await res.json()) as { snappedPoints?: SnappedPoint[] };
+  if (!data.snappedPoints || data.snappedPoints.length === 0) return null;
+
+  return data.snappedPoints.map((sp) => ({
+    lat: sp.location.latitude,
+    lng: sp.location.longitude,
+  }));
+}
+
 interface PlaceResult {
   googlePlaceId: string;
   name: string;
@@ -1107,7 +1195,14 @@ async function discoverPlacesAlongRoute(
   encodedPolyline: string,
 ) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey || !encodedPolyline) return;
+  if (!apiKey) {
+    console.warn("[discovery] GOOGLE_MAPS_API_KEY is not set — skipping place discovery");
+    return;
+  }
+  if (!encodedPolyline) {
+    console.warn("[discovery] No encoded polyline provided — skipping place discovery");
+    return;
+  }
 
   const prefs = await db
     .select()
@@ -1121,8 +1216,7 @@ async function discoverPlacesAlongRoute(
   // Use user's selected types (up to 5) or fall back to default discovery categories
   const queries = placeTypes.length > 0 ? placeTypes.slice(0, 5) : DEFAULT_ROUTE_QUERIES;
 
-  // Also exclude places already discovered in THIS journey (from pings) to avoid
-  // double-counting within the same journey
+  // Exclude places already discovered in THIS journey (from pings) to avoid double-counting
   const alreadyFound = await db
     .select({ googlePlaceId: journeyDiscoveredPlacesTable.googlePlaceId })
     .from(journeyDiscoveredPlacesTable)
@@ -1132,34 +1226,72 @@ async function discoverPlacesAlongRoute(
   const allFound = new Map<string, PlaceResult>();
 
   const SEARCH_ALONG_ROUTE_URL = "https://places.googleapis.com/v1/places:searchText";
-  const FIELD_MASK = "places.id,places.displayName,places.location,places.rating,places.types,places.formattedAddress,places.photos";
+  const FIELD_MASK =
+    "places.id,places.displayName,places.location,places.rating,places.types,places.formattedAddress,places.photos";
+
+  let routeSearchErrors = 0;
 
   for (const query of queries) {
-    const res = await fetch(SEARCH_ALONG_ROUTE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": FIELD_MASK,
-      },
-      body: JSON.stringify({
-        textQuery: query,
-        maxResultCount: 20,
-        searchAlongRouteParameters: {
-          polyline: { encodedPolyline },
+    let res: Response | null = null;
+    try {
+      res = await fetch(SEARCH_ALONG_ROUTE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": FIELD_MASK,
         },
-      }),
-    }).catch(() => null);
+        body: JSON.stringify({
+          textQuery: query,
+          maxResultCount: 20,
+          searchAlongRouteParameters: {
+            polyline: { encodedPolyline },
+          },
+        }),
+      });
+    } catch (err) {
+      routeSearchErrors++;
+      console.warn(
+        `[discovery] Route search network error for query "${query}":`,
+        (err as Error)?.message,
+      );
+      continue;
+    }
 
-    if (!res?.ok) continue;
+    if (!res.ok) {
+      routeSearchErrors++;
+      let body = "";
+      try {
+        body = await res.text();
+      } catch {
+        // ignore
+      }
+      console.warn(
+        `[discovery] Route search failed for query "${query}": HTTP ${res.status}`,
+        body.slice(0, 400),
+      );
+      // Provide actionable guidance when the API is not enabled in GCP
+      if (
+        body.includes("REQUEST_DENIED") ||
+        body.includes("API_NOT_ACTIVATED") ||
+        body.includes("SERVICE_DISABLED") ||
+        res.status === 403
+      ) {
+        console.warn(
+          "[discovery] ⚠️  Places API (New) may not be enabled. Enable it at: " +
+            "https://console.cloud.google.com/apis/library/places-backend.googleapis.com",
+        );
+      }
+      continue;
+    }
 
     const data = (await res.json()) as PlacesNewApiResponse;
+    const rawCount = data.places?.length ?? 0;
+    console.log(`[discovery] Route search "${query}": ${rawCount} raw result(s)`);
 
     for (const p of data.places ?? []) {
       if (!p.id || !p.location) continue;
-      // Only skip if already tracked in THIS journey (to avoid counting twice per journey)
       if (alreadyFoundIds.has(p.id) || allFound.has(p.id)) continue;
-      // Apply rating filter (0 = no filter)
       if (minRating > 0 && (p.rating ?? 0) < minRating) continue;
 
       allFound.set(p.id, {
@@ -1169,7 +1301,6 @@ async function discoverPlacesAlongRoute(
         lng: p.location.longitude,
         rating: p.rating ?? null,
         types: p.types ?? [],
-        // photos[0].name is the resource name — store it for later rendering
         photoReference: p.photos?.[0]?.name ?? null,
         address: p.formattedAddress ?? null,
         distanceM: 0,
@@ -1177,11 +1308,110 @@ async function discoverPlacesAlongRoute(
     }
   }
 
-  // Persist ALL places (including rediscoveries across journeys) so discoveryCount stays accurate
+  // If route-based search found nothing, fall back to a nearby search around the route midpoint
+  if (allFound.size === 0) {
+    console.warn(
+      `[discovery] Route search returned 0 places (${routeSearchErrors}/${queries.length} errors). ` +
+        "Falling back to nearby search...",
+    );
+    await discoverNearbyFallback(journeyId, apiKey, queries, alreadyFoundIds, minRating, allFound);
+  }
+
+  // Persist all found places (including rediscoveries across journeys) so discoveryCount stays accurate
   const places = Array.from(allFound.values());
+  console.log(`[discovery] Saving ${places.length} discovered place(s) for journey ${journeyId}`);
   if (places.length > 0) {
     await upsertPlaceCache(places);
     await saveDiscoveredPlaces(places, journeyId, userId, "route");
+  }
+}
+
+/**
+ * Fallback: uses the Places API (New) Nearby Search when route-based search returns nothing.
+ * Searches a 500 m circle around the journey's midpoint waypoint.
+ */
+async function discoverNearbyFallback(
+  journeyId: string,
+  apiKey: string,
+  queries: string[],
+  alreadyFoundIds: Set<string>,
+  minRating: number,
+  allFound: Map<string, PlaceResult>,
+) {
+  const waypoints = await db
+    .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
+    .from(journeyWaypointsTable)
+    .where(eq(journeyWaypointsTable.journeyId, journeyId))
+    .orderBy(journeyWaypointsTable.recordedAt);
+
+  if (waypoints.length === 0) {
+    console.warn("[discovery] No waypoints for journey — cannot run nearby fallback");
+    return;
+  }
+
+  const midpoint = waypoints[Math.floor(waypoints.length / 2)];
+  const centerLat = Number(midpoint.lat);
+  const centerLng = Number(midpoint.lng);
+
+  const NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby";
+  const FIELD_MASK =
+    "places.id,places.displayName,places.location,places.rating,places.types,places.formattedAddress,places.photos";
+
+  let res: Response | null = null;
+  try {
+    res = await fetch(NEARBY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": FIELD_MASK,
+      },
+      body: JSON.stringify({
+        includedTypes: queries,
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: {
+            center: { latitude: centerLat, longitude: centerLng },
+            radius: 500,
+          },
+        },
+      }),
+    });
+  } catch (err) {
+    console.warn("[discovery] Nearby fallback network error:", (err as Error)?.message);
+    return;
+  }
+
+  if (!res.ok) {
+    let body = "";
+    try {
+      body = await res.text();
+    } catch {
+      // ignore
+    }
+    console.warn(`[discovery] Nearby fallback failed: HTTP ${res.status}`, body.slice(0, 400));
+    return;
+  }
+
+  const data = (await res.json()) as PlacesNewApiResponse;
+  console.log(`[discovery] Nearby fallback returned ${data.places?.length ?? 0} place(s)`);
+
+  for (const p of data.places ?? []) {
+    if (!p.id || !p.location) continue;
+    if (alreadyFoundIds.has(p.id) || allFound.has(p.id)) continue;
+    if (minRating > 0 && (p.rating ?? 0) < minRating) continue;
+
+    allFound.set(p.id, {
+      googlePlaceId: p.id,
+      name: p.displayName?.text ?? "Unknown Place",
+      lat: p.location.latitude,
+      lng: p.location.longitude,
+      rating: p.rating ?? null,
+      types: p.types ?? [],
+      photoReference: p.photos?.[0]?.name ?? null,
+      address: p.formattedAddress ?? null,
+      distanceM: 0,
+    });
   }
 }
 

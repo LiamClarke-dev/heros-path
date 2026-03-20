@@ -68,13 +68,12 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
         eq(userDiscoveredPlacesTable.userId, user.id),
         // Dismissed places are NEVER shown in any discover filter
         eq(userDiscoveredPlacesTable.isDismissed, false),
+        // Snoozed places are hidden from default/favorited feeds; only visible via filter=snoozed
+        filter !== "snoozed" ? eq(userDiscoveredPlacesTable.isSnoozed, false) : undefined,
         filter === "favorited" ? eq(userDiscoveredPlacesTable.isFavorited, true) : undefined,
         filter === "snoozed" ? eq(userDiscoveredPlacesTable.isSnoozed, true) : undefined,
         filter === "unreviewed"
-          ? and(
-              eq(userDiscoveredPlacesTable.isFavorited, false),
-              eq(userDiscoveredPlacesTable.isSnoozed, false),
-            )
+          ? eq(userDiscoveredPlacesTable.isFavorited, false)
           : undefined,
       ),
     )

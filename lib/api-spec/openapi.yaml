@@ -406,6 +406,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/PlacesResponse"
 
+  /lists/{listId}/places/{googlePlaceId}/move:
+    post:
+      operationId: movePlaceBetweenLists
+      tags: [lists]
+      summary: Move a place from one list to another
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: googlePlaceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetListId]
+              properties:
+                targetListId:
+                  type: string
+      responses:
+        "200":
+          description: Place moved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Bad request (missing targetListId or same source/target)
+        "403":
+          description: List not found or access denied
+
   /quests:
     get:
       operationId: getQuests

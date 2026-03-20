@@ -545,14 +545,25 @@ router.get("/journeys/history", requireAuth, async (req: Request, res: Response)
 
   const journeyData = await Promise.all(
     completed.map(async (j) => {
-      const waypoints = await db
+      // Prefer the stored polyline (which may be road-snapped) over raw waypoints.
+      // Fall back to raw waypoints for older journeys that pre-date polyline storage.
+      if (j.polylineEncoded) {
+        const decoded = decodePolyline(j.polylineEncoded);
+        return {
+          id: j.id,
+          startedAt: j.startedAt,
+          waypoints: decoded,
+        };
+      }
+
+      const waypointRows = await db
         .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
         .from(journeyWaypointsTable)
         .where(eq(journeyWaypointsTable.journeyId, j.id))
         .orderBy(journeyWaypointsTable.recordedAt);
 
-      // Sample every 3rd waypoint to reduce payload size
-      const sampled = waypoints.filter((_, i) => i % 3 === 0);
+      // Sample every 3rd waypoint to reduce payload size for legacy journeys
+      const sampled = waypointRows.filter((_, i) => i % 3 === 0);
 
       return {
         id: j.id,
@@ -1530,6 +1541,38 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   const dLambda = ((lng2 - lng1) * Math.PI) / 180;
   const a = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function decodePolyline(encoded: string): { lat: number; lng: number }[] {
+  const coords: { lat: number; lng: number }[] = [];
+  let idx = 0;
+  let lat = 0;
+  let lng = 0;
+  while (idx < encoded.length) {
+    let b: number;
+    let shift = 0;
+    let result = 0;
+    do {
+      b = encoded.charCodeAt(idx++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(idx++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    coords.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return coords;
 }
 
 function encodePolyline(coords: { lat: number; lng: number }[]): string {

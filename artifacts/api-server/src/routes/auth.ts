@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
 const router: IRouter = Router();
 
@@ -150,6 +151,129 @@ router.post("/auth/google", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "auth/google error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+function makeSession() {
+  return {
+    token: crypto.randomUUID() + "-" + crypto.randomUUID(),
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  };
+}
+
+function userResponse(user: typeof usersTable.$inferSelect) {
+  return {
+    id: user.id,
+    googleId: user.googleId,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    email: user.email,
+    xp: user.xp,
+    level: user.level,
+    rank: getRank(user.xp),
+    streakDays: user.streakDays,
+  };
+}
+
+router.post("/auth/register", async (req, res) => {
+  try {
+    const { email, password, displayName } = req.body as {
+      email?: string;
+      password?: string;
+      displayName?: string;
+    };
+
+    if (!email || !password) {
+      res.status(400).json({ error: "Bad Request", message: "email and password are required" });
+      return;
+    }
+    if (password.length < 6) {
+      res.status(400).json({ error: "Bad Request", message: "password must be at least 6 characters" });
+      return;
+    }
+
+    const existing = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, email.toLowerCase().trim()))
+      .limit(1);
+
+    if (existing.length > 0) {
+      res.status(409).json({ error: "Conflict", message: "An account with this email already exists" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const userId = crypto.randomUUID();
+
+    const newUsers = await db
+      .insert(usersTable)
+      .values({
+        id: userId,
+        displayName: displayName?.trim() || email.split("@")[0],
+        email: email.toLowerCase().trim(),
+        passwordHash,
+      })
+      .returning();
+
+    const user = newUsers[0];
+    const { token, expiresAt } = makeSession();
+
+    await db.insert(sessionsTable).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      token,
+      expiresAt,
+    });
+
+    res.status(201).json({ token, user: userResponse(user) });
+  } catch (err) {
+    req.log.error({ err }, "auth/register error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body as { email?: string; password?: string };
+
+    if (!email || !password) {
+      res.status(400).json({ error: "Bad Request", message: "email and password are required" });
+      return;
+    }
+
+    const users = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email.toLowerCase().trim()))
+      .limit(1);
+
+    const user = users[0];
+
+    if (!user || !user.passwordHash) {
+      res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
+      return;
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
+      return;
+    }
+
+    const { token, expiresAt } = makeSession();
+
+    await db.insert(sessionsTable).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      token,
+      expiresAt,
+    });
+
+    res.json({ token, user: userResponse(user) });
+  } catch (err) {
+    req.log.error({ err }, "auth/login error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

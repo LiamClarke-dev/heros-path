@@ -1,14 +1,16 @@
-import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,10 +25,17 @@ WebBrowser.maybeCompleteAuthSession();
 const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "";
 const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
+type Mode = "login" | "register";
+
 export default function LoginScreen() {
   const { signIn } = useAuth();
   const insets = useSafeAreaInsets();
+  const [mode, setMode] = useState<Mode>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     iosClientId: IOS_CLIENT_ID || undefined,
@@ -34,42 +43,30 @@ export default function LoginScreen() {
     scopes: ["openid", "profile", "email"],
   });
 
+  const apiBase = process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
+    : "http://localhost:3000/api";
+
   React.useEffect(() => {
     if (response?.type === "success" && request) {
       const code = response.params?.code;
-      if (!code) {
-        Alert.alert("Sign in failed", "No authorization code returned");
-        return;
-      }
-
+      if (!code) return;
       const clientId =
         Platform.OS === "ios" && IOS_CLIENT_ID ? IOS_CLIENT_ID : WEB_CLIENT_ID;
-
       const extraParams: Record<string, string> = {};
-      if (request.codeVerifier) {
-        extraParams.code_verifier = request.codeVerifier;
-      }
+      if (request.codeVerifier) extraParams.code_verifier = request.codeVerifier;
 
-      AuthSession.exchangeCodeAsync(
-        {
-          clientId,
-          code,
-          redirectUri: request.redirectUri,
-          extraParams,
-        },
-        { tokenEndpoint: "https://oauth2.googleapis.com/token" },
-      )
-        .then((tokenResult) => {
-          if (tokenResult.idToken) {
-            handleGoogleToken(tokenResult.idToken);
-          } else {
-            Alert.alert("Sign in failed", "No ID token returned from Google");
-          }
-        })
-        .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : "Token exchange failed";
-          Alert.alert("Sign in failed", msg);
-        });
+      import("expo-auth-session").then(({ exchangeCodeAsync }) =>
+        exchangeCodeAsync(
+          { clientId, code, redirectUri: request.redirectUri, extraParams },
+          { tokenEndpoint: "https://oauth2.googleapis.com/token" },
+        )
+      ).then((tokenResult) => {
+        if (tokenResult.idToken) handleGoogleToken(tokenResult.idToken);
+        else Alert.alert("Sign in failed", "No ID token returned from Google");
+      }).catch((err: unknown) => {
+        Alert.alert("Sign in failed", err instanceof Error ? err.message : "Google sign-in failed");
+      });
     } else if (response?.type === "error") {
       Alert.alert("Sign in failed", response.error?.message ?? "Unknown error");
     }
@@ -78,35 +75,16 @@ export default function LoginScreen() {
   async function handleGoogleToken(idToken: string) {
     setIsLoading(true);
     try {
-      const apiBase = process.env.EXPO_PUBLIC_DOMAIN
-        ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
-        : "http://localhost:3000/api";
-
       const res = await fetch(`${apiBase}/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idToken }),
       });
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as { message?: string }).message ?? "Auth failed");
       }
-
-      const data = await res.json() as {
-        token: string;
-        user: {
-          id: string;
-          googleId: string;
-          displayName: string;
-          avatarUrl: string | null;
-          email: string | null;
-          xp: number;
-          level: number;
-          rank: string;
-          streakDays: number;
-        };
-      };
+      const data = await res.json() as AuthResponse;
       await signIn(data.token, data.user);
     } catch (err) {
       Alert.alert("Sign in failed", err instanceof Error ? err.message : "Unknown error");
@@ -115,153 +93,332 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleEmailAuth() {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing fields", "Please enter your email and password.");
+      return;
+    }
+    if (mode === "register" && !displayName.trim()) {
+      Alert.alert("Missing name", "Please enter your name.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const endpoint = mode === "register" ? "/auth/register" : "/auth/login";
+      const body: Record<string, string> = { email: email.trim(), password };
+      if (mode === "register") body.displayName = displayName.trim();
+
+      const res = await fetch(`${apiBase}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { message?: string }).message ?? "Auth failed");
+      }
+      const data = await res.json() as AuthResponse;
+      await signIn(data.token, data.user);
+    } catch (err) {
+      Alert.alert(
+        mode === "register" ? "Registration failed" : "Sign in failed",
+        err instanceof Error ? err.message : "Unknown error",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   return (
     <LinearGradient
       colors={["#0D0A0B", "#1A1510", "#0D0A0B"]}
-      style={[styles.container, { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 40 }]}
+      style={styles.gradient}
     >
-      <View style={styles.heroSection}>
-        <View style={styles.iconCircle}>
-          <Feather name="compass" size={56} color={Colors.gold} />
-        </View>
-        <Text style={styles.appName}>Hero's Path</Text>
-        <Text style={styles.tagline}>Every street tells a story</Text>
-        <Text style={styles.subtitle}>
-          Track your journeys, discover hidden gems, and become the adventurer your city deserves.
-        </Text>
-      </View>
-
-      <View style={styles.featuresSection}>
-        {[
-          { icon: "map" as const, text: "Color your walked streets permanently" },
-          { icon: "search" as const, text: "Discover nearby places as you explore" },
-          { icon: "award" as const, text: "Earn XP, badges & adventurer rank" },
-        ].map((f) => (
-          <View key={f.text} style={styles.featureRow}>
-            <View style={styles.featureIcon}>
-              <Feather name={f.icon} size={16} color={Colors.gold} />
-            </View>
-            <Text style={styles.featureText}>{f.text}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.bottomSection}>
-        <Pressable
-          style={[styles.googleButton, (!request || isLoading) && styles.buttonDisabled]}
-          onPress={() => promptAsync()}
-          disabled={!request || isLoading}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.container,
+            { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 32 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {isLoading ? (
-            <ActivityIndicator color={Colors.background} />
-          ) : (
-            <>
-              <Feather name="chrome" size={20} color={Colors.background} />
+          <View style={styles.heroSection}>
+            <View style={styles.iconCircle}>
+              <Feather name="compass" size={48} color={Colors.gold} />
+            </View>
+            <Text style={styles.appName}>Hero's Path</Text>
+            <Text style={styles.tagline}>Every street tells a story</Text>
+          </View>
+
+          <View style={styles.card}>
+            <View style={styles.modeToggle}>
+              <Pressable
+                style={[styles.modeTab, mode === "login" && styles.modeTabActive]}
+                onPress={() => setMode("login")}
+              >
+                <Text style={[styles.modeTabText, mode === "login" && styles.modeTabTextActive]}>
+                  Sign In
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modeTab, mode === "register" && styles.modeTabActive]}
+                onPress={() => setMode("register")}
+              >
+                <Text style={[styles.modeTabText, mode === "register" && styles.modeTabTextActive]}>
+                  Create Account
+                </Text>
+              </Pressable>
+            </View>
+
+            {mode === "register" && (
+              <View style={styles.inputWrapper}>
+                <Feather name="user" size={16} color={Colors.parchmentMuted} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Your name"
+                  placeholderTextColor={Colors.parchmentMuted}
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                />
+              </View>
+            )}
+
+            <View style={styles.inputWrapper}>
+              <Feather name="mail" size={16} color={Colors.parchmentMuted} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email address"
+                placeholderTextColor={Colors.parchmentMuted}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Feather name="lock" size={16} color={Colors.parchmentMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, styles.inputFlex]}
+                placeholder="Password"
+                placeholderTextColor={Colors.parchmentMuted}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleEmailAuth}
+              />
+              <Pressable onPress={() => setShowPassword((v) => !v)} style={styles.eyeButton}>
+                <Feather name={showPassword ? "eye-off" : "eye"} size={16} color={Colors.parchmentMuted} />
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+              onPress={handleEmailAuth}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color={Colors.background} />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {mode === "register" ? "Create Account" : "Sign In"}
+                </Text>
+              )}
+            </Pressable>
+
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Pressable
+              style={[styles.googleButton, (!request || isLoading) && styles.buttonDisabled]}
+              onPress={() => promptAsync()}
+              disabled={!request || isLoading}
+            >
+              <Feather name="chrome" size={18} color={Colors.gold} />
               <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </>
-          )}
-        </Pressable>
-        <Text style={styles.legalText}>
-          By continuing you agree to our Terms of Service and Privacy Policy.
-        </Text>
-      </View>
+            </Pressable>
+          </View>
+
+          <Text style={styles.legalText}>
+            By continuing you agree to our Terms of Service and Privacy Policy.
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
 
+type AuthResponse = {
+  token: string;
+  user: {
+    id: string;
+    googleId: string | null;
+    displayName: string;
+    avatarUrl: string | null;
+    email: string | null;
+    xp: number;
+    level: number;
+    rank: string;
+    streakDays: number;
+  };
+};
+
 const styles = StyleSheet.create({
+  gradient: { flex: 1 },
+  flex: { flex: 1 },
   container: {
-    flex: 1,
-    paddingHorizontal: 28,
+    paddingHorizontal: 24,
+    gap: 24,
   },
   heroSection: {
-    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
+    gap: 8,
   },
   iconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: Colors.surface,
     borderWidth: 2,
     borderColor: Colors.goldDark,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
+    marginBottom: 4,
   },
   appName: {
-    fontSize: 38,
+    fontSize: 32,
     fontWeight: "700",
     color: Colors.gold,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
     fontFamily: "Inter_700Bold",
   },
   tagline: {
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.parchmentMuted,
     fontStyle: "italic",
-    textAlign: "center",
     fontFamily: "Inter_400Regular",
   },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.parchmentDim,
-    textAlign: "center",
-    lineHeight: 20,
-    marginTop: 8,
-    fontFamily: "Inter_400Regular",
-  },
-  featuresSection: {
+  card: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 20,
     gap: 12,
-    marginVertical: 24,
   },
-  featureRow: {
+  modeToggle: {
+    flexDirection: "row",
+    backgroundColor: Colors.background,
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 4,
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  modeTabActive: {
+    backgroundColor: Colors.gold,
+  },
+  modeTabText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_600SemiBold",
+  },
+  modeTabTextActive: {
+    color: Colors.background,
+  },
+  inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: Colors.background,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: Colors.border,
+    paddingHorizontal: 12,
+    height: 48,
   },
-  featureIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: Colors.goldGlow,
-    alignItems: "center",
-    justifyContent: "center",
+  inputIcon: {
+    marginRight: 8,
   },
-  featureText: {
-    fontSize: 14,
+  input: {
+    flex: 1,
+    fontSize: 15,
     color: Colors.parchment,
     fontFamily: "Inter_400Regular",
+  },
+  inputFlex: {
     flex: 1,
   },
-  bottomSection: {
-    gap: 12,
+  eyeButton: {
+    padding: 4,
+  },
+  primaryButton: {
+    backgroundColor: Colors.gold,
+    borderRadius: 10,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  primaryButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: Colors.background,
+    fontFamily: "Inter_600SemiBold",
+  },
+  buttonDisabled: {
+    opacity: 0.55,
+  },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginVertical: 2,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.border,
+  },
+  dividerText: {
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_400Regular",
   },
   googleButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    backgroundColor: Colors.gold,
-    borderRadius: 12,
-    paddingVertical: 15,
-    paddingHorizontal: 24,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
+    gap: 8,
+    backgroundColor: Colors.background,
+    borderRadius: 10,
+    height: 48,
+    borderWidth: 1,
+    borderColor: Colors.goldDark,
   },
   googleButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
-    color: Colors.background,
+    color: Colors.gold,
     fontFamily: "Inter_600SemiBold",
   },
   legalText: {

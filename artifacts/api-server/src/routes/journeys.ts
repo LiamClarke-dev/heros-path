@@ -290,14 +290,18 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
   const placeTypes = prefs[0]?.placeTypes ?? [];
   const allowedTypesSet = placeTypes.length ? new Set(placeTypes) : null;
 
-  // Exclude ALL places already known to this user (dismissed, snoozed, or previously found)
-  // This ensures ping results only surface net-new discoveries.
-  const knownPlaces = await db
-    .select({ googlePlaceId: userDiscoveredPlacesTable.googlePlaceId })
+  // Fetch user's existing discovered places to determine:
+  // - dismissed places (never returned to client)
+  // - already-seen places (not returned as new, but still get discoveryCount updated)
+  const existingUserPlaces = await db
+    .select({
+      googlePlaceId: userDiscoveredPlacesTable.googlePlaceId,
+      isDismissed: userDiscoveredPlacesTable.isDismissed,
+    })
     .from(userDiscoveredPlacesTable)
     .where(eq(userDiscoveredPlacesTable.userId, user.id));
 
-  const knownIds = new Set(knownPlaces.map((d) => d.googlePlaceId));
+  const previouslySeenIds = new Set(existingUserPlaces.map((p) => p.googlePlaceId));
 
   // For a single type, pass it as a filter to Google. For multiple types,
   // fetch without a type filter and post-filter by the allowed set.
@@ -322,11 +326,12 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
     }>;
   };
 
-  const rawPlaces = (nearbyData.results ?? [])
-    .filter((p) => !knownIds.has(p.place_id))
+  // Apply user preference filters, then map to our place shape
+  // Include ALL non-dismissed places for persistence (to track discoveryCount)
+  const allFilteredPlaces = (nearbyData.results ?? [])
     .filter((p) => minRating === 0 || (p.rating ?? 0) >= minRating)
     .filter((p) => !allowedTypesSet || (p.types ?? []).some((t) => allowedTypesSet.has(t)))
-    .slice(0, 10)
+    .slice(0, 20)
     .map((p) => ({
       googlePlaceId: p.place_id,
       name: p.name,
@@ -339,12 +344,18 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
       distanceM: haversineDistance(lat, lng, p.geometry.location.lat, p.geometry.location.lng),
     }));
 
-  if (rawPlaces.length > 0) {
-    await upsertPlaceCache(rawPlaces);
-    await saveDiscoveredPlaces(rawPlaces, journeyId, user.id, "ping");
+  // Persist ALL (including rediscoveries) so discoveryCount stays accurate
+  if (allFilteredPlaces.length > 0) {
+    await upsertPlaceCache(allFilteredPlaces);
+    await saveDiscoveredPlaces(allFilteredPlaces, journeyId, user.id, "ping");
   }
 
-  res.json({ places: rawPlaces });
+  // Only return net-new (not previously seen, not dismissed) to the client
+  const newPlaces = allFilteredPlaces
+    .filter((p) => !previouslySeenIds.has(p.googlePlaceId))
+    .slice(0, 10);
+
+  res.json({ places: newPlaces });
 });
 
 // ─── GET /journeys/:journeyId/discoveries ────────────────────────────────────
@@ -493,15 +504,8 @@ async function discoverPlacesAlongRoute(
   // Use user's selected types (up to 5) or fall back to default discovery categories
   const queries = placeTypes.length > 0 ? placeTypes.slice(0, 5) : DEFAULT_ROUTE_QUERIES;
 
-  // Globally deduplicate: exclude all places the user has already seen at any point,
-  // including places discovered on previous journeys (favorited, dismissed, or viewed).
-  const previouslySeen = await db
-    .select({ googlePlaceId: userDiscoveredPlacesTable.googlePlaceId })
-    .from(userDiscoveredPlacesTable)
-    .where(eq(userDiscoveredPlacesTable.userId, userId));
-  const seenIds = new Set(previouslySeen.map((d) => d.googlePlaceId));
-
-  // Also exclude places already discovered in THIS journey (from pings)
+  // Also exclude places already discovered in THIS journey (from pings) to avoid
+  // double-counting within the same journey
   const alreadyFound = await db
     .select({ googlePlaceId: journeyDiscoveredPlacesTable.googlePlaceId })
     .from(journeyDiscoveredPlacesTable)
@@ -536,7 +540,8 @@ async function discoverPlacesAlongRoute(
 
     for (const p of data.places ?? []) {
       if (!p.id || !p.location) continue;
-      if (seenIds.has(p.id) || alreadyFoundIds.has(p.id) || allFound.has(p.id)) continue;
+      // Only skip if already tracked in THIS journey (to avoid counting twice per journey)
+      if (alreadyFoundIds.has(p.id) || allFound.has(p.id)) continue;
       // Apply rating filter (0 = no filter)
       if (minRating > 0 && (p.rating ?? 0) < minRating) continue;
 
@@ -555,6 +560,7 @@ async function discoverPlacesAlongRoute(
     }
   }
 
+  // Persist ALL places (including rediscoveries across journeys) so discoveryCount stays accurate
   const places = Array.from(allFound.values());
   if (places.length > 0) {
     await upsertPlaceCache(places);

@@ -290,12 +290,14 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
   const placeTypes = prefs[0]?.placeTypes ?? [];
   const allowedTypesSet = placeTypes.length ? new Set(placeTypes) : null;
 
-  const dismissed = await db
+  // Exclude ALL places already known to this user (dismissed, snoozed, or previously found)
+  // This ensures ping results only surface net-new discoveries.
+  const knownPlaces = await db
     .select({ googlePlaceId: userDiscoveredPlacesTable.googlePlaceId })
     .from(userDiscoveredPlacesTable)
-    .where(and(eq(userDiscoveredPlacesTable.userId, user.id), eq(userDiscoveredPlacesTable.isDismissed, true)));
+    .where(eq(userDiscoveredPlacesTable.userId, user.id));
 
-  const dismissedIds = new Set(dismissed.map((d) => d.googlePlaceId));
+  const knownIds = new Set(knownPlaces.map((d) => d.googlePlaceId));
 
   // For a single type, pass it as a filter to Google. For multiple types,
   // fetch without a type filter and post-filter by the allowed set.
@@ -321,7 +323,7 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
   };
 
   const rawPlaces = (nearbyData.results ?? [])
-    .filter((p) => !dismissedIds.has(p.place_id))
+    .filter((p) => !knownIds.has(p.place_id))
     .filter((p) => minRating === 0 || (p.rating ?? 0) >= minRating)
     .filter((p) => !allowedTypesSet || (p.types ?? []).some((t) => allowedTypesSet.has(t)))
     .slice(0, 10)

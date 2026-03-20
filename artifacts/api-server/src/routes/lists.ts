@@ -41,13 +41,30 @@ router.get("/lists", requireAuth, async (req: Request, res: Response) => {
     .where(eq(placeListsTable.userId, user.id))
     .orderBy(placeListsTable.createdAt);
 
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+
   const listsWithCounts = await Promise.all(
     lists.map(async (list) => {
       const countResult = await db
         .select({ count: count() })
         .from(placeListItemsTable)
         .where(eq(placeListItemsTable.listId, list.id));
-      return { ...list, placeCount: Number(countResult[0]?.count ?? 0) };
+
+      // Get cover photo from the most recently added place with a photo
+      const firstPhotoItem = await db
+        .select({ photoReference: placeCacheTable.photoReference })
+        .from(placeListItemsTable)
+        .innerJoin(placeCacheTable, eq(placeListItemsTable.googlePlaceId, placeCacheTable.googlePlaceId))
+        .where(and(eq(placeListItemsTable.listId, list.id), eq(placeListItemsTable.userId, user.id)))
+        .limit(1);
+
+      const photoReference = firstPhotoItem[0]?.photoReference ?? null;
+
+      return {
+        ...list,
+        placeCount: Number(countResult[0]?.count ?? 0),
+        coverPhotoUrl: buildPhotoUrl(photoReference, apiKey),
+      };
     }),
   );
 

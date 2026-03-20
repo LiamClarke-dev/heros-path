@@ -6,6 +6,8 @@ import {
   placeListItemsTable,
   placeListsTable,
   userPlaceActionsTable,
+  journeyWaypointsTable,
+  journeysTable,
   PLACE_ACTIONS,
   type PlaceAction,
 } from "@workspace/db";
@@ -13,6 +15,19 @@ import { eq, and, desc, lt, isNotNull } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
+
+function haversineDistanceM(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function buildPhotoUrl(photoReference: string | null, apiKey: string): string | null {
   if (!photoReference || !apiKey) return null;
@@ -69,25 +84,44 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
 
+  // Fetch user's last known position from most recent journey waypoint for distance calc
+  const lastWaypoints = await db
+    .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
+    .from(journeyWaypointsTable)
+    .innerJoin(journeysTable, eq(journeyWaypointsTable.journeyId, journeysTable.id))
+    .where(eq(journeysTable.userId, user.id))
+    .orderBy(desc(journeyWaypointsTable.recordedAt))
+    .limit(1);
+
+  const lastPos = lastWaypoints[0] ?? null;
+
   res.json({
-    places: userPlaces.map(({ discovery, place }) => ({
-      googlePlaceId: place.googlePlaceId,
-      name: place.name,
-      lat: Number(place.lat),
-      lng: Number(place.lng),
-      rating: place.rating ? Number(place.rating) : null,
-      types: place.types,
-      photoReference: place.photoReference,
-      photoUrl: buildPhotoUrl(place.photoReference, apiKey),
-      address: place.address,
-      firstDiscoveredAt: discovery.firstDiscoveredAt,
-      lastDiscoveredAt: discovery.lastDiscoveredAt,
-      discoveryCount: discovery.discoveryCount,
-      isDismissed: discovery.isDismissed,
-      isFavorited: discovery.isFavorited,
-      isSnoozed: discovery.isSnoozed,
-      snoozedUntil: discovery.snoozedUntil,
-    })),
+    places: userPlaces.map(({ discovery, place }) => {
+      const placeLat = Number(place.lat);
+      const placeLng = Number(place.lng);
+      const distanceM = lastPos
+        ? Math.round(haversineDistanceM(Number(lastPos.lat), Number(lastPos.lng), placeLat, placeLng))
+        : null;
+      return {
+        googlePlaceId: place.googlePlaceId,
+        name: place.name,
+        lat: placeLat,
+        lng: placeLng,
+        rating: place.rating ? Number(place.rating) : null,
+        types: place.types,
+        photoReference: place.photoReference,
+        photoUrl: buildPhotoUrl(place.photoReference, apiKey),
+        address: place.address,
+        distanceM,
+        firstDiscoveredAt: discovery.firstDiscoveredAt,
+        lastDiscoveredAt: discovery.lastDiscoveredAt,
+        discoveryCount: discovery.discoveryCount,
+        isDismissed: discovery.isDismissed,
+        isFavorited: discovery.isFavorited,
+        isSnoozed: discovery.isSnoozed,
+        snoozedUntil: discovery.snoozedUntil,
+      };
+    }),
     total: userPlaces.length,
   });
 });

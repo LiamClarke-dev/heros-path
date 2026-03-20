@@ -26,8 +26,25 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 
-const REVEAL_WIDTH = 140;
+const REVEAL_WIDTH = 195;
 const SWIPE_THRESHOLD = 60;
+
+function formatSnoozeDate(isoDate: string | null): string | null {
+  if (!isoDate) return null;
+  const d = new Date(isoDate);
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return "Waking up soon";
+  if (diffDays === 1) return "Wakes tomorrow";
+  return `Wakes in ${diffDays}d`;
+}
+
+function formatDistance(meters: number | null | undefined): string | null {
+  if (!meters) return null;
+  if (meters < 1000) return `${Math.round(meters)}m away`;
+  return `${(meters / 1000).toFixed(1)}km away`;
+}
 
 type PlaceFilter = "all" | "unreviewed" | "favorited" | "snoozed";
 
@@ -40,6 +57,7 @@ interface DiscoveredPlace {
   types: string[];
   address: string | null;
   photoUrl: string | null;
+  distanceM: number | null;
   firstDiscoveredAt: string;
   lastDiscoveredAt: string;
   discoveryCount: number;
@@ -280,6 +298,9 @@ function SwipeablePlaceCard({
 
   const mainType = place.types[0]?.replace(/_/g, " ") ?? "place";
 
+  const snoozeLabel = formatSnoozeDate(place.snoozedUntil);
+  const distLabel = formatDistance(place.distanceM);
+
   return (
     <View style={styles.swipeRow}>
       <View style={styles.revealPanel}>
@@ -290,8 +311,18 @@ function SwipeablePlaceCard({
             snapBack();
           }}
         >
-          <Feather name="clock" size={16} color="#fff" />
+          <Feather name="clock" size={14} color="#fff" />
           <Text style={styles.revealBtnText}>7d</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.revealBtn, { backgroundColor: "#4A6B8B" }]}
+          onPress={() => {
+            onAction("snooze", 30);
+            snapBack();
+          }}
+        >
+          <Feather name="clock" size={14} color="#fff" />
+          <Text style={styles.revealBtnText}>30d</Text>
         </Pressable>
         <Pressable
           style={[styles.revealBtn, { backgroundColor: Colors.error }]}
@@ -300,7 +331,7 @@ function SwipeablePlaceCard({
             snapBack();
           }}
         >
-          <Feather name="x" size={16} color="#fff" />
+          <Feather name="x" size={14} color="#fff" />
           <Text style={styles.revealBtnText}>Dismiss</Text>
         </Pressable>
       </View>
@@ -337,12 +368,23 @@ function SwipeablePlaceCard({
                     <Text style={styles.ratingText}>{place.rating.toFixed(1)}</Text>
                   </View>
                 )}
+                {distLabel && (
+                  <View style={styles.ratingRow}>
+                    <Feather name="navigation" size={10} color={Colors.parchmentMuted} />
+                    <Text style={styles.distText}>{distLabel}</Text>
+                  </View>
+                )}
               </View>
-              {place.address && (
+              {place.isSnoozed && snoozeLabel ? (
+                <View style={styles.snoozeRow}>
+                  <Feather name="moon" size={10} color={Colors.info} />
+                  <Text style={styles.snoozeText}>{snoozeLabel}</Text>
+                </View>
+              ) : place.address ? (
                 <Text style={styles.cardAddress} numberOfLines={1}>
                   {place.address}
                 </Text>
-              )}
+              ) : null}
               <View style={styles.cardFooter}>
                 <Text style={styles.discoveryCount}>
                   Found {place.discoveryCount}x
@@ -591,6 +633,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.parchmentDim,
     fontFamily: "Inter_400Regular",
+  },
+  distText: {
+    fontSize: 11,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_400Regular",
+  },
+  snoozeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  snoozeText: {
+    fontSize: 11,
+    color: Colors.info,
+    fontFamily: "Inter_400Regular",
+    fontStyle: "italic",
   },
   cardFooter: {
     flexDirection: "row",

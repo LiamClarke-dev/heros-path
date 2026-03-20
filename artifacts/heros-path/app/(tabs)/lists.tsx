@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  Image,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -19,12 +21,17 @@ import { useRouter } from "expo-router";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 
+const GRID_GAP = 12;
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const CARD_WIDTH = (SCREEN_WIDTH - 32 - GRID_GAP) / 2;
+
 interface PlaceList {
   id: string;
   name: string;
   isDefault: boolean;
   placeCount: number;
   createdAt: string;
+  coverPhotoUrl: string | null;
 }
 
 type ModalMode = "create" | "rename";
@@ -145,6 +152,21 @@ export default function ListsScreen() {
   const lists = data?.lists ?? [];
   const isPending = createMutation.isPending || renameMutation.isPending;
 
+  const renderItem = ({ item, index }: { item: PlaceList; index: number }) => (
+    <ListCard
+      list={item}
+      style={index % 2 === 0 ? { marginRight: GRID_GAP / 2 } : { marginLeft: GRID_GAP / 2 }}
+      onPress={() =>
+        router.push({
+          pathname: "/list-detail",
+          params: { listId: item.id, name: item.name },
+        })
+      }
+      onRename={() => openRename(item)}
+      onDelete={() => confirmDelete(item)}
+    />
+  );
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -170,7 +192,12 @@ export default function ListsScreen() {
         <FlatList
           data={lists}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 100 }}
+          numColumns={2}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: insets.bottom + 100,
+          }}
+          columnWrapperStyle={{ marginBottom: GRID_GAP }}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -179,20 +206,7 @@ export default function ListsScreen() {
               colors={[Colors.gold]}
             />
           }
-          renderItem={({ item }) => (
-            <ListCard
-              list={item}
-              onPress={() =>
-                router.push({
-                  pathname: "/list-detail",
-                  params: { listId: item.id, name: item.name },
-                })
-              }
-              onRename={() => openRename(item)}
-              onDelete={() => confirmDelete(item)}
-            />
-          )}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          renderItem={renderItem}
         />
       )}
 
@@ -244,61 +258,68 @@ export default function ListsScreen() {
 
 function ListCard({
   list,
+  style,
   onPress,
   onRename,
   onDelete,
 }: {
   list: PlaceList;
+  style?: object;
   onPress: () => void;
   onRename: () => void;
   onDelete: () => void;
 }) {
   return (
-    <Pressable style={styles.card} onPress={onPress}>
-      <View style={styles.cardIcon}>
-        <Feather
-          name={list.isDefault ? "heart" : "bookmark"}
-          size={18}
-          color={Colors.gold}
-        />
+    <Pressable style={[styles.card, style]} onPress={onPress}>
+      <View style={styles.cardCover}>
+        {list.coverPhotoUrl ? (
+          <Image
+            source={{ uri: list.coverPhotoUrl }}
+            style={styles.coverImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.coverPlaceholder}>
+            <Feather
+              name={list.isDefault ? "heart" : "bookmark"}
+              size={28}
+              color={Colors.gold}
+            />
+          </View>
+        )}
+        {list.isDefault && (
+          <View style={styles.defaultBadge}>
+            <Text style={styles.defaultBadgeText}>Default</Text>
+          </View>
+        )}
+        {!list.isDefault && (
+          <View style={styles.cardMenuRow}>
+            <Pressable
+              style={styles.cardMenuBtn}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onRename();
+              }}
+            >
+              <Feather name="edit-2" size={12} color={Colors.parchment} />
+            </Pressable>
+            <Pressable
+              style={[styles.cardMenuBtn, { backgroundColor: "rgba(207,102,121,0.8)" }]}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onDelete();
+              }}
+            >
+              <Feather name="trash-2" size={12} color="#fff" />
+            </Pressable>
+          </View>
+        )}
       </View>
-      <View style={styles.cardContent}>
-        <View style={styles.cardTitleRow}>
-          <Text style={styles.cardName}>{list.name}</Text>
-          {list.isDefault && (
-            <View style={styles.defaultBadge}>
-              <Text style={styles.defaultBadgeText}>Default</Text>
-            </View>
-          )}
-        </View>
+      <View style={styles.cardInfo}>
+        <Text style={styles.cardName} numberOfLines={1}>{list.name}</Text>
         <Text style={styles.cardCount}>
           {list.placeCount} {list.placeCount === 1 ? "place" : "places"}
         </Text>
-      </View>
-      <View style={styles.cardActions}>
-        {!list.isDefault && (
-          <Pressable
-            style={styles.iconBtn}
-            onPress={(e) => {
-              e.stopPropagation?.();
-              onRename();
-            }}
-          >
-            <Feather name="edit-2" size={15} color={Colors.parchmentMuted} />
-          </Pressable>
-        )}
-        {!list.isDefault && (
-          <Pressable
-            style={styles.iconBtn}
-            onPress={(e) => {
-              e.stopPropagation?.();
-              onDelete();
-            }}
-          >
-            <Feather name="trash-2" size={15} color={Colors.error} />
-          </Pressable>
-        )}
-        <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
       </View>
     </Pressable>
   );
@@ -349,59 +370,73 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
+    width: CARD_WIDTH,
     backgroundColor: Colors.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 14,
-    gap: 12,
+    overflow: "hidden",
   },
-  cardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: Colors.goldGlow,
+  cardCover: {
+    height: CARD_WIDTH * 0.75,
+    position: "relative",
+  },
+  coverImage: {
+    width: "100%",
+    height: "100%",
+  },
+  coverPlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: Colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  cardContent: { flex: 1 },
-  cardTitleRow: {
+  defaultBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    backgroundColor: "rgba(212,160,23,0.85)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  defaultBadgeText: {
+    fontSize: 9,
+    color: Colors.background,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  cardMenuRow: {
+    position: "absolute",
+    top: 8,
+    right: 8,
     flexDirection: "row",
+    gap: 4,
+  },
+  cardMenuBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(26,21,16,0.8)",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+  },
+  cardInfo: {
+    padding: 10,
+    gap: 2,
   },
   cardName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
     color: Colors.parchment,
     fontFamily: "Inter_600SemiBold",
   },
-  defaultBadge: {
-    backgroundColor: Colors.goldDark,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  defaultBadgeText: {
-    fontSize: 10,
-    color: Colors.gold,
-    fontFamily: "Inter_500Medium",
-  },
   cardCount: {
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.parchmentMuted,
     fontFamily: "Inter_400Regular",
-    marginTop: 2,
-  },
-  cardActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  iconBtn: {
-    padding: 6,
   },
   modalOverlay: {
     flex: 1,

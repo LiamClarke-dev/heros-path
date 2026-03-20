@@ -272,6 +272,11 @@ export default function JourneyDetailScreen() {
                 <Text style={styles.emptyText}>No places discovered on this journey.</Text>
               </View>
             )}
+
+            {/* Waypoint Timeline */}
+            {waypoints.length > 0 && (
+              <WaypointTimeline waypoints={waypoints} />
+            )}
           </View>
         </ScrollView>
       )}
@@ -293,6 +298,54 @@ function SummaryItem({
       <Feather name={icon} size={16} color={Colors.gold} />
       <Text style={styles.summaryValue}>{value}</Text>
       <Text style={styles.summaryLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function WaypointTimeline({ waypoints }: { waypoints: Waypoint[] }) {
+  const MAX_SHOWN = 20;
+  const step = waypoints.length <= MAX_SHOWN ? 1 : Math.floor(waypoints.length / MAX_SHOWN);
+  const sampled: Waypoint[] = [];
+  for (let i = 0; i < waypoints.length; i += step) {
+    sampled.push(waypoints[i]);
+  }
+  if (sampled[sampled.length - 1]?.id !== waypoints[waypoints.length - 1]?.id) {
+    sampled.push(waypoints[waypoints.length - 1]);
+  }
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Feather name="activity" size={14} color={Colors.gold} />
+        <Text style={styles.sectionTitle}>Route Timeline</Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countText}>{waypoints.length}</Text>
+        </View>
+      </View>
+      <View style={styles.timeline}>
+        {sampled.map((wp, idx) => {
+          const isFirst = idx === 0;
+          const isLast = idx === sampled.length - 1;
+          return (
+            <View key={wp.id} style={styles.timelineItem}>
+              <View style={styles.timelineSide}>
+                <View style={[
+                  styles.timelineDot,
+                  isFirst && styles.timelineDotFirst,
+                  isLast && styles.timelineDotLast,
+                ]} />
+                {!isLast && <View style={styles.timelineLine} />}
+              </View>
+              <View style={styles.timelineContent}>
+                <Text style={styles.timelineTime}>{formatTime(wp.recordedAt)}</Text>
+                <Text style={styles.timelineCoords}>
+                  {wp.lat.toFixed(4)}°, {wp.lng.toFixed(4)}°
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -572,5 +625,60 @@ const styles = StyleSheet.create({
     color: Colors.parchmentDim,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
+  },
+  timeline: {
+    paddingLeft: 12,
+  },
+  timelineItem: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  timelineSide: {
+    alignItems: "center",
+    width: 16,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.parchmentDim,
+    marginTop: 4,
+  },
+  timelineDotFirst: {
+    backgroundColor: Colors.success,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 3,
+  },
+  timelineDotLast: {
+    backgroundColor: Colors.error,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 3,
+  },
+  timelineLine: {
+    flex: 1,
+    width: 1,
+    backgroundColor: Colors.border,
+    marginTop: 2,
+    minHeight: 28,
+  },
+  timelineContent: {
+    flex: 1,
+    paddingBottom: 16,
+  },
+  timelineTime: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: Colors.parchment,
+    fontFamily: "Inter_500Medium",
+  },
+  timelineCoords: {
+    fontSize: 11,
+    color: Colors.parchmentDim,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
   },
 });

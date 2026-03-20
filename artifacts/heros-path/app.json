@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Hero's Path",
-    "slug": "heros-path",
+    "slug": "herospath-replit",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -47,6 +47,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5305f825-31e4-4364-a58c-87862f33e5b5"
+      }
+    },
+    "owner": "liamclarke-dev"
   }
 }

@@ -56,6 +56,8 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="dev" options={{ title: "Dev Tools", presentation: "modal" }} />
+      <Stack.Screen name="journey-results" options={{ headerShown: false }} />
+      <Stack.Screen name="settings" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

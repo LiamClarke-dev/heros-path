@@ -13,9 +13,11 @@ import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
+import PingResultsSheet, { type DiscoveredPlace } from "@/components/PingResultsSheet";
 
 interface Waypoint {
   lat: number;
@@ -23,35 +25,35 @@ interface Waypoint {
   recordedAt: string;
 }
 
-interface DiscoveredPlace {
-  googlePlaceId: string;
-  name: string;
-  lat: number;
-  lng: number;
-  rating: number | null;
-  types: string[];
-  address: string | null;
-  distanceM: number;
+interface HistoricalJourney {
+  id: string;
+  waypoints: { lat: number; lng: number }[];
 }
 
 type JourneyStatus = "idle" | "active" | "ending";
+
+const HISTORICAL_COLORS = ["rgba(212,160,23,0.25)", "rgba(212,160,23,0.18)", "rgba(212,160,23,0.12)"];
 
 export default function JourneyScreen() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  const router = useRouter();
 
   const [journeyStatus, setJourneyStatus] = useState<JourneyStatus>("idle");
   const [journeyId, setJourneyId] = useState<string | null>(null);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [discoveredPlaces, setDiscoveredPlaces] = useState<DiscoveredPlace[]>([]);
+  const [pingPlaces, setPingPlaces] = useState<DiscoveredPlace[]>([]);
+  const [showPingSheet, setShowPingSheet] = useState(false);
   const [isPinging, setIsPinging] = useState(false);
   const [pingCount, setPingCount] = useState(0);
-  const [xpGained, setXpGained] = useState(0);
+  const [historicalJourneys, setHistoricalJourneys] = useState<HistoricalJourney[]>([]);
+
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const waypointBufferRef = useRef<Waypoint[]>([]);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentJourneyIdRef = useRef<string | null>(null);
 
   const apiBase = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
@@ -61,6 +63,23 @@ export default function JourneyScreen() {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   };
+
+  // Load historical journey polylines on mount
+  useEffect(() => {
+    loadHistoricalJourneys();
+  }, []);
+
+  async function loadHistoricalJourneys() {
+    try {
+      const res = await fetch(`${apiBase}/journeys/history`, { headers: authHeaders });
+      if (res.ok) {
+        const data = await res.json() as { journeys: HistoricalJourney[] };
+        setHistoricalJourneys(data.journeys ?? []);
+      }
+    } catch {
+      // Non-critical — silently fail
+    }
+  }
 
   async function requestLocationPermission(): Promise<boolean> {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -89,11 +108,11 @@ export default function JourneyScreen() {
       if (!res.ok) throw new Error("Failed to start journey");
       const journey = await res.json() as { id: string };
 
+      currentJourneyIdRef.current = journey.id;
       setJourneyId(journey.id);
       setWaypoints([]);
-      setDiscoveredPlaces([]);
+      setPingPlaces([]);
       setPingCount(0);
-      setXpGained(0);
       waypointBufferRef.current = [];
       setJourneyStatus("active");
 
@@ -124,12 +143,13 @@ export default function JourneyScreen() {
 
       locationSubRef.current = sub;
 
+      const jid = journey.id;
       const flushInterval = setInterval(async () => {
         if (waypointBufferRef.current.length === 0) return;
         const toFlush = [...waypointBufferRef.current];
         waypointBufferRef.current = [];
 
-        await fetch(`${apiBase}/journeys/${journey.id}`, {
+        await fetch(`${apiBase}/journeys/${jid}`, {
           method: "PATCH",
           headers: authHeaders,
           body: JSON.stringify({ waypoints: toFlush }),
@@ -137,13 +157,14 @@ export default function JourneyScreen() {
       }, 15000);
 
       flushIntervalRef.current = flushInterval;
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to start journey. Check your connection.");
     }
   }
 
   async function endJourney() {
-    if (!journeyId) return;
+    const jid = currentJourneyIdRef.current;
+    if (!jid) return;
     setJourneyStatus("ending");
 
     locationSubRef.current?.remove();
@@ -158,7 +179,7 @@ export default function JourneyScreen() {
     waypointBufferRef.current = [];
 
     try {
-      await fetch(`${apiBase}/journeys/${journeyId}`, {
+      await fetch(`${apiBase}/journeys/${jid}`, {
         method: "PATCH",
         headers: authHeaders,
         body: JSON.stringify({
@@ -167,22 +188,28 @@ export default function JourneyScreen() {
         }),
       });
 
-      const xp = Math.floor(waypoints.length * 0.5) + pingCount * 5;
-      setXpGained(xp);
-    } catch {
-      Alert.alert("Error", "Failed to save journey. Data may be incomplete.");
-    } finally {
       setJourneyStatus("idle");
       setJourneyId(null);
+      currentJourneyIdRef.current = null;
+
+      // Reload historical overlays, then navigate to results
+      void loadHistoricalJourneys();
+      router.push(`/journey-results?journeyId=${jid}`);
+    } catch {
+      Alert.alert("Error", "Failed to save journey. Data may be incomplete.");
+      setJourneyStatus("idle");
+      setJourneyId(null);
+      currentJourneyIdRef.current = null;
     }
   }
 
   async function handlePing() {
-    if (!journeyId || !currentLocation || isPinging) return;
+    const jid = currentJourneyIdRef.current;
+    if (!jid || !currentLocation || isPinging) return;
     setIsPinging(true);
 
     try {
-      const res = await fetch(`${apiBase}/journeys/${journeyId}/ping`, {
+      const res = await fetch(`${apiBase}/journeys/${jid}/ping`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ lat: currentLocation.lat, lng: currentLocation.lng }),
@@ -190,16 +217,14 @@ export default function JourneyScreen() {
 
       if (res.ok) {
         const data = await res.json() as { places: DiscoveredPlace[] };
+        setPingPlaces(data.places);
+        setShowPingSheet(true);
         if (data.places.length > 0) {
-          setDiscoveredPlaces((prev) => {
-            const existingIds = new Set(prev.map((p) => p.googlePlaceId));
-            const newPlaces = data.places.filter((p) => !existingIds.has(p.googlePlaceId));
-            return [...prev, ...newPlaces];
-          });
           setPingCount((c) => c + 1);
         }
       }
     } catch {
+      // No-op
     } finally {
       setIsPinging(false);
     }
@@ -216,8 +241,6 @@ export default function JourneyScreen() {
     latitude: w.lat,
     longitude: w.lng,
   }));
-
-  const placeMarkers = discoveredPlaces.slice(0, 20);
 
   return (
     <View style={styles.container}>
@@ -236,14 +259,35 @@ export default function JourneyScreen() {
         }}
         mapType="standard"
       >
+        {/* Historical journey overlays (faded amber) */}
+        {historicalJourneys.map((journey, idx) => {
+          if (journey.waypoints.length < 2) return null;
+          const coords = journey.waypoints.map((w) => ({
+            latitude: w.lat,
+            longitude: w.lng,
+          }));
+          const color = HISTORICAL_COLORS[Math.min(idx, HISTORICAL_COLORS.length - 1)];
+          return (
+            <Polyline
+              key={`hist-${journey.id}`}
+              coordinates={coords}
+              strokeColor={color}
+              strokeWidth={5}
+            />
+          );
+        })}
+
+        {/* Live journey path */}
         {polylineCoords.length > 1 && (
           <Polyline
             coordinates={polylineCoords}
             strokeColor={Colors.gold}
-            strokeWidth={4}
+            strokeWidth={5}
           />
         )}
-        {placeMarkers.map((place) => (
+
+        {/* Ping-discovered place markers */}
+        {pingPlaces.slice(0, 20).map((place) => (
           <Marker
             key={place.googlePlaceId}
             coordinate={{ latitude: place.lat, longitude: place.lng }}
@@ -254,6 +298,7 @@ export default function JourneyScreen() {
         ))}
       </MapView>
 
+      {/* Top bar */}
       <LinearGradient
         colors={["rgba(13,10,11,0.85)", "transparent"]}
         style={[styles.topBar, { paddingTop: insets.top + 12 }]}
@@ -262,18 +307,13 @@ export default function JourneyScreen() {
         {journeyStatus === "active" && (
           <View style={styles.statsRow}>
             <StatChip icon="map-pin" value={`${waypoints.length} pts`} />
-            <StatChip icon="search" value={`${discoveredPlaces.length} found`} />
+            <StatChip icon="search" value={`${pingPlaces.length} found`} />
+            {pingCount > 0 && <StatChip icon="radio" value={`${pingCount} pings`} />}
           </View>
         )}
       </LinearGradient>
 
-      {xpGained > 0 && journeyStatus === "idle" && (
-        <View style={[styles.xpToast, { top: insets.top + 80 }]}>
-          <Feather name="star" size={14} color={Colors.gold} />
-          <Text style={styles.xpToastText}>+{xpGained} XP earned!</Text>
-        </View>
-      )}
-
+      {/* Bottom controls */}
       <LinearGradient
         colors={["transparent", "rgba(13,10,11,0.95)"]}
         style={[styles.bottomBar, { paddingBottom: insets.bottom + 80 }]}
@@ -315,6 +355,13 @@ export default function JourneyScreen() {
           </View>
         )}
       </LinearGradient>
+
+      {/* Ping results bottom sheet */}
+      <PingResultsSheet
+        visible={showPingSheet}
+        places={pingPlaces}
+        onDismiss={() => setShowPingSheet(false)}
+      />
     </View>
   );
 }
@@ -348,6 +395,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginTop: 8,
+    flexWrap: "wrap",
   },
   statChip: {
     flexDirection: "row",
@@ -364,25 +412,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.parchment,
     fontFamily: "Inter_500Medium",
-  },
-  xpToast: {
-    position: "absolute",
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.gold,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  xpToastText: {
-    color: Colors.gold,
-    fontWeight: "600",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 14,
   },
   bottomBar: {
     position: "absolute",

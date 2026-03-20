@@ -188,6 +188,17 @@ export default function ProfileScreen() {
         </Section>
       )}
 
+      <Section title="Settings" icon="sliders">
+        <Pressable
+          style={styles.devButton}
+          onPress={() => router.push("/settings/preferences")}
+        >
+          <Feather name="map-pin" size={16} color={Colors.gold} />
+          <Text style={[styles.devButtonText, { color: Colors.parchment }]}>Discovery Preferences</Text>
+          <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+        </Pressable>
+      </Section>
+
       {__DEV__ && (
         <Section title="Dev Tools" icon="settings">
           <Pressable

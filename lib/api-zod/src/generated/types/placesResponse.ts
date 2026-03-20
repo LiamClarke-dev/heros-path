@@ -5,7 +5,8 @@
  * Hero's Path API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Place } from "./place";
 
-export interface HealthStatus {
-  status: string;
+export interface PlacesResponse {
+  places: Place[];
 }

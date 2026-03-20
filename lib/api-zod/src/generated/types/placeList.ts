@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface PlaceList {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  placeCount: number;
+  createdAt: Date;
 }

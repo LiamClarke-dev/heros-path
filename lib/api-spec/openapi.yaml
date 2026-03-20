@@ -3,20 +3,38 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Hero's Path API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: me
+    description: Current user operations
+  - name: journeys
+    description: Journey tracking operations
+  - name: places
+    description: Place discovery and management
+  - name: lists
+    description: Custom place lists
+  - name: quests
+    description: Quest and gamification operations
+  - name: profile
+    description: User profile and stats
+
+security:
+  - BearerAuth: []
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
+      security: []
       responses:
         "200":
           description: Healthy
@@ -24,7 +42,402 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/google:
+    post:
+      operationId: authGoogle
+      tags: [auth]
+      summary: Authenticate with Google
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleAuthRequest"
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /me:
+    get:
+      operationId: getMe
+      tags: [me]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /me/preferences:
+    get:
+      operationId: getPreferences
+      tags: [me]
+      summary: Get user preferences
+      responses:
+        "200":
+          description: User preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPreferences"
+    put:
+      operationId: updatePreferences
+      tags: [me]
+      summary: Update user preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePreferencesRequest"
+      responses:
+        "200":
+          description: Updated preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPreferences"
+
+  /me/badges:
+    get:
+      operationId: getBadges
+      tags: [me]
+      summary: Get user badges
+      responses:
+        "200":
+          description: User badges
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BadgesResponse"
+
+  /journeys:
+    post:
+      operationId: startJourney
+      tags: [journeys]
+      summary: Start a new journey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartJourneyRequest"
+      responses:
+        "201":
+          description: Journey started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journey"
+    get:
+      operationId: listJourneys
+      tags: [journeys]
+      summary: List user journeys
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of journeys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneysResponse"
+
+  /journeys/{journeyId}:
+    get:
+      operationId: getJourney
+      tags: [journeys]
+      summary: Get journey details
+      parameters:
+        - name: journeyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Journey details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateJourney
+      tags: [journeys]
+      summary: Update a journey (add waypoints or end it)
+      parameters:
+        - name: journeyId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateJourneyRequest"
+      responses:
+        "200":
+          description: Updated journey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journey"
+
+  /journeys/{journeyId}/ping:
+    post:
+      operationId: pingJourney
+      tags: [journeys]
+      summary: Discover places near current location during journey
+      parameters:
+        - name: journeyId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PingRequest"
+      responses:
+        "200":
+          description: Nearby places
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlacesResponse"
+
+  /journeys/{journeyId}/discoveries:
+    get:
+      operationId: getJourneyDiscoveries
+      tags: [journeys]
+      summary: Get places discovered along journey route
+      parameters:
+        - name: journeyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Places along route
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlacesResponse"
+
+  /places/discover:
+    get:
+      operationId: getDiscoverFeed
+      tags: [places]
+      summary: Get the discover feed (all discovered places, deduplicated)
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, unreviewed, favorited, snoozed]
+            default: all
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Discover feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverFeedResponse"
+
+  /places/{googlePlaceId}/action:
+    post:
+      operationId: placeAction
+      tags: [places]
+      summary: Perform an action on a place (snooze, dismiss, favorite, add to list)
+      parameters:
+        - name: googlePlaceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaceActionRequest"
+      responses:
+        "200":
+          description: Action performed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDiscoveredPlace"
+
+  /lists:
+    get:
+      operationId: getLists
+      tags: [lists]
+      summary: Get user's place lists
+      responses:
+        "200":
+          description: Place lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceListsResponse"
+    post:
+      operationId: createList
+      tags: [lists]
+      summary: Create a new place list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateListRequest"
+      responses:
+        "201":
+          description: Created list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceList"
+
+  /lists/{listId}:
+    put:
+      operationId: updateList
+      tags: [lists]
+      summary: Rename a place list
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateListRequest"
+      responses:
+        "200":
+          description: Updated list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceList"
+    delete:
+      operationId: deleteList
+      tags: [lists]
+      summary: Delete a place list
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /lists/{listId}/places:
+    get:
+      operationId: getListPlaces
+      tags: [lists]
+      summary: Get places in a list
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Places in list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlacesResponse"
+
+  /quests:
+    get:
+      operationId: getQuests
+      tags: [quests]
+      summary: Get user's active and recently completed quests
+      responses:
+        "200":
+          description: Quests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestsResponse"
+
+  /profile/stats:
+    get:
+      operationId: getProfileStats
+      tags: [profile]
+      summary: Get user profile stats
+      responses:
+        "200":
+          description: Profile stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileStats"
+
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +447,499 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+
+    GoogleAuthRequest:
+      type: object
+      properties:
+        idToken:
+          type: string
+      required:
+        - idToken
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - token
+        - user
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        googleId:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        xp:
+          type: integer
+        level:
+          type: integer
+        rank:
+          type: string
+        streakDays:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - googleId
+        - displayName
+        - xp
+        - level
+        - rank
+        - streakDays
+        - createdAt
+
+    UserPreferences:
+      type: object
+      properties:
+        placeTypes:
+          type: array
+          items:
+            type: string
+        minRating:
+          type: number
+          minimum: 0
+          maximum: 5
+      required:
+        - placeTypes
+        - minRating
+
+    UpdatePreferencesRequest:
+      type: object
+      properties:
+        placeTypes:
+          type: array
+          items:
+            type: string
+        minRating:
+          type: number
+          minimum: 0
+          maximum: 5
+
+    Journey:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        totalDistanceM:
+          type: number
+          nullable: true
+        isDevSimulated:
+          type: boolean
+        placeCount:
+          type: integer
+      required:
+        - id
+        - userId
+        - startedAt
+        - isDevSimulated
+        - placeCount
+
+    JourneyDetail:
+      type: object
+      properties:
+        journey:
+          $ref: "#/components/schemas/Journey"
+        waypoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/Waypoint"
+      required:
+        - journey
+        - waypoints
+
+    Waypoint:
+      type: object
+      properties:
+        id:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        recordedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - lat
+        - lng
+        - recordedAt
+
+    JourneysResponse:
+      type: object
+      properties:
+        journeys:
+          type: array
+          items:
+            $ref: "#/components/schemas/Journey"
+        total:
+          type: integer
+      required:
+        - journeys
+        - total
+
+    StartJourneyRequest:
+      type: object
+      properties:
+        isDevSimulated:
+          type: boolean
+          default: false
+
+    UpdateJourneyRequest:
+      type: object
+      properties:
+        waypoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/WaypointInput"
+        status:
+          type: string
+          enum: [active, ended]
+
+    WaypointInput:
+      type: object
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        recordedAt:
+          type: string
+          format: date-time
+      required:
+        - lat
+        - lng
+
+    PingRequest:
+      type: object
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+      required:
+        - lat
+        - lng
+
+    Place:
+      type: object
+      properties:
+        googlePlaceId:
+          type: string
+        name:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        rating:
+          type: number
+          nullable: true
+        types:
+          type: array
+          items:
+            type: string
+        photoReference:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        distanceM:
+          type: number
+          nullable: true
+      required:
+        - googlePlaceId
+        - name
+        - lat
+        - lng
+        - types
+
+    UserDiscoveredPlace:
+      type: object
+      properties:
+        googlePlaceId:
+          type: string
+        name:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        rating:
+          type: number
+          nullable: true
+        types:
+          type: array
+          items:
+            type: string
+        photoReference:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        firstDiscoveredAt:
+          type: string
+          format: date-time
+        lastDiscoveredAt:
+          type: string
+          format: date-time
+        discoveryCount:
+          type: integer
+        isDismissed:
+          type: boolean
+        isFavorited:
+          type: boolean
+        isSnoozed:
+          type: boolean
+        snoozedUntil:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - googlePlaceId
+        - name
+        - lat
+        - lng
+        - types
+        - firstDiscoveredAt
+        - lastDiscoveredAt
+        - discoveryCount
+        - isDismissed
+        - isFavorited
+        - isSnoozed
+
+    PlacesResponse:
+      type: object
+      properties:
+        places:
+          type: array
+          items:
+            $ref: "#/components/schemas/Place"
+      required:
+        - places
+
+    DiscoverFeedResponse:
+      type: object
+      properties:
+        places:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserDiscoveredPlace"
+        total:
+          type: integer
+      required:
+        - places
+        - total
+
+    PlaceActionRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [snooze, dismiss, favorite, unfavorite, add_to_list, remove_from_list]
+        listId:
+          type: string
+          nullable: true
+        snoozeDays:
+          type: integer
+          nullable: true
+          default: 7
+      required:
+        - action
+
+    PlaceList:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        isDefault:
+          type: boolean
+        placeCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - isDefault
+        - placeCount
+        - createdAt
+
+    PlaceListsResponse:
+      type: object
+      properties:
+        lists:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaceList"
+      required:
+        - lists
+
+    CreateListRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+
+    UpdateListRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+
+    Quest:
+      type: object
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        xpReward:
+          type: integer
+        progress:
+          type: integer
+        target:
+          type: integer
+        isCompleted:
+          type: boolean
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - key
+        - title
+        - description
+        - xpReward
+        - progress
+        - target
+        - isCompleted
+
+    QuestsResponse:
+      type: object
+      properties:
+        active:
+          type: array
+          items:
+            $ref: "#/components/schemas/Quest"
+        completed:
+          type: array
+          items:
+            $ref: "#/components/schemas/Quest"
+      required:
+        - active
+        - completed
+
+    Badge:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        iconName:
+          type: string
+        earnedAt:
+          type: string
+          format: date-time
+          nullable: true
+        isEarned:
+          type: boolean
+      required:
+        - key
+        - name
+        - description
+        - iconName
+        - isEarned
+
+    BadgesResponse:
+      type: object
+      properties:
+        badges:
+          type: array
+          items:
+            $ref: "#/components/schemas/Badge"
+      required:
+        - badges
+
+    ProfileStats:
+      type: object
+      properties:
+        totalJourneys:
+          type: integer
+        totalDistanceM:
+          type: number
+        totalPlacesDiscovered:
+          type: integer
+        totalFavorited:
+          type: integer
+        currentStreak:
+          type: integer
+        xp:
+          type: integer
+        level:
+          type: integer
+        rank:
+          type: string
+        xpToNextLevel:
+          type: integer
+      required:
+        - totalJourneys
+        - totalDistanceM
+        - totalPlacesDiscovered
+        - totalFavorited
+        - currentStreak
+        - xp
+        - level
+        - rank
+        - xpToNextLevel

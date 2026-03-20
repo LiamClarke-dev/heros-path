@@ -5,7 +5,9 @@
  * Hero's Path API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Quest } from "./quest";
 
-export interface HealthStatus {
-  status: string;
+export interface QuestsResponse {
+  active: Quest[];
+  completed: Quest[];
 }

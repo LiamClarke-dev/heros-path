@@ -1,0 +1,207 @@
+import { Router, type IRouter, type Request, type Response } from "express";
+import { db } from "@workspace/db";
+import {
+  userDiscoveredPlacesTable,
+  placeCacheTable,
+  placeListItemsTable,
+  placeListsTable,
+} from "@workspace/db";
+import { eq, and, or, desc } from "drizzle-orm";
+import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+
+const router: IRouter = Router();
+
+router.get("/places/discover", requireAuth, async (req: Request, res: Response) => {
+  const user = (req as AuthenticatedRequest).user;
+  const filter = (req.query.filter as string) ?? "all";
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const offset = Number(req.query.offset) || 0;
+
+  const userPlaces = await db
+    .select({
+      discovery: userDiscoveredPlacesTable,
+      place: placeCacheTable,
+    })
+    .from(userDiscoveredPlacesTable)
+    .innerJoin(placeCacheTable, eq(userDiscoveredPlacesTable.googlePlaceId, placeCacheTable.googlePlaceId))
+    .where(
+      and(
+        eq(userDiscoveredPlacesTable.userId, user.id),
+        filter === "favorited" ? eq(userDiscoveredPlacesTable.isFavorited, true) : undefined,
+        filter === "snoozed" ? eq(userDiscoveredPlacesTable.isSnoozed, true) : undefined,
+        filter === "unreviewed"
+          ? and(
+              eq(userDiscoveredPlacesTable.isFavorited, false),
+              eq(userDiscoveredPlacesTable.isDismissed, false),
+              eq(userDiscoveredPlacesTable.isSnoozed, false),
+            )
+          : undefined,
+        filter === "all" ? eq(userDiscoveredPlacesTable.isDismissed, false) : undefined,
+      ),
+    )
+    .orderBy(desc(userDiscoveredPlacesTable.lastDiscoveredAt))
+    .limit(limit)
+    .offset(offset);
+
+  res.json({
+    places: userPlaces.map(({ discovery, place }) => ({
+      googlePlaceId: place.googlePlaceId,
+      name: place.name,
+      lat: Number(place.lat),
+      lng: Number(place.lng),
+      rating: place.rating ? Number(place.rating) : null,
+      types: place.types,
+      photoReference: place.photoReference,
+      address: place.address,
+      firstDiscoveredAt: discovery.firstDiscoveredAt,
+      lastDiscoveredAt: discovery.lastDiscoveredAt,
+      discoveryCount: discovery.discoveryCount,
+      isDismissed: discovery.isDismissed,
+      isFavorited: discovery.isFavorited,
+      isSnoozed: discovery.isSnoozed,
+      snoozedUntil: discovery.snoozedUntil,
+    })),
+    total: userPlaces.length,
+  });
+});
+
+router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, res: Response) => {
+  const user = (req as AuthenticatedRequest).user;
+  const { googlePlaceId } = req.params;
+  const { action, listId, snoozeDays = 7 } = req.body as {
+    action: string;
+    listId?: string;
+    snoozeDays?: number;
+  };
+
+  const existing = await db
+    .select()
+    .from(userDiscoveredPlacesTable)
+    .where(
+      and(eq(userDiscoveredPlacesTable.userId, user.id), eq(userDiscoveredPlacesTable.googlePlaceId, googlePlaceId)),
+    )
+    .limit(1);
+
+  if (!existing.length) {
+    res.status(404).json({ error: "Place not found in discoveries" });
+    return;
+  }
+
+  const record = existing[0];
+  type UpdateFields = {
+    isDismissed?: boolean;
+    isFavorited?: boolean;
+    isSnoozed?: boolean;
+    snoozedUntil?: Date | null;
+    updatedAt: Date;
+  };
+  const updates: UpdateFields = { updatedAt: new Date() };
+
+  switch (action) {
+    case "dismiss":
+      updates.isDismissed = true;
+      updates.isSnoozed = false;
+      updates.snoozedUntil = null;
+      break;
+    case "snooze":
+      updates.isSnoozed = true;
+      updates.snoozedUntil = new Date(Date.now() + snoozeDays * 24 * 60 * 60 * 1000);
+      break;
+    case "favorite":
+      updates.isFavorited = true;
+      break;
+    case "unfavorite":
+      updates.isFavorited = false;
+      break;
+    case "add_to_list":
+      if (!listId) {
+        res.status(400).json({ error: "listId is required for add_to_list" });
+        return;
+      }
+      {
+        const existingItem = await db
+          .select()
+          .from(placeListItemsTable)
+          .where(
+            and(
+              eq(placeListItemsTable.listId, listId),
+              eq(placeListItemsTable.googlePlaceId, googlePlaceId),
+              eq(placeListItemsTable.userId, user.id),
+            ),
+          )
+          .limit(1);
+        if (!existingItem.length) {
+          await db.insert(placeListItemsTable).values({
+            id: crypto.randomUUID(),
+            listId,
+            userId: user.id,
+            googlePlaceId,
+          });
+        }
+      }
+      break;
+    case "remove_from_list":
+      if (!listId) {
+        res.status(400).json({ error: "listId is required for remove_from_list" });
+        return;
+      }
+      await db
+        .delete(placeListItemsTable)
+        .where(
+          and(
+            eq(placeListItemsTable.listId, listId),
+            eq(placeListItemsTable.googlePlaceId, googlePlaceId),
+            eq(placeListItemsTable.userId, user.id),
+          ),
+        );
+      break;
+    default:
+      res.status(400).json({ error: "Invalid action" });
+      return;
+  }
+
+  if (Object.keys(updates).length > 1) {
+    await db
+      .update(userDiscoveredPlacesTable)
+      .set(updates)
+      .where(
+        and(
+          eq(userDiscoveredPlacesTable.userId, user.id),
+          eq(userDiscoveredPlacesTable.googlePlaceId, googlePlaceId),
+        ),
+      );
+  }
+
+  const updated = await db
+    .select({
+      discovery: userDiscoveredPlacesTable,
+      place: placeCacheTable,
+    })
+    .from(userDiscoveredPlacesTable)
+    .innerJoin(placeCacheTable, eq(userDiscoveredPlacesTable.googlePlaceId, placeCacheTable.googlePlaceId))
+    .where(
+      and(eq(userDiscoveredPlacesTable.userId, user.id), eq(userDiscoveredPlacesTable.googlePlaceId, googlePlaceId)),
+    )
+    .limit(1);
+
+  const { discovery, place } = updated[0];
+  res.json({
+    googlePlaceId: place.googlePlaceId,
+    name: place.name,
+    lat: Number(place.lat),
+    lng: Number(place.lng),
+    rating: place.rating ? Number(place.rating) : null,
+    types: place.types,
+    photoReference: place.photoReference,
+    address: place.address,
+    firstDiscoveredAt: discovery.firstDiscoveredAt,
+    lastDiscoveredAt: discovery.lastDiscoveredAt,
+    discoveryCount: discovery.discoveryCount,
+    isDismissed: discovery.isDismissed,
+    isFavorited: discovery.isFavorited,
+    isSnoozed: discovery.isSnoozed,
+    snoozedUntil: discovery.snoozedUntil,
+  });
+});
+
+export default router;

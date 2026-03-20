@@ -5,7 +5,9 @@
  * Hero's Path API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Journey } from "./journey";
 
-export interface HealthStatus {
-  status: string;
+export interface JourneysResponse {
+  journeys: Journey[];
+  total: number;
 }

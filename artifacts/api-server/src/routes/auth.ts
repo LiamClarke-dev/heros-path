@@ -45,6 +45,30 @@ router.post("/auth/google", async (req, res) => {
       return;
     }
 
+    // Validate token audience against our registered client IDs to prevent
+    // tokens minted for other apps from being accepted.
+    const allowedClientIds = [
+      process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_ID,
+    ].filter(Boolean) as string[];
+
+    if (allowedClientIds.length > 0 && tokenInfo.aud) {
+      // aud may be a single string or comma-separated list
+      const tokenAudiences = tokenInfo.aud.split(",").map((s) => s.trim());
+      const isValid = tokenAudiences.some((aud) => allowedClientIds.includes(aud));
+      if (!isValid) {
+        req.log.warn({ aud: tokenInfo.aud }, "Token audience mismatch");
+        res.status(401).json({ error: "Unauthorized", message: "Token audience mismatch" });
+        return;
+      }
+    }
+
+    // Validate token expiry
+    if (tokenInfo.exp && Number(tokenInfo.exp) * 1000 < Date.now()) {
+      res.status(401).json({ error: "Unauthorized", message: "Token has expired" });
+      return;
+    }
+
     const existingUsers = await db
       .select()
       .from(usersTable)

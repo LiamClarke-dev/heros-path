@@ -94,7 +94,7 @@ export default function LoginScreen() {
           <Feather name="compass" size={56} color={Colors.gold} />
         </View>
         <Text style={styles.appName}>Hero's Path</Text>
-        <Text style={styles.tagline}>Paint the city with your footsteps</Text>
+        <Text style={styles.tagline}>Every street tells a story</Text>
         <Text style={styles.subtitle}>
           Track your journeys, discover hidden gems, and become the adventurer your city deserves.
         </Text>

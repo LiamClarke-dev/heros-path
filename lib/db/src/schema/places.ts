@@ -40,10 +40,31 @@ export const journeyDiscoveredPlacesTable = pgTable("journey_discovered_places",
   discoverySource: text("discovery_source").notNull().default("ping"),
 });
 
+/**
+ * Audit log of every place action the user takes.
+ * The current derived state lives in user_discovered_places (booleans);
+ * this table is the append-only event log behind it.
+ */
+export const userPlaceActionsTable = pgTable("user_place_actions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  googlePlaceId: text("google_place_id").notNull().references(() => placeCacheTable.googlePlaceId),
+  /** One of: dismiss | snooze | favorite | unfavorite | add_to_list | remove_from_list */
+  action: text("action").notNull(),
+  /** Populated when action = 'snooze' */
+  snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+  /** Populated when action = 'add_to_list' or 'remove_from_list' */
+  listId: text("list_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertPlaceCacheSchema = createInsertSchema(placeCacheTable);
 export const insertUserDiscoveredPlaceSchema = createInsertSchema(userDiscoveredPlacesTable);
 export const insertJourneyDiscoveredPlaceSchema = createInsertSchema(journeyDiscoveredPlacesTable);
+export const insertUserPlaceActionSchema = createInsertSchema(userPlaceActionsTable);
 
 export type PlaceCache = typeof placeCacheTable.$inferSelect;
 export type UserDiscoveredPlace = typeof userDiscoveredPlacesTable.$inferSelect;
 export type JourneyDiscoveredPlace = typeof journeyDiscoveredPlacesTable.$inferSelect;
+export type UserPlaceAction = typeof userPlaceActionsTable.$inferSelect;
+export type InsertUserPlaceAction = z.infer<typeof insertUserPlaceActionSchema>;

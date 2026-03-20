@@ -5,8 +5,9 @@ import {
   placeCacheTable,
   placeListItemsTable,
   placeListsTable,
+  userPlaceActionsTable,
 } from "@workspace/db";
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -171,6 +172,16 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
         ),
       );
   }
+
+  // Audit log: append every place action to user_place_actions
+  await db.insert(userPlaceActionsTable).values({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    googlePlaceId,
+    action,
+    snoozedUntil: "snoozedUntil" in updates ? (updates.snoozedUntil ?? null) : null,
+    listId: listId ?? null,
+  });
 
   const updated = await db
     .select({

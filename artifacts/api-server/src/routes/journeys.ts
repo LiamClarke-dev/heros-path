@@ -197,19 +197,27 @@ router.patch("/journeys/:journeyId", requireAuth, async (req: Request, res: Resp
       updates.polylineEncoded = encodePolyline(
         allWaypoints.map((w) => ({ lat: Number(w.lat), lng: Number(w.lng) })),
       );
-
-      // Trigger end-of-journey place discovery (non-blocking)
-      void discoverPlacesAlongRoute(journeyId, user.id, allWaypoints).catch((err) =>
-        console.error("end-of-journey discovery failed", err),
-      );
     }
   }
 
-  const updated = await db
-    .update(journeysTable)
-    .set(updates)
-    .where(eq(journeysTable.id, journeyId))
-    .returning();
+  // Only call db.update() when there are journey-level fields to persist
+  let updated: (typeof journeysTable.$inferSelect)[];
+  if (Object.keys(updates).length > 0) {
+    updated = await db
+      .update(journeysTable)
+      .set(updates)
+      .where(eq(journeysTable.id, journeyId))
+      .returning();
+  } else {
+    updated = existing;
+  }
+
+  // Trigger end-of-journey place discovery after polyline is persisted
+  if (status === "ended" && updates.polylineEncoded) {
+    void discoverPlacesAlongRoute(journeyId, user.id, updates.polylineEncoded).catch((err) =>
+      console.error("end-of-journey discovery failed", err),
+    );
+  }
 
   const placeCountResult = await db
     .select({ count: count() })
@@ -333,10 +341,10 @@ router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request,
   const journey = existing[0];
 
   // If journey has ended, check whether route discovery has run yet.
-  // If no discoveries exist at all (e.g., the fire-and-forget call hasn't finished),
-  // run it inline here so the client gets deterministic results on first fetch.
-  if (journey.status === "ended") {
-    const hasAnyDiscoveries = await db
+  // If no route discoveries exist (e.g., the fire-and-forget finished before polyline
+  // was persisted), run it inline so the client gets deterministic results on first fetch.
+  if (journey.endedAt != null && journey.polylineEncoded) {
+    const hasRouteDiscoveries = await db
       .select({ googlePlaceId: journeyDiscoveredPlacesTable.googlePlaceId })
       .from(journeyDiscoveredPlacesTable)
       .where(
@@ -347,19 +355,10 @@ router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request,
       )
       .limit(1);
 
-    if (!hasAnyDiscoveries.length && journey.polylineEncoded) {
-      // Fetch stored waypoints to run discovery
-      const storedWaypoints = await db
-        .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
-        .from(journeyWaypointsTable)
-        .where(eq(journeyWaypointsTable.journeyId, journeyId))
-        .orderBy(journeyWaypointsTable.recordedAt);
-
-      if (storedWaypoints.length >= 2) {
-        await discoverPlacesAlongRoute(journeyId, user.id, storedWaypoints).catch((err) =>
-          console.error("inline discovery failed", err),
-        );
-      }
+    if (!hasRouteDiscoveries.length) {
+      await discoverPlacesAlongRoute(journeyId, user.id, journey.polylineEncoded).catch((err) =>
+        console.error("inline discovery failed", err),
+      );
     }
   }
 
@@ -415,13 +414,46 @@ router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request,
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Default place type queries used when the user has no specific preferences set
+const DEFAULT_ROUTE_QUERIES = ["restaurant", "cafe", "museum", "park", "tourist_attraction"];
+
+interface PlaceResult {
+  googlePlaceId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  rating: number | null;
+  types: string[];
+  photoReference: string | null;
+  address: string | null;
+  distanceM: number;
+}
+
+// Response shape for the Google Places (New) API
+interface PlacesNewApiResponse {
+  places?: Array<{
+    id: string;
+    displayName?: { text: string };
+    location?: { latitude: number; longitude: number };
+    rating?: number;
+    types?: string[];
+    formattedAddress?: string;
+    photos?: Array<{ name: string }>;
+  }>;
+}
+
+/**
+ * Uses the Google Places (New) API — Text Search with searchAlongRouteParameters —
+ * to discover places along the journey's encoded polyline. Makes one request per
+ * place-type category (up to 5), deduplicates, and stores results in the DB.
+ */
 async function discoverPlacesAlongRoute(
   journeyId: string,
   userId: string,
-  waypoints: Array<{ lat: string | number; lng: string | number }>,
+  encodedPolyline: string,
 ) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey || waypoints.length < 2) return;
+  if (!apiKey || !encodedPolyline) return;
 
   const prefs = await db
     .select()
@@ -431,9 +463,9 @@ async function discoverPlacesAlongRoute(
 
   const minRating = parseFloat(String(prefs[0]?.minRating ?? "0"));
   const placeTypes = prefs[0]?.placeTypes ?? [];
-  const allowedTypesSet = placeTypes.length ? new Set(placeTypes) : null;
-  // For a single type, pass it to Google. For multiple types, post-filter.
-  const typeQuery = placeTypes.length === 1 ? `&type=${placeTypes[0]}` : "";
+
+  // Use user's selected types (up to 5) or fall back to default discovery categories
+  const queries = placeTypes.length > 0 ? placeTypes.slice(0, 5) : DEFAULT_ROUTE_QUERIES;
 
   const dismissed = await db
     .select({ googlePlaceId: userDiscoveredPlacesTable.googlePlaceId })
@@ -448,62 +480,50 @@ async function discoverPlacesAlongRoute(
     .where(eq(journeyDiscoveredPlacesTable.journeyId, journeyId));
   const alreadyFoundIds = new Set(alreadyFound.map((d) => d.googlePlaceId));
 
-  // Search at start, 25%, 50%, 75%, end
-  const samplePoints = [0, 0.25, 0.5, 0.75, 1].map((t) => {
-    const idx = Math.min(Math.floor(t * (waypoints.length - 1)), waypoints.length - 1);
-    return { lat: Number(waypoints[idx].lat), lng: Number(waypoints[idx].lng) };
-  });
-
-  interface PlaceResult {
-    googlePlaceId: string;
-    name: string;
-    lat: number;
-    lng: number;
-    rating: number | null;
-    types: string[];
-    photoReference: string | null;
-    address: string | null;
-    distanceM: number;
-  }
-
   const allFound = new Map<string, PlaceResult>();
 
-  for (const point of samplePoints) {
-    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${point.lat},${point.lng}&radius=300&key=${apiKey}${typeQuery}`;
-    const res = await fetch(url).catch(() => null);
+  const SEARCH_ALONG_ROUTE_URL = "https://places.googleapis.com/v1/places:searchText";
+  const FIELD_MASK = "places.id,places.displayName,places.location,places.rating,places.types,places.formattedAddress,places.photos";
+
+  for (const query of queries) {
+    const res = await fetch(SEARCH_ALONG_ROUTE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": FIELD_MASK,
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        maxResultCount: 20,
+        searchAlongRouteParameters: {
+          polyline: { encodedPolyline },
+        },
+      }),
+    }).catch(() => null);
+
     if (!res?.ok) continue;
 
-    const data = (await res.json()) as {
-      results: Array<{
-        place_id: string;
-        name: string;
-        geometry: { location: { lat: number; lng: number } };
-        rating?: number;
-        types?: string[];
-        photos?: Array<{ photo_reference: string }>;
-        vicinity?: string;
-      }>;
-    };
+    const data = (await res.json()) as PlacesNewApiResponse;
 
-    for (const p of data.results ?? []) {
-      if (dismissedIds.has(p.place_id) || alreadyFoundIds.has(p.place_id)) continue;
+    for (const p of data.places ?? []) {
+      if (!p.id || !p.location) continue;
+      if (dismissedIds.has(p.id) || alreadyFoundIds.has(p.id) || allFound.has(p.id)) continue;
       // Apply rating filter (0 = no filter)
       if (minRating > 0 && (p.rating ?? 0) < minRating) continue;
-      // Apply multi-type filter: if allowedTypesSet is set, at least one type must match
-      if (allowedTypesSet && !(p.types ?? []).some((t) => allowedTypesSet.has(t))) continue;
-      if (!allFound.has(p.place_id)) {
-        allFound.set(p.place_id, {
-          googlePlaceId: p.place_id,
-          name: p.name,
-          lat: p.geometry.location.lat,
-          lng: p.geometry.location.lng,
-          rating: p.rating ?? null,
-          types: p.types ?? [],
-          photoReference: p.photos?.[0]?.photo_reference ?? null,
-          address: p.vicinity ?? null,
-          distanceM: 0,
-        });
-      }
+
+      allFound.set(p.id, {
+        googlePlaceId: p.id,
+        name: p.displayName?.text ?? "Unknown Place",
+        lat: p.location.latitude,
+        lng: p.location.longitude,
+        rating: p.rating ?? null,
+        types: p.types ?? [],
+        // photos[0].name is the resource name — store it for later rendering
+        photoReference: p.photos?.[0]?.name ?? null,
+        address: p.formattedAddress ?? null,
+        distanceM: 0,
+      });
     }
   }
 

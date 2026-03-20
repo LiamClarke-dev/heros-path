@@ -1,4 +1,4 @@
-import * as AuthSession from "expo-auth-session";
+import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import {
@@ -18,30 +18,15 @@ import { useAuth } from "@/context/AuthContext";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "";
-
 export default function LoginScreen() {
   const { signIn } = useAuth();
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(false);
 
-  const redirectUri = AuthSession.makeRedirectUri({
-    scheme: "heros-path",
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
   });
-
-  const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
-
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: GOOGLE_CLIENT_ID,
-      redirectUri,
-      responseType: "id_token",
-      scopes: ["openid", "profile", "email"],
-      extraParams: { nonce: Math.random().toString(36).slice(2) },
-      usePKCE: false,
-    },
-    discovery ?? null,
-  );
 
   React.useEffect(() => {
     if (response?.type === "success") {

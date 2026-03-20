@@ -52,6 +52,8 @@ router.post("/auth/google", async (req, res) => {
     const allowedClientIds = [
       process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_ID,
+      process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
     ].filter(Boolean) as string[];
 
     const isProduction = process.env.NODE_ENV === "production";

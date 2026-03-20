@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 
@@ -23,11 +23,13 @@ interface ProfileStats {
   totalDistanceM: number;
   totalPlacesDiscovered: number;
   totalFavorited: number;
+  totalStreetsExplored: number;
   currentStreak: number;
   xp: number;
   level: number;
   rank: string;
   xpToNextLevel: number;
+  levelProgress: number;
 }
 
 interface QuestItem {
@@ -38,13 +40,18 @@ interface QuestItem {
   progress: number;
   target: number;
   isCompleted: boolean;
+  completedAt: string | null;
+  expiresAt: string | null;
+  type: string;
 }
 
 interface BadgeItem {
   key: string;
   name: string;
   description: string;
+  iconName: string;
   isEarned: boolean;
+  earnedAt: string | null;
 }
 
 function formatDistance(meters: number): string {
@@ -52,16 +59,48 @@ function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)}km`;
 }
 
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+const RANK_COLORS: Record<string, string> = {
+  Wanderer: "#A08060",
+  Scout: "#8BC34A",
+  Pathfinder: "#29B6F6",
+  Trailblazer: "#AB47BC",
+  Cartographer: "#FF7043",
+  Legend: Colors.gold,
+};
+
+const FEATHER_ICONS: Record<string, React.ComponentProps<typeof Feather>["name"]> = {
+  map: "map",
+  activity: "activity",
+  "map-pin": "map-pin",
+  search: "search",
+  star: "star",
+  moon: "moon",
+  globe: "globe",
+  "trending-up": "trending-up",
+  award: "award",
+  zap: "zap",
+  radio: "radio",
+};
+
 export default function ProfileScreen() {
   const { user, signOut, token } = useAuth();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const apiBase = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
     : "http://localhost:3000/api";
 
-  const authHeaders = { Authorization: `Bearer ${token}` };
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["profile-stats"],
@@ -73,7 +112,7 @@ export default function ProfileScreen() {
     enabled: !!token,
   });
 
-  const { data: questsData } = useQuery({
+  const { data: questsData, isLoading: questsLoading } = useQuery({
     queryKey: ["quests"],
     queryFn: async () => {
       const res = await fetch(`${apiBase}/quests`, { headers: authHeaders });
@@ -100,13 +139,13 @@ export default function ProfileScreen() {
     ]);
   }
 
-  const xpPercent = stats
-    ? Math.min(1, (stats.xp % 150) / 150)
-    : 0;
-
-  const activeQuests = questsData?.active.slice(0, 3) ?? [];
-  const earnedBadges = badgesData?.badges.filter((b) => b.isEarned) ?? [];
-  const lockedBadges = badgesData?.badges.filter((b) => !b.isEarned).slice(0, 3) ?? [];
+  const levelProgress = stats?.levelProgress ?? 0;
+  const activeQuests = questsData?.active ?? [];
+  const completedQuests = (questsData?.completed ?? []).slice(0, 5);
+  const earnedBadges = (badgesData?.badges ?? []).filter((b) => b.isEarned);
+  const lockedBadges = (badgesData?.badges ?? []).filter((b) => !b.isEarned);
+  const rank = stats?.rank ?? user?.rank ?? "Wanderer";
+  const rankColor = RANK_COLORS[rank] ?? Colors.gold;
 
   return (
     <ScrollView
@@ -117,6 +156,7 @@ export default function ProfileScreen() {
       ]}
       showsVerticalScrollIndicator={false}
     >
+      {/* Hero card */}
       <LinearGradient
         colors={[Colors.surface, Colors.background]}
         style={styles.heroCard}
@@ -131,13 +171,20 @@ export default function ProfileScreen() {
         <View style={styles.heroInfo}>
           <Text style={styles.displayName}>{user?.displayName ?? "Adventurer"}</Text>
           <View style={styles.rankRow}>
-            <Feather name="shield" size={14} color={Colors.gold} />
-            <Text style={styles.rankText}>{stats?.rank ?? user?.rank ?? "Wanderer"}</Text>
-            <Text style={styles.levelText}>Level {stats?.level ?? user?.level ?? 1}</Text>
+            <Feather name="shield" size={14} color={rankColor} />
+            <Text style={[styles.rankText, { color: rankColor }]}>{rank}</Text>
+            <Text style={styles.levelText}>Lv. {stats?.level ?? user?.level ?? 1}</Text>
+          </View>
+          <View style={styles.streakRow}>
+            <Feather name="zap" size={12} color={Colors.gold} />
+            <Text style={styles.streakText}>
+              {stats?.currentStreak ?? 0}-day streak
+            </Text>
           </View>
         </View>
       </LinearGradient>
 
+      {/* XP Bar */}
       {statsLoading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={Colors.gold} />
@@ -146,55 +193,86 @@ export default function ProfileScreen() {
         <>
           <View style={styles.xpSection}>
             <View style={styles.xpLabelRow}>
-              <Text style={styles.xpLabel}>
-                {stats?.xp ?? 0} XP
-              </Text>
+              <Text style={styles.xpLabel}>{stats?.xp ?? 0} XP</Text>
               <Text style={styles.xpNextLabel}>
-                {stats?.xpToNextLevel ?? 150} to next level
+                {stats?.xpToNextLevel ?? 0} XP to Level {(stats?.level ?? 1) + 1}
               </Text>
             </View>
             <View style={styles.xpBar}>
-              <View style={[styles.xpFill, { width: `${Math.round(xpPercent * 100)}%` }]} />
+              <View style={[styles.xpFill, { width: `${Math.round(levelProgress * 100)}%` }]} />
             </View>
           </View>
 
+          {/* Stats grid */}
           <View style={styles.statsGrid}>
-            <StatCard icon="compass" label="Journeys" value={`${stats?.totalJourneys ?? 0}`} />
-            <StatCard icon="navigation" label="Distance" value={formatDistance(stats?.totalDistanceM ?? 0)} />
-            <StatCard icon="map-pin" label="Discovered" value={`${stats?.totalPlacesDiscovered ?? 0}`} />
-            <StatCard icon="zap" label="Streak" value={`${stats?.currentStreak ?? 0}d`} />
+            <StatCard icon="compass" label="Journeys" value={`${stats?.totalJourneys ?? 0}`} color={Colors.gold} />
+            <StatCard icon="navigation" label="Distance" value={formatDistance(stats?.totalDistanceM ?? 0)} color={Colors.info} />
+            <StatCard icon="map-pin" label="Places" value={`${stats?.totalPlacesDiscovered ?? 0}`} color="#AB47BC" />
+            <StatCard icon="activity" label="Streets" value={`${stats?.totalStreetsExplored ?? 0}`} color="#8BC34A" />
           </View>
         </>
       )}
 
-      {activeQuests.length > 0 && (
-        <Section title="Active Quests" icon="flag">
-          {activeQuests.map((q) => (
-            <QuestCard key={q.key} quest={q} />
+      {/* Active Quests */}
+      <Section title="Active Quests" icon="flag">
+        {questsLoading ? (
+          <ActivityIndicator color={Colors.gold} style={{ marginTop: 8 }} />
+        ) : activeQuests.length === 0 ? (
+          <Text style={styles.emptyText}>No active quests. Go on a journey!</Text>
+        ) : (
+          activeQuests.map((q) => <QuestCard key={q.key} quest={q} />)
+        )}
+      </Section>
+
+      {/* Badges — earned */}
+      <Section title="Badges" icon="award">
+        {badgesData?.badges.length === 0 ? (
+          <Text style={styles.emptyText}>Complete journeys to earn badges</Text>
+        ) : (
+          <>
+            {earnedBadges.length > 0 && (
+              <>
+                <Text style={styles.badgeSectionLabel}>Earned</Text>
+                <View style={styles.badgeGrid}>
+                  {earnedBadges.map((b) => (
+                    <BadgeTile key={b.key} badge={b} />
+                  ))}
+                </View>
+              </>
+            )}
+            {lockedBadges.length > 0 && (
+              <>
+                <Text style={[styles.badgeSectionLabel, { marginTop: earnedBadges.length > 0 ? 12 : 0 }]}>
+                  Locked
+                </Text>
+                <View style={styles.badgeGrid}>
+                  {lockedBadges.map((b) => (
+                    <BadgeTile key={b.key} badge={b} />
+                  ))}
+                </View>
+              </>
+            )}
+          </>
+        )}
+      </Section>
+
+      {/* Recently completed quests */}
+      {completedQuests.length > 0 && (
+        <Section title="Completed Quests" icon="check-circle">
+          {completedQuests.map((q) => (
+            <CompletedQuestRow key={q.key} quest={q} />
           ))}
         </Section>
       )}
 
-      {(earnedBadges.length > 0 || lockedBadges.length > 0) && (
-        <Section title="Badges" icon="award">
-          <View style={styles.badgeGrid}>
-            {earnedBadges.map((b) => (
-              <BadgeChip key={b.key} badge={b} />
-            ))}
-            {lockedBadges.map((b) => (
-              <BadgeChip key={b.key} badge={b} />
-            ))}
-          </View>
-        </Section>
-      )}
-
+      {/* Journey History */}
       <Section title="Journey History" icon="compass">
         <Pressable
-          style={styles.devButton}
+          style={styles.menuItem}
           onPress={() => router.push("/past-journeys")}
         >
           <Feather name="map" size={16} color={Colors.gold} />
-          <Text style={[styles.devButtonText, { color: Colors.parchment }]}>Past Journeys</Text>
+          <Text style={styles.menuItemText}>Past Journeys</Text>
           <View style={styles.statBadge}>
             <Text style={styles.statBadgeText}>{stats?.totalJourneys ?? 0}</Text>
           </View>
@@ -202,13 +280,14 @@ export default function ProfileScreen() {
         </Pressable>
       </Section>
 
+      {/* Settings */}
       <Section title="Settings" icon="sliders">
         <Pressable
-          style={styles.devButton}
+          style={styles.menuItem}
           onPress={() => router.push("/settings/preferences")}
         >
           <Feather name="map-pin" size={16} color={Colors.gold} />
-          <Text style={[styles.devButtonText, { color: Colors.parchment }]}>Discovery Preferences</Text>
+          <Text style={styles.menuItemText}>Discovery Preferences</Text>
           <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
         </Pressable>
       </Section>
@@ -216,11 +295,11 @@ export default function ProfileScreen() {
       {__DEV__ && (
         <Section title="Dev Tools" icon="settings">
           <Pressable
-            style={styles.devButton}
+            style={styles.menuItem}
             onPress={() => router.push("/dev/simulate")}
           >
             <Feather name="play-circle" size={16} color={Colors.info} />
-            <Text style={styles.devButtonText}>Simulate Journey</Text>
+            <Text style={[styles.menuItemText, { color: Colors.info }]}>Simulate Journey</Text>
             <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
           </Pressable>
         </Section>
@@ -258,14 +337,16 @@ function StatCard({
   icon,
   label,
   value,
+  color,
 }: {
   icon: React.ComponentProps<typeof Feather>["name"];
   label: string;
   value: string;
+  color: string;
 }) {
   return (
     <View style={styles.statCard}>
-      <Feather name={icon} size={18} color={Colors.gold} />
+      <Feather name={icon} size={18} color={color} />
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
@@ -274,10 +355,16 @@ function StatCard({
 
 function QuestCard({ quest }: { quest: QuestItem }) {
   const pct = Math.min(1, quest.progress / quest.target);
+  const isWeekly = quest.type === "weekly";
   return (
     <View style={styles.questCard}>
       <View style={styles.questHeader}>
-        <Text style={styles.questTitle}>{quest.title}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.questTitle}>{quest.title}</Text>
+          {isWeekly && quest.expiresAt && (
+            <Text style={styles.questExpiry}>Resets {formatDate(quest.expiresAt)}</Text>
+          )}
+        </View>
         <Text style={styles.questXp}>+{quest.xpReward} XP</Text>
       </View>
       <Text style={styles.questDesc}>{quest.description}</Text>
@@ -293,17 +380,41 @@ function QuestCard({ quest }: { quest: QuestItem }) {
   );
 }
 
-function BadgeChip({ badge }: { badge: BadgeItem }) {
+function CompletedQuestRow({ quest }: { quest: QuestItem }) {
   return (
-    <View style={[styles.badgeChip, !badge.isEarned && styles.badgeChipLocked]}>
-      <Feather
-        name={badge.isEarned ? "award" : "lock"}
-        size={16}
-        color={badge.isEarned ? Colors.gold : Colors.parchmentDim}
-      />
-      <Text style={[styles.badgeName, !badge.isEarned && styles.badgeNameLocked]}>
+    <View style={styles.completedQuestRow}>
+      <Feather name="check-circle" size={14} color={Colors.gold} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.completedQuestTitle}>{quest.title}</Text>
+        {quest.completedAt && (
+          <Text style={styles.completedQuestDate}>Completed {formatDate(quest.completedAt)}</Text>
+        )}
+      </View>
+      <Text style={styles.completedQuestXp}>+{quest.xpReward} XP</Text>
+    </View>
+  );
+}
+
+function BadgeTile({ badge }: { badge: BadgeItem }) {
+  const iconName = FEATHER_ICONS[badge.iconName] ?? "award";
+  return (
+    <View style={[styles.badgeTile, !badge.isEarned && styles.badgeTileLocked]}>
+      <View style={[styles.badgeIconBg, !badge.isEarned && styles.badgeIconBgLocked]}>
+        <Feather
+          name={badge.isEarned ? iconName : "lock"}
+          size={18}
+          color={badge.isEarned ? Colors.gold : Colors.parchmentDim}
+        />
+      </View>
+      <Text style={[styles.badgeTileName, !badge.isEarned && styles.badgeTileNameLocked]} numberOfLines={2}>
         {badge.name}
       </Text>
+      {badge.isEarned && badge.earnedAt && (
+        <Text style={styles.badgeTileDate}>{formatDate(badge.earnedAt)}</Text>
+      )}
+      {!badge.isEarned && (
+        <Text style={styles.badgeTileDesc} numberOfLines={2}>{badge.description}</Text>
+      )}
     </View>
   );
 }
@@ -331,7 +442,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  heroInfo: { flex: 1 },
+  heroInfo: { flex: 1, gap: 4 },
   displayName: {
     fontSize: 20,
     fontWeight: "700",
@@ -342,14 +453,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 4,
   },
   rankText: {
     fontSize: 13,
     color: Colors.gold,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "Inter_600SemiBold",
   },
   levelText: {
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_400Regular",
+  },
+  streakRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  streakText: {
     fontSize: 12,
     color: Colors.parchmentMuted,
     fontFamily: "Inter_400Regular",
@@ -376,15 +496,17 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
   },
   xpBar: {
-    height: 6,
+    height: 8,
     backgroundColor: Colors.surface,
-    borderRadius: 3,
+    borderRadius: 4,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   xpFill: {
     height: "100%",
     backgroundColor: Colors.gold,
-    borderRadius: 3,
+    borderRadius: 4,
   },
   statsGrid: {
     flexDirection: "row",
@@ -393,7 +515,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    minWidth: "45%",
+    minWidth: "44%",
     backgroundColor: Colors.card,
     borderRadius: 12,
     borderWidth: 1,
@@ -425,6 +547,13 @@ const styles = StyleSheet.create({
     color: Colors.parchment,
     fontFamily: "Inter_600SemiBold",
   },
+  emptyText: {
+    fontSize: 13,
+    color: Colors.parchmentDim,
+    fontFamily: "Inter_400Regular",
+    fontStyle: "italic",
+    paddingVertical: 4,
+  },
   questCard: {
     backgroundColor: Colors.card,
     borderRadius: 12,
@@ -436,13 +565,20 @@ const styles = StyleSheet.create({
   questHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: 8,
   },
   questTitle: {
     fontSize: 14,
     fontWeight: "600",
     color: Colors.parchment,
     fontFamily: "Inter_600SemiBold",
+  },
+  questExpiry: {
+    fontSize: 11,
+    color: Colors.parchmentDim,
+    fontFamily: "Inter_400Regular",
+    marginTop: 1,
   },
   questXp: {
     fontSize: 12,
@@ -461,50 +597,111 @@ const styles = StyleSheet.create({
   },
   questBar: {
     flex: 1,
-    height: 4,
+    height: 5,
     backgroundColor: Colors.surface,
-    borderRadius: 2,
+    borderRadius: 3,
     overflow: "hidden",
   },
   questFill: {
     height: "100%",
     backgroundColor: Colors.gold,
-    borderRadius: 2,
+    borderRadius: 3,
   },
   questProgressText: {
     fontSize: 11,
     color: Colors.parchmentMuted,
     fontFamily: "Inter_400Regular",
+    minWidth: 30,
+    textAlign: "right",
   },
-  badgeGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  badgeChip: {
+  completedQuestRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: Colors.goldGlow,
+    gap: 10,
+    backgroundColor: Colors.card,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: Colors.goldDark,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  badgeChipLocked: {
-    backgroundColor: Colors.surface,
     borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  badgeName: {
+  completedQuestTitle: {
+    fontSize: 13,
+    color: Colors.parchment,
+    fontFamily: "Inter_500Medium",
+  },
+  completedQuestDate: {
+    fontSize: 11,
+    color: Colors.parchmentDim,
+    fontFamily: "Inter_400Regular",
+  },
+  completedQuestXp: {
     fontSize: 12,
     color: Colors.gold,
     fontFamily: "Inter_500Medium",
   },
-  badgeNameLocked: {
+  badgeSectionLabel: {
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_500Medium",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  badgeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  badgeTile: {
+    width: "30%",
+    minWidth: 90,
+    flex: 1,
+    backgroundColor: Colors.goldGlow,
+    borderWidth: 1,
+    borderColor: Colors.goldDark,
+    borderRadius: 12,
+    padding: 10,
+    alignItems: "center",
+    gap: 6,
+  },
+  badgeTileLocked: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.border,
+  },
+  badgeIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(212,160,23,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeIconBgLocked: {
+    backgroundColor: "rgba(160,128,96,0.1)",
+  },
+  badgeTileName: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: Colors.gold,
+    fontFamily: "Inter_600SemiBold",
+    textAlign: "center",
+  },
+  badgeTileNameLocked: {
     color: Colors.parchmentDim,
   },
-  devButton: {
+  badgeTileDate: {
+    fontSize: 10,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_400Regular",
+  },
+  badgeTileDesc: {
+    fontSize: 10,
+    color: Colors.parchmentDim,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  menuItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -515,10 +712,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  devButtonText: {
+  menuItemText: {
     flex: 1,
     fontSize: 14,
-    color: Colors.info,
+    color: Colors.parchment,
     fontFamily: "Inter_500Medium",
   },
   statBadge: {

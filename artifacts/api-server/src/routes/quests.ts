@@ -1,56 +1,15 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { userQuestsTable } from "@workspace/db";
-import { eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+import { QUEST_DEFINITIONS } from "./journeys";
 
 const router: IRouter = Router();
 
-const QUEST_DEFINITIONS = [
-  {
-    key: "first_journey",
-    title: "The First Step",
-    description: "Complete your first journey",
-    xpReward: 50,
-    target: 1,
-    type: "total",
-  },
-  {
-    key: "discover_3_places",
-    title: "Curious Explorer",
-    description: "Discover 3 new places",
-    xpReward: 75,
-    target: 3,
-    type: "weekly",
-  },
-  {
-    key: "walk_5_journeys",
-    title: "Regular Adventurer",
-    description: "Go on 5 journeys",
-    xpReward: 100,
-    target: 5,
-    type: "total",
-  },
-  {
-    key: "ping_3_times",
-    title: "The Seeker",
-    description: "Use the ping feature 3 times",
-    xpReward: 60,
-    target: 3,
-    type: "weekly",
-  },
-  {
-    key: "favorite_5_places",
-    title: "Connoisseur",
-    description: "Favorite 5 places",
-    xpReward: 80,
-    target: 5,
-    type: "total",
-  },
-];
-
 router.get("/quests", requireAuth, async (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
+  const now = new Date();
 
   const userQuests = await db
     .select()
@@ -60,10 +19,10 @@ router.get("/quests", requireAuth, async (req: Request, res: Response) => {
   const userQuestMap = new Map(userQuests.map((q) => [q.questKey, q]));
 
   for (const def of QUEST_DEFINITIONS) {
-    if (!userQuestMap.has(def.key)) {
-      const expiresAt = def.type === "weekly"
-        ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-        : null;
+    const existing = userQuestMap.get(def.key);
+
+    if (!existing) {
+      const expiresAt = def.type === "weekly" ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
       const newQuest = await db
         .insert(userQuestsTable)
         .values({
@@ -71,6 +30,42 @@ router.get("/quests", requireAuth, async (req: Request, res: Response) => {
           userId: user.id,
           questKey: def.key,
           expiresAt,
+          progressJson: { current: 0 },
+        })
+        .returning();
+      userQuestMap.set(def.key, newQuest[0]);
+    } else if (
+      def.type === "weekly" &&
+      existing.completedAt &&
+      existing.expiresAt &&
+      existing.expiresAt < now
+    ) {
+      // Weekly quest completed + expired — issue a fresh instance
+      const newQuest = await db
+        .insert(userQuestsTable)
+        .values({
+          id: crypto.randomUUID(),
+          userId: user.id,
+          questKey: def.key,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          progressJson: { current: 0 },
+        })
+        .returning();
+      userQuestMap.set(def.key, newQuest[0]);
+    } else if (
+      def.type === "weekly" &&
+      !existing.completedAt &&
+      existing.expiresAt &&
+      existing.expiresAt < now
+    ) {
+      // Weekly quest expired without completion — reset
+      const newQuest = await db
+        .insert(userQuestsTable)
+        .values({
+          id: crypto.randomUUID(),
+          userId: user.id,
+          questKey: def.key,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           progressJson: { current: 0 },
         })
         .returning();
@@ -95,6 +90,7 @@ router.get("/quests", requireAuth, async (req: Request, res: Response) => {
       xpReward: def.xpReward,
       progress,
       target: def.target,
+      type: def.type,
       isCompleted,
       completedAt: userQuest.completedAt ?? null,
       expiresAt: userQuest.expiresAt ?? null,

@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Animated,
+  ScrollView,
 } from "react-native";
 import MapView, { Polyline, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
@@ -14,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
@@ -30,6 +33,24 @@ interface HistoricalJourney {
   waypoints: { lat: number; lng: number }[];
 }
 
+interface QuestItem {
+  key: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  progress: number;
+  target: number;
+  isCompleted: boolean;
+}
+
+interface JourneyEndResult {
+  xpGained?: number;
+  newLevel?: number;
+  newBadges?: Array<{ key: string; name: string; description: string }>;
+  completedQuests?: Array<{ key: string; title: string; xpReward: number }>;
+  newStreak?: number;
+}
+
 type JourneyStatus = "idle" | "active" | "ending";
 
 const HISTORICAL_COLORS = ["rgba(212,160,23,0.25)", "rgba(212,160,23,0.18)", "rgba(212,160,23,0.12)"];
@@ -39,6 +60,7 @@ export default function JourneyScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const [journeyStatus, setJourneyStatus] = useState<JourneyStatus>("idle");
   const [journeyId, setJourneyId] = useState<string | null>(null);
@@ -49,6 +71,19 @@ export default function JourneyScreen() {
   const [isPinging, setIsPinging] = useState(false);
   const [pingCount, setPingCount] = useState(0);
   const [historicalJourneys, setHistoricalJourneys] = useState<HistoricalJourney[]>([]);
+
+  // Quest panel state
+  const [questPanelOpen, setQuestPanelOpen] = useState(false);
+
+  // Celebration overlay state
+  const [celebrationVisible, setCelebrationVisible] = useState(false);
+  const [celebrationData, setCelebrationData] = useState<{
+    title: string;
+    subtitle: string;
+    xp: number;
+  } | null>(null);
+  const celebrationOpacity = useRef(new Animated.Value(0)).current;
+  const celebrationScale = useRef(new Animated.Value(0.8)).current;
 
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const waypointBufferRef = useRef<Waypoint[]>([]);
@@ -63,6 +98,19 @@ export default function JourneyScreen() {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   };
+
+  const { data: questsData } = useQuery({
+    queryKey: ["quests"],
+    queryFn: async () => {
+      const res = await fetch(`${apiBase}/quests`, { headers: authHeaders });
+      if (!res.ok) throw new Error("Failed to fetch quests");
+      return res.json() as Promise<{ active: QuestItem[]; completed: QuestItem[] }>;
+    },
+    enabled: !!token,
+    refetchInterval: journeyStatus === "active" ? 30000 : false,
+  });
+
+  const activeQuests = (questsData?.active ?? []).slice(0, 3);
 
   // Load historical journey polylines on mount
   useEffect(() => {
@@ -79,6 +127,34 @@ export default function JourneyScreen() {
     } catch {
       // Non-critical — silently fail
     }
+  }
+
+  function showCelebration(title: string, subtitle: string, xp: number) {
+    setCelebrationData({ title, subtitle, xp });
+    setCelebrationVisible(true);
+    Animated.parallel([
+      Animated.spring(celebrationScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.timing(celebrationOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(celebrationScale, { toValue: 0.8, duration: 300, useNativeDriver: true }),
+        Animated.timing(celebrationOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start(() => {
+        setCelebrationVisible(false);
+        celebrationScale.setValue(0.8);
+      });
+    }, 3000);
   }
 
   async function requestLocationPermission(): Promise<boolean> {
@@ -179,7 +255,7 @@ export default function JourneyScreen() {
     waypointBufferRef.current = [];
 
     try {
-      await fetch(`${apiBase}/journeys/${jid}`, {
+      const res = await fetch(`${apiBase}/journeys/${jid}`, {
         method: "PATCH",
         headers: authHeaders,
         body: JSON.stringify({
@@ -188,9 +264,31 @@ export default function JourneyScreen() {
         }),
       });
 
+      let journeyResult: JourneyEndResult = {};
+      if (res.ok) {
+        journeyResult = await res.json() as JourneyEndResult;
+      }
+
       setJourneyStatus("idle");
       setJourneyId(null);
       currentJourneyIdRef.current = null;
+
+      // Invalidate quests + profile after journey ends
+      queryClient.invalidateQueries({ queryKey: ["quests"] });
+      queryClient.invalidateQueries({ queryKey: ["profile-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["badges"] });
+
+      // Show celebration for completed quests
+      if (journeyResult.completedQuests && journeyResult.completedQuests.length > 0) {
+        const firstQuest = journeyResult.completedQuests[0];
+        setTimeout(() => {
+          showCelebration("Quest Complete!", firstQuest.title, firstQuest.xpReward);
+        }, 500);
+      } else if (journeyResult.xpGained && journeyResult.xpGained > 0) {
+        setTimeout(() => {
+          showCelebration("Journey Complete!", `+${journeyResult.xpGained} XP earned`, journeyResult.xpGained ?? 0);
+        }, 500);
+      }
 
       // Reload historical overlays, then navigate to results
       void loadHistoricalJourneys();
@@ -313,6 +411,43 @@ export default function JourneyScreen() {
         )}
       </LinearGradient>
 
+      {/* Quest panel — shown during active journey */}
+      {journeyStatus === "active" && activeQuests.length > 0 && (
+        <View style={[styles.questPanel, { top: insets.top + 80 }]}>
+          <Pressable
+            style={styles.questPanelHeader}
+            onPress={() => setQuestPanelOpen((v) => !v)}
+          >
+            <Feather name="flag" size={13} color={Colors.gold} />
+            <Text style={styles.questPanelTitle}>Quests</Text>
+            <Feather
+              name={questPanelOpen ? "chevron-up" : "chevron-down"}
+              size={13}
+              color={Colors.parchmentMuted}
+            />
+          </Pressable>
+          {questPanelOpen && (
+            <ScrollView style={{ maxHeight: 200 }} scrollEnabled>
+              {activeQuests.map((q) => {
+                const pct = Math.min(1, q.progress / q.target);
+                return (
+                  <View key={q.key} style={styles.questPanelItem}>
+                    <View style={styles.questPanelItemHeader}>
+                      <Text style={styles.questPanelItemTitle} numberOfLines={1}>{q.title}</Text>
+                      <Text style={styles.questPanelItemXp}>+{q.xpReward} XP</Text>
+                    </View>
+                    <View style={styles.questPanelBar}>
+                      <View style={[styles.questPanelFill, { width: `${Math.round(pct * 100)}%` }]} />
+                    </View>
+                    <Text style={styles.questPanelProgress}>{q.progress}/{q.target}</Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      )}
+
       {/* Bottom controls */}
       <LinearGradient
         colors={["transparent", "rgba(13,10,11,0.95)"]}
@@ -362,6 +497,27 @@ export default function JourneyScreen() {
         places={pingPlaces}
         onDismiss={() => setShowPingSheet(false)}
       />
+
+      {/* Quest/XP celebration overlay */}
+      {celebrationVisible && celebrationData && (
+        <Animated.View
+          style={[
+            styles.celebrationOverlay,
+            { opacity: celebrationOpacity },
+          ]}
+          pointerEvents="none"
+        >
+          <Animated.View style={[styles.celebrationCard, { transform: [{ scale: celebrationScale }] }]}>
+            <Text style={styles.celebrationEmoji}>⚔️</Text>
+            <Text style={styles.celebrationTitle}>{celebrationData.title}</Text>
+            <Text style={styles.celebrationSubtitle}>{celebrationData.subtitle}</Text>
+            <View style={styles.celebrationXpBadge}>
+              <Feather name="star" size={14} color={Colors.background} />
+              <Text style={styles.celebrationXpText}>+{celebrationData.xp} XP</Text>
+            </View>
+          </Animated.View>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -412,6 +568,67 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.parchment,
     fontFamily: "Inter_500Medium",
+  },
+  questPanel: {
+    position: "absolute",
+    right: 12,
+    left: 12,
+    backgroundColor: "rgba(26,21,16,0.93)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: "hidden",
+  },
+  questPanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  questPanelTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.parchment,
+    fontFamily: "Inter_600SemiBold",
+  },
+  questPanelItem: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    gap: 4,
+  },
+  questPanelItemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  questPanelItemTitle: {
+    fontSize: 12,
+    color: Colors.parchment,
+    fontFamily: "Inter_500Medium",
+    flex: 1,
+  },
+  questPanelItemXp: {
+    fontSize: 11,
+    color: Colors.gold,
+    fontFamily: "Inter_500Medium",
+  },
+  questPanelBar: {
+    height: 3,
+    backgroundColor: Colors.surface,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  questPanelFill: {
+    height: "100%",
+    backgroundColor: Colors.gold,
+    borderRadius: 2,
+  },
+  questPanelProgress: {
+    fontSize: 10,
+    color: Colors.parchmentDim,
+    fontFamily: "Inter_400Regular",
   },
   bottomBar: {
     position: "absolute",
@@ -488,5 +705,61 @@ const styles = StyleSheet.create({
     color: Colors.parchmentMuted,
     fontSize: 14,
     fontFamily: "Inter_400Regular",
+  },
+  celebrationOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  celebrationCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: Colors.gold,
+    padding: 32,
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 40,
+    shadowColor: Colors.gold,
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  celebrationEmoji: {
+    fontSize: 48,
+  },
+  celebrationTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: Colors.parchment,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+  },
+  celebrationSubtitle: {
+    fontSize: 14,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  celebrationXpBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.gold,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginTop: 4,
+  },
+  celebrationXpText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.background,
+    fontFamily: "Inter_700Bold",
   },
 });

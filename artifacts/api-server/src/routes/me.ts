@@ -4,6 +4,7 @@ import { userPreferencesTable, userBadgesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 import { getRank } from "./auth";
+import { BADGE_DEFINITIONS } from "./journeys";
 
 const router: IRouter = Router();
 
@@ -87,20 +88,8 @@ router.get("/me/badges", requireAuth, async (req: Request, res: Response) => {
 
   const earnedKeys = new Set(earned.map((b) => b.badgeKey));
 
-  const allBadges = [
-    { key: "first_journey", name: "First Steps", description: "Complete your first journey", iconName: "map" },
-    { key: "streets_10", name: "Street Walker", description: "Walk 10 new streets", iconName: "road" },
-    { key: "streets_50", name: "City Explorer", description: "Walk 50 new streets", iconName: "city" },
-    { key: "discovery_first", name: "The Discoverer", description: "Find your first place", iconName: "search" },
-    { key: "discovery_10", name: "Place Hunter", description: "Discover 10 places", iconName: "location-pin" },
-    { key: "night_explorer", name: "Night Owl", description: "Complete a journey after 9 PM", iconName: "nightlife" },
-    { key: "streak_3", name: "Consistent", description: "Journey 3 days in a row", iconName: "repeat" },
-    { key: "streak_7", name: "Devoted", description: "Journey 7 days in a row", iconName: "star" },
-    { key: "ping_master", name: "Ping Master", description: "Use ping 5 times in one journey", iconName: "notifications" },
-  ];
-
   res.json({
-    badges: allBadges.map((b) => ({
+    badges: BADGE_DEFINITIONS.map((b) => ({
       ...b,
       isEarned: earnedKeys.has(b.key),
       earnedAt: earned.find((e) => e.badgeKey === b.key)?.earnedAt ?? null,

@@ -7,8 +7,11 @@ import {
   userDiscoveredPlacesTable,
   placeCacheTable,
   userPreferencesTable,
+  userBadgesTable,
+  userQuestsTable,
+  usersTable,
 } from "@workspace/db";
-import { eq, and, count, desc, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, count, desc, isNotNull, inArray, sql } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -19,6 +22,392 @@ function buildPhotoUrl(photoReference: string | null, apiKey: string): string | 
     return `https://places.googleapis.com/v1/${photoReference}/media?maxWidthPx=400&key=${apiKey}`;
   }
   return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${encodeURIComponent(photoReference)}&key=${apiKey}`;
+}
+
+// ─── Gamification helpers ────────────────────────────────────────────────────
+
+export function computeLevel(xp: number): number {
+  return Math.max(1, Math.floor(Math.sqrt(xp / 100)) + 1);
+}
+
+function todayDateString(): string {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD in UTC
+}
+
+const BADGE_DEFINITIONS: Array<{
+  key: string;
+  name: string;
+  description: string;
+  iconName: string;
+}> = [
+  { key: "first_journey", name: "First Steps", description: "Complete your first journey", iconName: "map" },
+  { key: "streets_10", name: "Street Walker", description: "Walk 10 new streets", iconName: "activity" },
+  { key: "streets_50", name: "City Explorer", description: "Walk 50 new streets", iconName: "map-pin" },
+  { key: "discovery_first", name: "The Discoverer", description: "Find your first place", iconName: "search" },
+  { key: "discovery_10", name: "Place Hunter", description: "Discover 10 places", iconName: "star" },
+  { key: "night_explorer", name: "Night Owl", description: "Complete a journey after 9 PM", iconName: "moon" },
+  { key: "globe_trotter", name: "Globe Trotter", description: "Journey in 3 different areas", iconName: "globe" },
+  { key: "streak_3", name: "Consistent", description: "Journey 3 days in a row", iconName: "trending-up" },
+  { key: "streak_7", name: "Devoted", description: "Journey 7 days in a row", iconName: "award" },
+  { key: "streak_30", name: "Legend Streak", description: "Journey 30 days in a row", iconName: "zap" },
+  { key: "ping_master", name: "Ping Master", description: "Use ping 5 times in one journey", iconName: "radio" },
+];
+
+export { BADGE_DEFINITIONS };
+
+// Quest definitions shared with quests.ts
+export const QUEST_DEFINITIONS = [
+  {
+    key: "first_journey",
+    title: "The First Step",
+    description: "Complete your first journey",
+    xpReward: 50,
+    target: 1,
+    type: "total",
+    metric: "journeys",
+  },
+  {
+    key: "discover_3_places",
+    title: "Curious Explorer",
+    description: "Discover 3 new places",
+    xpReward: 75,
+    target: 3,
+    type: "weekly",
+    metric: "places",
+  },
+  {
+    key: "discover_place_rated",
+    title: "High Standards",
+    description: "Discover a place rated 4.5 or above",
+    xpReward: 60,
+    target: 1,
+    type: "weekly",
+    metric: "rated_place",
+  },
+  {
+    key: "walk_5_journeys",
+    title: "Regular Adventurer",
+    description: "Go on 5 journeys",
+    xpReward: 100,
+    target: 5,
+    type: "total",
+    metric: "journeys",
+  },
+  {
+    key: "new_streets_3",
+    title: "Street Trailblazer",
+    description: "Walk 3 new streets in a single journey",
+    xpReward: 80,
+    target: 3,
+    type: "weekly",
+    metric: "new_streets_per_journey",
+  },
+  {
+    key: "ping_3_times",
+    title: "The Seeker",
+    description: "Use the ping feature 3 times",
+    xpReward: 60,
+    target: 3,
+    type: "weekly",
+    metric: "pings",
+  },
+  {
+    key: "favorite_5_places",
+    title: "Connoisseur",
+    description: "Favorite 5 places",
+    xpReward: 80,
+    target: 5,
+    type: "total",
+    metric: "favorites",
+  },
+  {
+    key: "streak_3_days",
+    title: "Three Peat",
+    description: "Journey 3 days in a row",
+    xpReward: 90,
+    target: 3,
+    type: "total",
+    metric: "streak",
+  },
+  {
+    key: "night_journey",
+    title: "Creature of the Night",
+    description: "Complete a journey after 9 PM",
+    xpReward: 70,
+    target: 1,
+    type: "total",
+    metric: "night_journey",
+  },
+];
+
+interface GamificationResult {
+  xpGained: number;
+  newLevel: number;
+  newBadges: Array<{ key: string; name: string; description: string }>;
+  completedQuests: Array<{ key: string; title: string; xpReward: number }>;
+  newStreak: number;
+}
+
+async function awardJourneyGamification(
+  userId: string,
+  journeyId: string,
+  newWaypointCount: number,
+  pingCountThisJourney: number,
+): Promise<GamificationResult> {
+  const now = new Date();
+  const todayStr = todayDateString();
+  const isNight = now.getHours() >= 21;
+
+  // Fetch current user state
+  const userRows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const user = userRows[0];
+  if (!user) return { xpGained: 0, newLevel: 1, newBadges: [], completedQuests: [], newStreak: 0 };
+
+  // Count new places discovered in this journey (net-new to this user)
+  const journeyPlaces = await db
+    .select({ googlePlaceId: journeyDiscoveredPlacesTable.googlePlaceId })
+    .from(journeyDiscoveredPlacesTable)
+    .where(eq(journeyDiscoveredPlacesTable.journeyId, journeyId));
+
+  const placeIds = journeyPlaces.map((p) => p.googlePlaceId);
+
+  // Check which places discovered in this journey were net-new (firstDiscoveredAt matches this journey)
+  const userPlaceStates =
+    placeIds.length > 0
+      ? await db
+          .select({
+            googlePlaceId: userDiscoveredPlacesTable.googlePlaceId,
+            discoveryCount: userDiscoveredPlacesTable.discoveryCount,
+            firstDiscoveredAt: userDiscoveredPlacesTable.firstDiscoveredAt,
+          })
+          .from(userDiscoveredPlacesTable)
+          .where(
+            and(
+              eq(userDiscoveredPlacesTable.userId, userId),
+              inArray(userDiscoveredPlacesTable.googlePlaceId, placeIds),
+            ),
+          )
+      : [];
+
+  const newPlacesCount = userPlaceStates.filter((p) => p.discoveryCount === 1).length;
+
+  // Check for highly-rated places (for quest)
+  let hasHighRatedPlace = false;
+  if (placeIds.length > 0) {
+    const ratedPlaces = await db
+      .select({ rating: placeCacheTable.rating })
+      .from(placeCacheTable)
+      .where(inArray(placeCacheTable.googlePlaceId, placeIds));
+    hasHighRatedPlace = ratedPlaces.some((p) => p.rating && Number(p.rating) >= 4.5);
+  }
+
+  // XP computation: +10 per new street (waypoint ~= street), +3 per revisit (approximate)
+  // We use waypoints as street proxy: new journey = all waypoints are "new" segments
+  const newStreetXp = newWaypointCount * 10;
+  const newPlaceXp = newPlacesCount * 25;
+  let xpGained = newStreetXp + newPlaceXp;
+
+  // Streak tracking
+  const lastJourneyDate = user.lastJourneyDate as string | null;
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  let newStreak = 1;
+  if (lastJourneyDate === todayStr) {
+    newStreak = user.streakDays; // same day - no change
+  } else if (lastJourneyDate === yesterday) {
+    newStreak = user.streakDays + 1; // consecutive
+  } else {
+    newStreak = 1; // streak broken
+  }
+
+  // Count total journeys for this user
+  const journeyCountResult = await db
+    .select({ count: count() })
+    .from(journeysTable)
+    .where(and(eq(journeysTable.userId, userId), isNotNull(journeysTable.endedAt)));
+  const totalJourneys = Number(journeyCountResult[0]?.count ?? 0);
+
+  // Total places discovered
+  const totalPlacesResult = await db
+    .select({ count: count() })
+    .from(userDiscoveredPlacesTable)
+    .where(eq(userDiscoveredPlacesTable.userId, userId));
+  const totalPlaces = Number(totalPlacesResult[0]?.count ?? 0);
+
+  // Total favorited
+  const totalFavoritedResult = await db
+    .select({ count: count() })
+    .from(userDiscoveredPlacesTable)
+    .where(and(eq(userDiscoveredPlacesTable.userId, userId), eq(userDiscoveredPlacesTable.isFavorited, true)));
+  const totalFavorited = Number(totalFavoritedResult[0]?.count ?? 0);
+
+  // Get total pings ever used (approximated from userDiscoveredPlacesTable ping source)
+  const pingSourceResult = await db
+    .select({ count: count() })
+    .from(journeyDiscoveredPlacesTable)
+    .where(
+      and(
+        eq(journeyDiscoveredPlacesTable.userId, userId),
+        sql`${journeyDiscoveredPlacesTable.discoverySource} = 'ping'`,
+      ),
+    );
+  const totalPingDiscoveries = Number(pingSourceResult[0]?.count ?? 0);
+
+  // Evaluate and update quest progress
+  const userQuests = await db.select().from(userQuestsTable).where(eq(userQuestsTable.userId, userId));
+  const questMap = new Map(userQuests.map((q) => [q.questKey, q]));
+
+  const completedQuests: Array<{ key: string; title: string; xpReward: number }> = [];
+
+  for (const def of QUEST_DEFINITIONS) {
+    let userQuest = questMap.get(def.key);
+
+    // Auto-create quest if not present
+    if (!userQuest) {
+      const expiresAt = def.type === "weekly" ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
+      const newRows = await db
+        .insert(userQuestsTable)
+        .values({
+          id: crypto.randomUUID(),
+          userId,
+          questKey: def.key,
+          expiresAt,
+          progressJson: { current: 0 },
+        })
+        .returning();
+      userQuest = newRows[0];
+    }
+
+    if (userQuest.completedAt) continue; // already done
+
+    // Check if weekly quest has expired — reset it
+    if (def.type === "weekly" && userQuest.expiresAt && userQuest.expiresAt < now) {
+      const newRows = await db
+        .insert(userQuestsTable)
+        .values({
+          id: crypto.randomUUID(),
+          userId,
+          questKey: def.key,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          progressJson: { current: 0 },
+        })
+        .returning();
+      userQuest = newRows[0];
+    }
+
+    const current = (userQuest.progressJson as { current?: number })?.current ?? 0;
+    let newProgress = current;
+
+    switch (def.metric) {
+      case "journeys":
+        newProgress = totalJourneys;
+        break;
+      case "places":
+        newProgress = totalPlaces;
+        break;
+      case "rated_place":
+        if (hasHighRatedPlace) newProgress = Math.max(newProgress, 1);
+        break;
+      case "new_streets_per_journey":
+        newProgress = Math.max(newProgress, newWaypointCount);
+        break;
+      case "pings":
+        newProgress = Math.max(newProgress, pingCountThisJourney);
+        break;
+      case "favorites":
+        newProgress = totalFavorited;
+        break;
+      case "streak":
+        newProgress = newStreak;
+        break;
+      case "night_journey":
+        if (isNight) newProgress = 1;
+        break;
+    }
+
+    newProgress = Math.min(newProgress, def.target);
+
+    const isNowComplete = newProgress >= def.target;
+    if (isNowComplete && !userQuest.completedAt) {
+      xpGained += def.xpReward;
+      completedQuests.push({ key: def.key, title: def.title, xpReward: def.xpReward });
+    }
+
+    await db
+      .update(userQuestsTable)
+      .set({
+        progressJson: { current: newProgress },
+        completedAt: isNowComplete ? now : null,
+      })
+      .where(eq(userQuestsTable.id, userQuest.id));
+  }
+
+  // Badge checking
+  const earnedBadgeRows = await db.select().from(userBadgesTable).where(eq(userBadgesTable.userId, userId));
+  const earnedBadgeKeys = new Set(earnedBadgeRows.map((b) => b.badgeKey));
+
+  const newBadges: Array<{ key: string; name: string; description: string }> = [];
+
+  async function awardBadge(key: string) {
+    if (!earnedBadgeKeys.has(key)) {
+      await db.insert(userBadgesTable).values({ id: crypto.randomUUID(), userId, badgeKey: key });
+      earnedBadgeKeys.add(key);
+      const def = BADGE_DEFINITIONS.find((b) => b.key === key);
+      if (def) newBadges.push({ key: def.key, name: def.name, description: def.description });
+      xpGained += 30; // bonus XP per badge earned
+    }
+  }
+
+  if (totalJourneys >= 1) await awardBadge("first_journey");
+  if (newWaypointCount >= 10 || (user.streakDays > 0 && totalJourneys > 3)) {
+    // Track total waypoints for streets badges
+    const totalWaypointResult = await db
+      .select({ count: count() })
+      .from(journeyWaypointsTable)
+      .where(
+        sql`${journeyWaypointsTable.journeyId} IN (SELECT id FROM journeys WHERE user_id = ${userId})`,
+      );
+    const totalWaypoints = Number(totalWaypointResult[0]?.count ?? 0);
+    if (totalWaypoints >= 10) await awardBadge("streets_10");
+    if (totalWaypoints >= 50) await awardBadge("streets_50");
+  }
+  if (totalPlaces >= 1) await awardBadge("discovery_first");
+  if (totalPlaces >= 10) await awardBadge("discovery_10");
+  if (isNight) await awardBadge("night_explorer");
+  if (newStreak >= 3) await awardBadge("streak_3");
+  if (newStreak >= 7) await awardBadge("streak_7");
+  if (newStreak >= 30) await awardBadge("streak_30");
+  if (pingCountThisJourney >= 5) await awardBadge("ping_master");
+
+  // Globe trotter: check if user has journeys in 3 distinct geographic areas (1-degree grid squares)
+  const allJourneyWaypoints = await db
+    .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
+    .from(journeyWaypointsTable)
+    .innerJoin(journeysTable, eq(journeyWaypointsTable.journeyId, journeysTable.id))
+    .where(and(eq(journeysTable.userId, userId), isNotNull(journeysTable.endedAt)))
+    .limit(500);
+
+  const gridSquares = new Set(
+    allJourneyWaypoints.map((w) => `${Math.floor(Number(w.lat))},${Math.floor(Number(w.lng))}`),
+  );
+  if (gridSquares.size >= 3) await awardBadge("globe_trotter");
+
+  // Compute new XP and level
+  const newXp = user.xp + xpGained;
+  const newLevel = computeLevel(newXp);
+
+  // Update user record
+  await db
+    .update(usersTable)
+    .set({
+      xp: newXp,
+      level: newLevel,
+      streakDays: newStreak,
+      lastJourneyDate: todayStr,
+      updatedAt: now,
+    })
+    .where(eq(usersTable.id, userId));
+
+  return { xpGained, newLevel, newBadges, completedQuests, newStreak };
 }
 
 // ─── POST /journeys ─────────────────────────────────────────────────────────
@@ -256,7 +645,46 @@ router.patch("/journeys/:journeyId", requireAuth, async (req: Request, res: Resp
     .from(journeyDiscoveredPlacesTable)
     .where(eq(journeyDiscoveredPlacesTable.journeyId, journeyId));
 
-  res.json({ ...updated[0], placeCount: placeCountResult[0]?.count ?? 0 });
+  // Award XP + update quest/badge/streak on journey end
+  let gamification: GamificationResult | null = null;
+  if (status === "ended") {
+    // Count pings used in this journey (distinct ping-sourced discoveries)
+    const pingResult = await db
+      .select({ count: count() })
+      .from(journeyDiscoveredPlacesTable)
+      .where(
+        and(
+          eq(journeyDiscoveredPlacesTable.journeyId, journeyId),
+          eq(journeyDiscoveredPlacesTable.discoverySource, "ping"),
+        ),
+      );
+    const pingCount = Number(pingResult[0]?.count ?? 0);
+
+    // Use allWaypoints length as proxy for "streets walked"
+    const allWaypointCount = waypoints?.length ?? 0;
+
+    gamification = await awardJourneyGamification(user.id, journeyId, allWaypointCount, pingCount).catch(
+      (err) => {
+        console.error("gamification failed", err);
+        return null;
+      },
+    );
+  }
+
+  res.json({
+    ...updated[0],
+    placeCount: placeCountResult[0]?.count ?? 0,
+    totalDistanceM: updated[0]?.totalDistanceM ? Number(updated[0].totalDistanceM) : null,
+    ...(gamification
+      ? {
+          xpGained: gamification.xpGained,
+          newLevel: gamification.newLevel,
+          newBadges: gamification.newBadges,
+          completedQuests: gamification.completedQuests,
+          newStreak: gamification.newStreak,
+        }
+      : {}),
+  });
 });
 
 // ─── POST /journeys/:journeyId/ping ─────────────────────────────────────────

@@ -46,13 +46,37 @@ router.get("/journeys", requireAuth, async (req: Request, res: Response) => {
     .limit(limit)
     .offset(offset);
 
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+
   const journeysWithCount = await Promise.all(
     journeys.map(async (j) => {
       const placeCountResult = await db
         .select({ count: count() })
         .from(journeyDiscoveredPlacesTable)
         .where(eq(journeyDiscoveredPlacesTable.journeyId, j.id));
-      return { ...j, placeCount: placeCountResult[0]?.count ?? 0 };
+
+      let staticMapUrl: string | null = null;
+      if (j.polylineEncoded && apiKey) {
+        const styles = [
+          "feature:all|element:geometry|color:0x1A1510",
+          "feature:all|element:labels.text.fill|color:0xA08060",
+          "feature:road|element:geometry|color:0x3A2E20",
+          "feature:road.highway|element:geometry|color:0x4A3C28",
+          "feature:water|element:geometry|color:0x0A0E14",
+          "feature:poi|visibility:off",
+          "feature:transit|visibility:off",
+        ];
+        const styleParams = styles.map((s) => `style=${encodeURIComponent(s)}`).join("&");
+        const pathParam = `path=color:0xD4A017ff|weight:3|enc:${encodeURIComponent(j.polylineEncoded)}`;
+        staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=600x300&maptype=roadmap&${pathParam}&${styleParams}&key=${apiKey}`;
+      }
+
+      return {
+        ...j,
+        placeCount: placeCountResult[0]?.count ?? 0,
+        staticMapUrl,
+        totalDistanceM: j.totalDistanceM ? Number(j.totalDistanceM) : null,
+      };
     }),
   );
 

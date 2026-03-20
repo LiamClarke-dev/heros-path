@@ -9,7 +9,7 @@ import {
   PLACE_ACTIONS,
   type PlaceAction,
 } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, lt, isNotNull } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -19,6 +19,19 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
   const filter = (req.query.filter as string) ?? "all";
   const limit = Math.min(Number(req.query.limit) || 20, 100);
   const offset = Number(req.query.offset) || 0;
+
+  // Auto-expire snoozed places whose snooze window has passed
+  await db
+    .update(userDiscoveredPlacesTable)
+    .set({ isSnoozed: false, snoozedUntil: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(userDiscoveredPlacesTable.userId, user.id),
+        eq(userDiscoveredPlacesTable.isSnoozed, true),
+        isNotNull(userDiscoveredPlacesTable.snoozedUntil),
+        lt(userDiscoveredPlacesTable.snoozedUntil, new Date()),
+      ),
+    );
 
   const userPlaces = await db
     .select({

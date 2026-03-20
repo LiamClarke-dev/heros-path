@@ -58,6 +58,9 @@ function RootLayoutNav() {
       <Stack.Screen name="dev" options={{ title: "Dev Tools", presentation: "modal" }} />
       <Stack.Screen name="journey-results" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ headerShown: false }} />
+      <Stack.Screen name="past-journeys" options={{ headerShown: false }} />
+      <Stack.Screen name="journey-detail" options={{ headerShown: false }} />
+      <Stack.Screen name="list-detail" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

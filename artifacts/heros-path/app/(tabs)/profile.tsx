@@ -188,6 +188,20 @@ export default function ProfileScreen() {
         </Section>
       )}
 
+      <Section title="Journey History" icon="compass">
+        <Pressable
+          style={styles.devButton}
+          onPress={() => router.push("/past-journeys")}
+        >
+          <Feather name="map" size={16} color={Colors.gold} />
+          <Text style={[styles.devButtonText, { color: Colors.parchment }]}>Past Journeys</Text>
+          <View style={styles.statBadge}>
+            <Text style={styles.statBadgeText}>{stats?.totalJourneys ?? 0}</Text>
+          </View>
+          <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+        </Pressable>
+      </Section>
+
       <Section title="Settings" icon="sliders">
         <Pressable
           style={styles.devButton}
@@ -505,6 +519,17 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: Colors.info,
+    fontFamily: "Inter_500Medium",
+  },
+  statBadge: {
+    backgroundColor: Colors.goldDark,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  statBadgeText: {
+    fontSize: 11,
+    color: Colors.gold,
     fontFamily: "Inter_500Medium",
   },
   signOutBtn: {

@@ -27,12 +27,16 @@ interface PlaceList {
   createdAt: string;
 }
 
+type ModalMode = "create" | "rename";
+
 export default function ListsScreen() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const [showCreate, setShowCreate] = useState(false);
-  const [newListName, setNewListName] = useState("");
+  const router = useRouter();
+  const [modalMode, setModalMode] = useState<ModalMode | null>(null);
+  const [listName, setListName] = useState("");
+  const [renamingList, setRenamingList] = useState<PlaceList | null>(null);
 
   const apiBase = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
@@ -64,10 +68,26 @@ export default function ListsScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["lists"] });
-      setShowCreate(false);
-      setNewListName("");
+      closeModal();
     },
     onError: () => Alert.alert("Error", "Failed to create list."),
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async ({ listId, name }: { listId: string; name: string }) => {
+      const res = await fetch(`${apiBase}/lists/${listId}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error("Failed to rename list");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+      closeModal();
+    },
+    onError: () => Alert.alert("Error", "Failed to rename list."),
   });
 
   const deleteMutation = useMutation({
@@ -84,6 +104,33 @@ export default function ListsScreen() {
     onError: () => Alert.alert("Error", "Failed to delete list."),
   });
 
+  function openCreate() {
+    setListName("");
+    setRenamingList(null);
+    setModalMode("create");
+  }
+
+  function openRename(list: PlaceList) {
+    setListName(list.name);
+    setRenamingList(list);
+    setModalMode("rename");
+  }
+
+  function closeModal() {
+    setModalMode(null);
+    setListName("");
+    setRenamingList(null);
+  }
+
+  function handleSubmit() {
+    if (!listName.trim()) return;
+    if (modalMode === "create") {
+      createMutation.mutate(listName.trim());
+    } else if (modalMode === "rename" && renamingList) {
+      renameMutation.mutate({ listId: renamingList.id, name: listName.trim() });
+    }
+  }
+
   function confirmDelete(list: PlaceList) {
     Alert.alert("Delete List", `Delete "${list.name}"? This cannot be undone.`, [
       { text: "Cancel", style: "cancel" },
@@ -96,12 +143,13 @@ export default function ListsScreen() {
   }
 
   const lists = data?.lists ?? [];
+  const isPending = createMutation.isPending || renameMutation.isPending;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>My Lists</Text>
-        <Pressable style={styles.addButton} onPress={() => setShowCreate(true)}>
+        <Pressable style={styles.addButton} onPress={openCreate}>
           <Feather name="plus" size={18} color={Colors.background} />
         </Pressable>
       </View>
@@ -134,6 +182,13 @@ export default function ListsScreen() {
           renderItem={({ item }) => (
             <ListCard
               list={item}
+              onPress={() =>
+                router.push({
+                  pathname: "/list-detail",
+                  params: { listId: item.id, name: item.name },
+                })
+              }
+              onRename={() => openRename(item)}
               onDelete={() => confirmDelete(item)}
             />
           )}
@@ -142,42 +197,41 @@ export default function ListsScreen() {
       )}
 
       <Modal
-        visible={showCreate}
+        visible={modalMode != null}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowCreate(false)}
+        onRequestClose={closeModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
-            <Text style={styles.modalTitle}>New List</Text>
+            <Text style={styles.modalTitle}>
+              {modalMode === "create" ? "New List" : "Rename List"}
+            </Text>
             <TextInput
               style={styles.input}
-              value={newListName}
-              onChangeText={setNewListName}
+              value={listName}
+              onChangeText={setListName}
               placeholder="List name..."
               placeholderTextColor={Colors.parchmentDim}
               autoFocus
               maxLength={50}
+              onSubmitEditing={handleSubmit}
             />
             <View style={styles.modalActions}>
-              <Pressable
-                style={styles.modalCancelBtn}
-                onPress={() => {
-                  setShowCreate(false);
-                  setNewListName("");
-                }}
-              >
+              <Pressable style={styles.modalCancelBtn} onPress={closeModal}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[styles.modalCreateBtn, !newListName.trim() && styles.modalCreateBtnDisabled]}
-                onPress={() => newListName.trim() && createMutation.mutate(newListName.trim())}
-                disabled={!newListName.trim() || createMutation.isPending}
+                style={[styles.modalCreateBtn, !listName.trim() && styles.modalCreateBtnDisabled]}
+                onPress={handleSubmit}
+                disabled={!listName.trim() || isPending}
               >
-                {createMutation.isPending ? (
+                {isPending ? (
                   <ActivityIndicator size="small" color={Colors.background} />
                 ) : (
-                  <Text style={styles.modalCreateText}>Create</Text>
+                  <Text style={styles.modalCreateText}>
+                    {modalMode === "create" ? "Create" : "Save"}
+                  </Text>
                 )}
               </Pressable>
             </View>
@@ -190,13 +244,17 @@ export default function ListsScreen() {
 
 function ListCard({
   list,
+  onPress,
+  onRename,
   onDelete,
 }: {
   list: PlaceList;
+  onPress: () => void;
+  onRename: () => void;
   onDelete: () => void;
 }) {
   return (
-    <View style={styles.card}>
+    <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.cardIcon}>
         <Feather
           name={list.isDefault ? "heart" : "bookmark"}
@@ -217,12 +275,32 @@ function ListCard({
           {list.placeCount} {list.placeCount === 1 ? "place" : "places"}
         </Text>
       </View>
-      {!list.isDefault && (
-        <Pressable style={styles.deleteBtn} onPress={onDelete}>
-          <Feather name="trash-2" size={16} color={Colors.error} />
-        </Pressable>
-      )}
-    </View>
+      <View style={styles.cardActions}>
+        {!list.isDefault && (
+          <Pressable
+            style={styles.iconBtn}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onRename();
+            }}
+          >
+            <Feather name="edit-2" size={15} color={Colors.parchmentMuted} />
+          </Pressable>
+        )}
+        {!list.isDefault && (
+          <Pressable
+            style={styles.iconBtn}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onDelete();
+            }}
+          >
+            <Feather name="trash-2" size={15} color={Colors.error} />
+          </Pressable>
+        )}
+        <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -317,7 +395,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     marginTop: 2,
   },
-  deleteBtn: {
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  iconBtn: {
     padding: 6,
   },
   modalOverlay: {

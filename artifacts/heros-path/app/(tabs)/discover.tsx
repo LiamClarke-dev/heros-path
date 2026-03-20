@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,13 +8,25 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  runOnJS,
+} from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
+
+const REVEAL_WIDTH = 140;
+const SWIPE_THRESHOLD = 60;
 
 type PlaceFilter = "all" | "unreviewed" | "favorited" | "snoozed";
 
@@ -34,16 +46,27 @@ interface DiscoveredPlace {
   snoozedUntil: string | null;
 }
 
+interface PlaceList {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  placeCount: number;
+}
+
+function useApiBase() {
+  return process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
+    : "http://localhost:3000/api";
+}
+
 export default function DiscoverScreen() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<PlaceFilter>("all");
+  const [listPickerPlace, setListPickerPlace] = useState<string | null>(null);
 
-  const apiBase = process.env.EXPO_PUBLIC_DOMAIN
-    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
-    : "http://localhost:3000/api";
-
+  const apiBase = useApiBase();
   const authHeaders = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
@@ -60,27 +83,49 @@ export default function DiscoverScreen() {
     },
   });
 
+  const { data: listsData } = useQuery({
+    queryKey: ["lists"],
+    queryFn: async () => {
+      const res = await fetch(`${apiBase}/lists`, { headers: authHeaders });
+      if (!res.ok) throw new Error("Failed to fetch lists");
+      return res.json() as Promise<{ lists: PlaceList[] }>;
+    },
+    enabled: listPickerPlace != null,
+  });
+
   const actionMutation = useMutation({
     mutationFn: async ({
       googlePlaceId,
       action,
+      listId,
+      snoozeDays,
     }: {
       googlePlaceId: string;
       action: string;
+      listId?: string;
+      snoozeDays?: number;
     }) => {
       const res = await fetch(`${apiBase}/places/${googlePlaceId}/action`, {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, listId, snoozeDays }),
       });
       if (!res.ok) throw new Error("Action failed");
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["places"] });
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
     },
     onError: () => Alert.alert("Error", "Action failed. Please try again."),
   });
+
+  const handleAction = useCallback(
+    (googlePlaceId: string, action: string, listId?: string, snoozeDays?: number) => {
+      actionMutation.mutate({ googlePlaceId, action, listId, snoozeDays });
+    },
+    [actionMutation],
+  );
 
   const places = data?.places ?? [];
 
@@ -105,6 +150,8 @@ export default function DiscoverScreen() {
         ))}
       </View>
 
+      <Text style={styles.swipeHint}>← Swipe left to snooze/dismiss  ·  Swipe right to favorite →</Text>
+
       {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={Colors.gold} size="large" />
@@ -114,7 +161,11 @@ export default function DiscoverScreen() {
           <Feather name="map-pin" size={48} color={Colors.parchmentDim} />
           <Text style={styles.emptyTitle}>No places here yet</Text>
           <Text style={styles.emptySubtitle}>
-            Start a journey and use Ping to discover nearby places.
+            {filter === "snoozed"
+              ? "No places are currently snoozed."
+              : filter === "favorited"
+              ? "Swipe right on a place to favorite it."
+              : "Start a journey and use Ping to discover nearby places."}
           </Text>
         </View>
       ) : (
@@ -131,88 +182,232 @@ export default function DiscoverScreen() {
             />
           }
           renderItem={({ item }) => (
-            <PlaceCard
+            <SwipeablePlaceCard
               place={item}
-              onAction={(action) =>
-                actionMutation.mutate({ googlePlaceId: item.googlePlaceId, action })
-              }
+              onAction={(action, snoozeDays) => handleAction(item.googlePlaceId, action, undefined, snoozeDays)}
+              onAddToList={() => setListPickerPlace(item.googlePlaceId)}
             />
           )}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         />
       )}
+
+      <ListPickerModal
+        visible={listPickerPlace != null}
+        lists={listsData?.lists ?? []}
+        onClose={() => setListPickerPlace(null)}
+        onSelect={(listId) => {
+          if (listPickerPlace) {
+            handleAction(listPickerPlace, "add_to_list", listId);
+          }
+          setListPickerPlace(null);
+        }}
+      />
     </View>
   );
 }
 
-function PlaceCard({
+function SwipeablePlaceCard({
   place,
   onAction,
+  onAddToList,
 }: {
   place: DiscoveredPlace;
-  onAction: (action: string) => void;
+  onAction: (action: string, snoozeDays?: number) => void;
+  onAddToList: () => void;
 }) {
+  const translateX = useSharedValue(0);
+  const isRevealed = useSharedValue(false);
+
+  const doAction = useCallback(
+    (action: string, snoozeDays?: number) => {
+      onAction(action, snoozeDays);
+    },
+    [onAction],
+  );
+
+  const snapBack = useCallback(() => {
+    translateX.value = withSpring(0, { damping: 20 });
+    isRevealed.value = false;
+  }, [translateX, isRevealed]);
+
+  const snapToReveal = useCallback(() => {
+    translateX.value = withSpring(-REVEAL_WIDTH, { damping: 20 });
+    isRevealed.value = true;
+  }, [translateX, isRevealed]);
+
+  const triggerFavorite = useCallback(() => {
+    doAction(place.isFavorited ? "unfavorite" : "favorite");
+    translateX.value = withSpring(0, { damping: 20 });
+    isRevealed.value = false;
+  }, [doAction, place.isFavorited, translateX, isRevealed]);
+
+  const pan = Gesture.Pan()
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-15, 15])
+    .onUpdate((e) => {
+      if (isRevealed.value) {
+        translateX.value = Math.min(0, -REVEAL_WIDTH + e.translationX);
+      } else {
+        translateX.value = Math.min(80, e.translationX);
+      }
+    })
+    .onEnd((e) => {
+      const vel = e.velocityX;
+      if (isRevealed.value) {
+        if (e.translationX > 50 || vel > 300) {
+          runOnJS(snapBack)();
+        } else {
+          runOnJS(snapToReveal)();
+        }
+      } else {
+        if (e.translationX < -SWIPE_THRESHOLD || vel < -300) {
+          runOnJS(snapToReveal)();
+        } else if (e.translationX > SWIPE_THRESHOLD || vel > 300) {
+          runOnJS(triggerFavorite)();
+        } else {
+          runOnJS(snapBack)();
+        }
+      }
+    });
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
   const mainType = place.types[0]?.replace(/_/g, " ") ?? "place";
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardTitleRow}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {place.name}
-          </Text>
-          {place.isFavorited && (
-            <Feather name="heart" size={14} color={Colors.gold} />
-          )}
-        </View>
-        <View style={styles.cardMeta}>
-          <Text style={styles.cardType}>{mainType}</Text>
-          {place.rating !== null && (
-            <View style={styles.ratingRow}>
-              <Feather name="star" size={11} color={Colors.gold} />
-              <Text style={styles.ratingText}>{place.rating.toFixed(1)}</Text>
-            </View>
-          )}
-        </View>
-        {place.address && (
-          <Text style={styles.cardAddress} numberOfLines={1}>
-            {place.address}
-          </Text>
-        )}
-        <Text style={styles.discoveryCount}>
-          Discovered {place.discoveryCount}x
-        </Text>
+    <View style={styles.swipeRow}>
+      <View style={styles.revealPanel}>
+        <Pressable
+          style={[styles.revealBtn, { backgroundColor: Colors.info }]}
+          onPress={() => {
+            onAction("snooze", 7);
+            snapBack();
+          }}
+        >
+          <Feather name="clock" size={16} color="#fff" />
+          <Text style={styles.revealBtnText}>7d</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.revealBtn, { backgroundColor: Colors.error }]}
+          onPress={() => {
+            onAction("dismiss");
+            snapBack();
+          }}
+        >
+          <Feather name="x" size={16} color="#fff" />
+          <Text style={styles.revealBtnText}>Dismiss</Text>
+        </Pressable>
       </View>
 
-      <View style={styles.cardActions}>
-        {!place.isFavorited ? (
-          <ActionButton icon="heart" label="Favorite" onPress={() => onAction("favorite")} color={Colors.gold} />
-        ) : (
-          <ActionButton icon="heart" label="Unfave" onPress={() => onAction("unfavorite")} color={Colors.parchmentMuted} />
-        )}
-        <ActionButton icon="clock" label="Snooze" onPress={() => onAction("snooze")} color={Colors.info} />
-        <ActionButton icon="x" label="Dismiss" onPress={() => onAction("dismiss")} color={Colors.error} />
-      </View>
+      <GestureDetector gesture={pan}>
+        <Animated.View style={[styles.card, cardStyle]}>
+          <View style={styles.cardContent}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.cardName} numberOfLines={1}>
+                {place.name}
+              </Text>
+              {place.isFavorited && (
+                <Feather name="heart" size={14} color={Colors.gold} />
+              )}
+              {place.isSnoozed && (
+                <Feather name="clock" size={14} color={Colors.info} />
+              )}
+            </View>
+            <View style={styles.cardMeta}>
+              <Text style={styles.cardType}>{mainType}</Text>
+              {place.rating !== null && (
+                <View style={styles.ratingRow}>
+                  <Feather name="star" size={11} color={Colors.gold} />
+                  <Text style={styles.ratingText}>{place.rating.toFixed(1)}</Text>
+                </View>
+              )}
+            </View>
+            {place.address && (
+              <Text style={styles.cardAddress} numberOfLines={1}>
+                {place.address}
+              </Text>
+            )}
+            <View style={styles.cardFooter}>
+              <Text style={styles.discoveryCount}>
+                Found {place.discoveryCount}x
+              </Text>
+              <View style={styles.inlineActions}>
+                <Pressable style={styles.inlineBtn} onPress={() => {
+                  onAction(place.isFavorited ? "unfavorite" : "favorite");
+                }}>
+                  <Feather
+                    name="heart"
+                    size={13}
+                    color={place.isFavorited ? Colors.gold : Colors.parchmentDim}
+                  />
+                </Pressable>
+                <Pressable style={styles.inlineBtn} onPress={onAddToList}>
+                  <Feather name="plus-square" size={13} color={Colors.parchmentDim} />
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }
 
-function ActionButton({
-  icon,
-  label,
-  onPress,
-  color,
+function ListPickerModal({
+  visible,
+  lists,
+  onClose,
+  onSelect,
 }: {
-  icon: React.ComponentProps<typeof Feather>["name"];
-  label: string;
-  onPress: () => void;
-  color: string;
+  visible: boolean;
+  lists: PlaceList[];
+  onClose: () => void;
+  onSelect: (listId: string) => void;
 }) {
   return (
-    <Pressable style={styles.actionBtn} onPress={onPress}>
-      <Feather name={icon} size={14} color={color} />
-      <Text style={[styles.actionBtnText, { color }]}>{label}</Text>
-    </Pressable>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add to List</Text>
+            <Pressable onPress={onClose}>
+              <Feather name="x" size={20} color={Colors.parchmentMuted} />
+            </Pressable>
+          </View>
+          {lists.length === 0 ? (
+            <View style={styles.modalEmpty}>
+              <Text style={styles.modalEmptyText}>No lists yet. Create one in the Lists tab.</Text>
+            </View>
+          ) : (
+            <ScrollView style={{ maxHeight: 300 }}>
+              {lists.map((list) => (
+                <Pressable
+                  key={list.id}
+                  style={styles.listPickerItem}
+                  onPress={() => onSelect(list.id)}
+                >
+                  <Feather
+                    name={list.isDefault ? "heart" : "bookmark"}
+                    size={16}
+                    color={Colors.gold}
+                  />
+                  <View style={styles.listPickerItemContent}>
+                    <Text style={styles.listPickerItemName}>{list.name}</Text>
+                    <Text style={styles.listPickerItemCount}>
+                      {list.placeCount} {list.placeCount === 1 ? "place" : "places"}
+                    </Text>
+                  </View>
+                  <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -239,7 +434,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: 16,
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 6,
     flexWrap: "wrap",
   },
   filterChip: {
@@ -262,6 +457,14 @@ const styles = StyleSheet.create({
   filterChipTextActive: {
     color: Colors.gold,
   },
+  swipeHint: {
+    fontSize: 11,
+    color: Colors.parchmentDim,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginBottom: 10,
+    opacity: 0.7,
+  },
   centered: {
     flex: 1,
     alignItems: "center",
@@ -282,15 +485,40 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     lineHeight: 20,
   },
+  swipeRow: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 12,
+  },
+  revealPanel: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: REVEAL_WIDTH,
+    flexDirection: "row",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  revealBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  revealBtnText: {
+    fontSize: 11,
+    color: "#fff",
+    fontFamily: "Inter_500Medium",
+  },
   card: {
     backgroundColor: Colors.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 14,
-    gap: 10,
   },
-  cardHeader: { gap: 4 },
+  cardContent: { gap: 4 },
   cardTitleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -330,31 +558,78 @@ const styles = StyleSheet.create({
     color: Colors.parchmentDim,
     fontFamily: "Inter_400Regular",
   },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
   discoveryCount: {
     fontSize: 11,
     color: Colors.parchmentDim,
     fontFamily: "Inter_400Regular",
-    marginTop: 2,
   },
-  cardActions: {
+  inlineActions: {
     flexDirection: "row",
     gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 10,
   },
-  actionBtn: {
+  inlineBtn: {
+    padding: 4,
+  },
+  modalOverlay: {
     flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "flex-end",
+  },
+  modal: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: Colors.surface,
+    justifyContent: "space-between",
+    marginBottom: 16,
   },
-  actionBtnText: {
-    fontSize: 12,
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: Colors.parchment,
+    fontFamily: "Inter_700Bold",
+  },
+  modalEmpty: {
+    paddingVertical: 24,
+    alignItems: "center",
+  },
+  modalEmptyText: {
+    fontSize: 14,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  listPickerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  listPickerItemContent: { flex: 1 },
+  listPickerItemName: {
+    fontSize: 15,
+    color: Colors.parchment,
     fontFamily: "Inter_500Medium",
+  },
+  listPickerItemCount: {
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_400Regular",
+    marginTop: 1,
   },
 });

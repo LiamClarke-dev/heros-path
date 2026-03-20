@@ -1,9 +1,11 @@
+import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -18,22 +20,56 @@ import { useAuth } from "@/context/AuthContext";
 
 WebBrowser.maybeCompleteAuthSession();
 
+const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "";
+const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+
 export default function LoginScreen() {
   const { signIn } = useAuth();
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(false);
 
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    iosClientId: IOS_CLIENT_ID || undefined,
+    clientId: WEB_CLIENT_ID || undefined,
+    scopes: ["openid", "profile", "email"],
   });
 
   React.useEffect(() => {
-    if (response?.type === "success") {
-      const idToken = response.params?.id_token;
-      if (idToken) {
-        handleGoogleToken(idToken);
+    if (response?.type === "success" && request) {
+      const code = response.params?.code;
+      if (!code) {
+        Alert.alert("Sign in failed", "No authorization code returned");
+        return;
       }
+
+      const clientId =
+        Platform.OS === "ios" && IOS_CLIENT_ID ? IOS_CLIENT_ID : WEB_CLIENT_ID;
+
+      const extraParams: Record<string, string> = {};
+      if (request.codeVerifier) {
+        extraParams.code_verifier = request.codeVerifier;
+      }
+
+      AuthSession.exchangeCodeAsync(
+        {
+          clientId,
+          code,
+          redirectUri: request.redirectUri,
+          extraParams,
+        },
+        { tokenEndpoint: "https://oauth2.googleapis.com/token" },
+      )
+        .then((tokenResult) => {
+          if (tokenResult.idToken) {
+            handleGoogleToken(tokenResult.idToken);
+          } else {
+            Alert.alert("Sign in failed", "No ID token returned from Google");
+          }
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : "Token exchange failed";
+          Alert.alert("Sign in failed", msg);
+        });
     } else if (response?.type === "error") {
       Alert.alert("Sign in failed", response.error?.message ?? "Unknown error");
     }
@@ -57,11 +93,20 @@ export default function LoginScreen() {
         throw new Error((err as { message?: string }).message ?? "Auth failed");
       }
 
-      const data = await res.json() as { token: string; user: {
-        id: string; googleId: string; displayName: string;
-        avatarUrl: string | null; email: string | null;
-        xp: number; level: number; rank: string; streakDays: number;
-      } };
+      const data = await res.json() as {
+        token: string;
+        user: {
+          id: string;
+          googleId: string;
+          displayName: string;
+          avatarUrl: string | null;
+          email: string | null;
+          xp: number;
+          level: number;
+          rank: string;
+          streakDays: number;
+        };
+      };
       await signIn(data.token, data.user);
     } catch (err) {
       Alert.alert("Sign in failed", err instanceof Error ? err.message : "Unknown error");

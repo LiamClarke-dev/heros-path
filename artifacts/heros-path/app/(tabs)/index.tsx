@@ -71,6 +71,7 @@ export default function JourneyScreen() {
   const [isPinging, setIsPinging] = useState(false);
   const [pingCount, setPingCount] = useState(0);
   const [historicalJourneys, setHistoricalJourneys] = useState<HistoricalJourney[]>([]);
+  const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
 
   // Quest panel state
   const [questPanelOpen, setQuestPanelOpen] = useState(false);
@@ -192,6 +193,29 @@ export default function JourneyScreen() {
       waypointBufferRef.current = [];
       setJourneyStatus("active");
 
+      // Track location updates and check for unexplored territory
+      let lastExploredCheckLat = 0;
+      let lastExploredCheckLng = 0;
+      const EXPLORED_CHECK_DISTANCE = 0.001; // ~100m before re-checking
+
+      async function checkExploredStatus(lat: number, lng: number) {
+        try {
+          const dist = Math.abs(lat - lastExploredCheckLat) + Math.abs(lng - lastExploredCheckLng);
+          if (dist < EXPLORED_CHECK_DISTANCE) return;
+          lastExploredCheckLat = lat;
+          lastExploredCheckLng = lng;
+          const res = await fetch(`${apiBase}/journeys/explored-cells?lat=${lat}&lng=${lng}`, {
+            headers: authHeaders,
+          });
+          if (res.ok) {
+            const data = await res.json() as { newTerritoryNearby: boolean };
+            setNewTerritoryNearby(!!data.newTerritoryNearby);
+          }
+        } catch {
+          // non-critical
+        }
+      }
+
       const sub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
@@ -214,6 +238,8 @@ export default function JourneyScreen() {
             latitudeDelta: 0.005,
             longitudeDelta: 0.005,
           });
+
+          void checkExploredStatus(wp.lat, wp.lng);
         },
       );
 
@@ -272,6 +298,7 @@ export default function JourneyScreen() {
       setJourneyStatus("idle");
       setJourneyId(null);
       currentJourneyIdRef.current = null;
+      setNewTerritoryNearby(false);
 
       // Invalidate quests + profile after journey ends
       queryClient.invalidateQueries({ queryKey: ["quests"] });
@@ -497,6 +524,14 @@ export default function JourneyScreen() {
         places={pingPlaces}
         onDismiss={() => setShowPingSheet(false)}
       />
+
+      {/* "New territory ahead!" nudge banner */}
+      {journeyStatus === "active" && newTerritoryNearby && (
+        <View style={[styles.nudgeBanner, { bottom: insets.bottom + 170 }]}>
+          <Feather name="compass" size={14} color={Colors.background} />
+          <Text style={styles.nudgeText}>New territory ahead!</Text>
+        </View>
+      )}
 
       {/* Quest/XP celebration overlay */}
       {celebrationVisible && celebrationData && (
@@ -761,5 +796,28 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Colors.background,
     fontFamily: "Inter_700Bold",
+  },
+  nudgeBanner: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    backgroundColor: "#29B6F6",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  nudgeText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.background,
+    fontFamily: "Inter_600SemiBold",
+    flex: 1,
   },
 });

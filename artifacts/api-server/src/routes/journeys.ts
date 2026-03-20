@@ -70,7 +70,7 @@ export const QUEST_DEFINITIONS = [
     key: "discover_3_places",
     title: "Curious Explorer",
     description: "Discover 3 new places",
-    xpReward: 75,
+    xpReward: 50,
     target: 3,
     type: "weekly",
     metric: "places",
@@ -79,7 +79,7 @@ export const QUEST_DEFINITIONS = [
     key: "discover_place_rated",
     title: "High Standards",
     description: "Discover a place rated 4.5 or above",
-    xpReward: 60,
+    xpReward: 50,
     target: 1,
     type: "weekly",
     metric: "rated_place",
@@ -88,7 +88,7 @@ export const QUEST_DEFINITIONS = [
     key: "walk_5_journeys",
     title: "Regular Adventurer",
     description: "Go on 5 journeys",
-    xpReward: 100,
+    xpReward: 50,
     target: 5,
     type: "total",
     metric: "journeys",
@@ -97,7 +97,7 @@ export const QUEST_DEFINITIONS = [
     key: "new_streets_3",
     title: "Street Trailblazer",
     description: "Walk 3 new streets in a single journey",
-    xpReward: 80,
+    xpReward: 50,
     target: 3,
     type: "weekly",
     metric: "new_streets_per_journey",
@@ -106,7 +106,7 @@ export const QUEST_DEFINITIONS = [
     key: "ping_3_times",
     title: "The Seeker",
     description: "Use the ping feature 3 times",
-    xpReward: 60,
+    xpReward: 50,
     target: 3,
     type: "weekly",
     metric: "pings",
@@ -115,7 +115,7 @@ export const QUEST_DEFINITIONS = [
     key: "favorite_5_places",
     title: "Connoisseur",
     description: "Favorite 5 places",
-    xpReward: 80,
+    xpReward: 50,
     target: 5,
     type: "total",
     metric: "favorites",
@@ -124,7 +124,7 @@ export const QUEST_DEFINITIONS = [
     key: "streak_3_days",
     title: "Three Peat",
     description: "Journey 3 days in a row",
-    xpReward: 90,
+    xpReward: 50,
     target: 3,
     type: "total",
     metric: "streak",
@@ -133,7 +133,7 @@ export const QUEST_DEFINITIONS = [
     key: "night_journey",
     title: "Creature of the Night",
     description: "Complete a journey after 9 PM",
-    xpReward: 70,
+    xpReward: 50,
     target: 1,
     type: "total",
     metric: "night_journey",
@@ -201,11 +201,50 @@ async function awardJourneyGamification(
     hasHighRatedPlace = ratedPlaces.some((p) => p.rating && Number(p.rating) >= 4.5);
   }
 
-  // XP computation: +10 per new street (waypoint ~= street), +3 per revisit (approximate)
-  // We use waypoints as street proxy: new journey = all waypoints are "new" segments
-  const newStreetXp = newWaypointCount * 10;
+  // Classify streets: fetch current journey's waypoints + all prior journey waypoints
+  // Use a ~50m grid cell (3 decimal places ≈ 111m each, so 0.0005° ≈ 55m)
+  const GRID = 0.0005; // ~55m per cell
+  function cellKey(lat: number, lng: number): string {
+    return `${Math.round(lat / GRID)},${Math.round(lng / GRID)}`;
+  }
+
+  // Load current journey's waypoints
+  const currentWaypoints = await db
+    .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
+    .from(journeyWaypointsTable)
+    .where(eq(journeyWaypointsTable.journeyId, journeyId));
+
+  // Load all historical waypoints from OTHER completed journeys by this user
+  const historicalWaypoints = await db
+    .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
+    .from(journeyWaypointsTable)
+    .innerJoin(journeysTable, eq(journeyWaypointsTable.journeyId, journeysTable.id))
+    .where(
+      and(
+        eq(journeysTable.userId, userId),
+        isNotNull(journeysTable.endedAt),
+        sql`${journeyWaypointsTable.journeyId} != ${journeyId}`,
+      ),
+    );
+
+  const previousCells = new Set(historicalWaypoints.map((w) => cellKey(Number(w.lat), Number(w.lng))));
+
+  let newStreetsCount = 0;
+  let revisitedStreetsCount = 0;
+  for (const wp of currentWaypoints) {
+    const key = cellKey(Number(wp.lat), Number(wp.lng));
+    if (previousCells.has(key)) {
+      revisitedStreetsCount++;
+    } else {
+      newStreetsCount++;
+    }
+  }
+
+  // XP: +10 per new street segment, +3 per revisited segment, +25 per new place
+  const newStreetXp = newStreetsCount * 10;
+  const revisitXp = revisitedStreetsCount * 3;
   const newPlaceXp = newPlacesCount * 25;
-  let xpGained = newStreetXp + newPlaceXp;
+  let xpGained = newStreetXp + revisitXp + newPlaceXp;
 
   // Streak tracking
   const lastJourneyDate = user.lastJourneyDate as string | null;
@@ -308,7 +347,7 @@ async function awardJourneyGamification(
         if (hasHighRatedPlace) newProgress = Math.max(newProgress, 1);
         break;
       case "new_streets_per_journey":
-        newProgress = Math.max(newProgress, newWaypointCount);
+        newProgress = Math.max(newProgress, newStreetsCount);
         break;
       case "pings":
         newProgress = Math.max(newProgress, pingCountThisJourney);
@@ -512,6 +551,54 @@ router.get("/journeys/history", requireAuth, async (req: Request, res: Response)
   );
 
   res.json({ journeys: journeyData.filter((j) => j.waypoints.length > 1) });
+});
+
+// ─── GET /journeys/explored-cells ────────────────────────────────────────────
+// Returns explored grid cells near lat/lng to power the unexplored-territory nudge
+
+router.get("/journeys/explored-cells", requireAuth, async (req: Request, res: Response) => {
+  const user = (req as AuthenticatedRequest).user;
+  const lat = parseFloat(req.query.lat as string);
+  const lng = parseFloat(req.query.lng as string);
+  // radius in degrees (default ~0.5km = 0.005°)
+  const radius = Math.min(0.02, parseFloat(req.query.radius as string) || 0.005);
+
+  if (isNaN(lat) || isNaN(lng)) {
+    res.status(400).json({ error: "lat and lng are required" });
+    return;
+  }
+
+  // Fetch all completed waypoints within bounding box
+  const waypoints = await db
+    .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
+    .from(journeyWaypointsTable)
+    .innerJoin(journeysTable, eq(journeyWaypointsTable.journeyId, journeysTable.id))
+    .where(
+      and(
+        eq(journeysTable.userId, user.id),
+        isNotNull(journeysTable.endedAt),
+        sql`cast(${journeyWaypointsTable.lat} as double precision) between ${lat - radius} and ${lat + radius}`,
+        sql`cast(${journeyWaypointsTable.lng} as double precision) between ${lng - radius} and ${lng + radius}`,
+      ),
+    );
+
+  const GRID = 0.0005;
+  const cellSet = new Set<string>();
+  for (const wp of waypoints) {
+    const key = `${Math.round(Number(wp.lat) / GRID)},${Math.round(Number(wp.lng) / GRID)}`;
+    cellSet.add(key);
+  }
+
+  // Check if user's current location is within an explored cell
+  const currentCellKey = `${Math.round(lat / GRID)},${Math.round(lng / GRID)}`;
+  const isInExploredArea = cellSet.has(currentCellKey);
+
+  res.json({
+    exploredCellCount: cellSet.size,
+    isInExploredArea,
+    // If not in explored area, there's new territory nearby
+    newTerritoryNearby: !isInExploredArea && cellSet.size > 0,
+  });
 });
 
 // ─── GET /journeys/:journeyId ────────────────────────────────────────────────

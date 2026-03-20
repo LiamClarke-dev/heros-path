@@ -1,8 +1,10 @@
-# Workspace
+# Hero's Path — Workspace
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+**Hero's Path** is a gamified city exploration mobile app (Expo/React Native + Express backend). It tracks GPS journeys, permanently colors walked streets on a map, discovers nearby places via Google Places API, manages discovered places, and gamifies exploration with quests, XP, badges, and adventurer rank progression.
+
+pnpm workspace monorepo using TypeScript.
 
 ## Stack
 
@@ -11,86 +13,121 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
 - **API framework**: Express 5
+- **Mobile**: Expo (SDK 54) + React Native 0.81
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
+## Adventurer Theme
+
+- Background: `#0D0A0B` (very dark warm black)
+- Gold accent: `#D4A017`
+- Surface: `#1A1510`
+- Parchment text: `#F5E6C8`
+- Muted tan: `#A08060`
+
 ## Structure
 
 ```text
-artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
-├── lib/                    # Shared libraries
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+artifacts/
+├── api-server/         # Express API server (port 8080)
+│   └── src/
+│       ├── routes/     # auth, me, journeys, places, lists, quests, profile, health
+│       └── middlewares/# requireAuth (Bearer token from sessions table)
+├── heros-path/         # Expo React Native app
+│   └── app/
+│       ├── (auth)/     # login.tsx — Google OAuth login screen
+│       ├── (tabs)/     # index (Journey), discover, lists, profile
+│       └── dev/        # simulate.tsx — dev journey simulator (__DEV__ only)
+└── mockup-sandbox/     # Vite component preview server
+lib/
+├── api-spec/           # OpenAPI 3.1 spec + Orval codegen config
+├── api-client-react/   # Generated React Query hooks + custom-fetch.ts
+├── api-zod/            # Generated Zod schemas from OpenAPI
+└── db/                 # Drizzle ORM schema + DB connection
 ```
+
+## Key Files
+
+- `lib/api-spec/openapi.yaml` — full API spec
+- `lib/db/src/schema/` — users, sessions, journeys, places, lists, gamification tables
+- `artifacts/api-server/src/routes/auth.ts` — Google token verification + session creation
+- `artifacts/api-server/src/middlewares/auth.ts` — `requireAuth` middleware
+- `artifacts/heros-path/context/AuthContext.tsx` — auth state + SecureStore persistence
+- `artifacts/heros-path/app/_layout.tsx` — root layout with auth redirect logic
+- `artifacts/heros-path/constants/colors.ts` — adventurer color palette + dark map style
+
+## Auth Flow
+
+1. Expo uses `expo-auth-session` to get a Google ID token
+2. ID token sent to `POST /api/auth/google` — verified via `oauth2.googleapis.com/tokeninfo`
+3. User upserted in DB, session token generated with `crypto.randomUUID()`
+4. Token stored in `expo-secure-store`, loaded back on app start
+5. `setAuthTokenGetter()` wires token into all API calls via Bearer header
+
+## Environment Variables / Secrets
+
+- `GOOGLE_MAPS_API_KEY` (secret) — Google Places API for place discovery pings
+- `EXPO_PUBLIC_GOOGLE_CLIENT_ID` (shared env var) — Google OAuth Web Client ID for login
+- `DATABASE_URL` (runtime managed) — PostgreSQL connection string
+- `PORT` (runtime managed) — assigned per workflow
+
+## react-native-maps Notes
+
+- **Pin to exactly `1.18.0`** — only version compatible with Expo Go
+- **Do NOT add to plugins array** in app.json — will crash
+- Web stub at `stubs/react-native-maps.web.js` (aliased via metro.config.js)
 
 ## TypeScript & Composite Projects
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+Every package extends `tsconfig.base.json`. Run `pnpm run typecheck` from root for full build graph.
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+## DB Schema Tables
 
-## Root Scripts
+`users`, `sessions`, `user_preferences`, `journeys`, `journey_waypoints`, `place_cache`, `user_discovered_places`, `journey_discovered_places`, `place_lists`, `place_list_items`, `user_badges`, `user_quests`
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+## Rank Progression
 
-## Packages
+| XP Range  | Rank         |
+|-----------|--------------|
+| 0–99      | Wanderer     |
+| 100–299   | Scout        |
+| 300–699   | Pathfinder   |
+| 700–1499  | Trailblazer  |
+| 1500–2999 | Cartographer |
+| 3000+     | Legend       |
 
-### `artifacts/api-server` (`@workspace/api-server`)
+## API Endpoints
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/google` | No | Google OAuth → session token |
+| GET | `/api/me` | Yes | Current user profile |
+| GET/PUT | `/api/me/preferences` | Yes | Place type preferences |
+| GET | `/api/me/badges` | Yes | Badge collection |
+| GET | `/api/profile/stats` | Yes | Journey/XP/streak stats |
+| GET | `/api/quests` | Yes | Active + completed quests |
+| POST | `/api/journeys` | Yes | Start a journey |
+| GET | `/api/journeys` | Yes | Journey history |
+| GET/PATCH | `/api/journeys/:id` | Yes | Journey detail + add waypoints |
+| POST | `/api/journeys/:id/ping` | Yes | Discover nearby places (Google Places) |
+| GET | `/api/journeys/:id/discoveries` | Yes | Places found during journey |
+| GET | `/api/places/discover` | Yes | All discovered places (filterable) |
+| POST | `/api/places/:id/action` | Yes | dismiss/snooze/favorite/add_to_list |
+| GET/POST | `/api/lists` | Yes | Place lists |
+| GET/PUT/DELETE | `/api/lists/:id` | Yes | List management |
+| GET | `/api/lists/:id/places` | Yes | Places in a list |
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
+## Task Status
 
-### `lib/db` (`@workspace/db`)
+- **Task #1** (Foundation — Auth, DB, Nav & Dev Mode): Complete
+- **Task #2** (Journey Tracking): Pending
+- **Task #3** (Place Management): Pending
+- **Task #4** (Gamification): Pending
 
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
+## Google OAuth Setup Note
 
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
-
-### `lib/api-spec` (`@workspace/api-spec`)
-
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
-
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+For the Google OAuth login to work on device, add the following authorized redirect URIs to your Google Cloud OAuth 2.0 client:
+- For Expo Go: `https://auth.expo.io/@your-username/heros-path`
+- For web: the Expo dev domain URL

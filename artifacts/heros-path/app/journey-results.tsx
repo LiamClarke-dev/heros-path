@@ -82,6 +82,7 @@ export default function JourneyResultsScreen() {
   const [places, setPlaces] = useState<DiscoveredPlace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
+  const [journeySaved, setJourneySaved] = useState(false);
 
   const apiBase = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
@@ -106,6 +107,7 @@ export default function JourneyResultsScreen() {
         const data = await res.json() as { places: DiscoveredPlace[] };
         setPlaces(data.places ?? []);
         setIsLoading(false);
+        setJourneySaved(true);
         // Invalidate the discover feed so it's fresh
         queryClient.invalidateQueries({ queryKey: ["places"] });
         return;
@@ -122,6 +124,7 @@ export default function JourneyResultsScreen() {
       }, 1500);
     } else {
       setIsLoading(false);
+      setJourneySaved(true);
     }
   }, [journeyId, apiBase, token, queryClient]);
 
@@ -163,6 +166,14 @@ export default function JourneyResultsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Journey Saved banner */}
+      {journeySaved && (
+        <View style={styles.savedBanner}>
+          <Feather name="check-circle" size={14} color={Colors.success} />
+          <Text style={styles.savedBannerText}>Journey saved to your history</Text>
+        </View>
+      )}
+
       {/* Header */}
       <View style={styles.header}>
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
@@ -308,6 +319,21 @@ function ResultPlaceCard({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  savedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(74,163,104,0.12)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(74,163,104,0.25)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  savedBannerText: {
+    fontSize: 12,
+    color: Colors.success,
+    fontFamily: "Inter_500Medium",
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",

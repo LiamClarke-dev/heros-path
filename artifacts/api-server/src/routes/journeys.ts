@@ -467,13 +467,15 @@ async function discoverPlacesAlongRoute(
   // Use user's selected types (up to 5) or fall back to default discovery categories
   const queries = placeTypes.length > 0 ? placeTypes.slice(0, 5) : DEFAULT_ROUTE_QUERIES;
 
-  const dismissed = await db
+  // Globally deduplicate: exclude all places the user has already seen at any point,
+  // including places discovered on previous journeys (favorited, dismissed, or viewed).
+  const previouslySeen = await db
     .select({ googlePlaceId: userDiscoveredPlacesTable.googlePlaceId })
     .from(userDiscoveredPlacesTable)
-    .where(and(eq(userDiscoveredPlacesTable.userId, userId), eq(userDiscoveredPlacesTable.isDismissed, true)));
-  const dismissedIds = new Set(dismissed.map((d) => d.googlePlaceId));
+    .where(eq(userDiscoveredPlacesTable.userId, userId));
+  const seenIds = new Set(previouslySeen.map((d) => d.googlePlaceId));
 
-  // Already discovered in this journey (from pings)
+  // Also exclude places already discovered in THIS journey (from pings)
   const alreadyFound = await db
     .select({ googlePlaceId: journeyDiscoveredPlacesTable.googlePlaceId })
     .from(journeyDiscoveredPlacesTable)
@@ -508,7 +510,7 @@ async function discoverPlacesAlongRoute(
 
     for (const p of data.places ?? []) {
       if (!p.id || !p.location) continue;
-      if (dismissedIds.has(p.id) || alreadyFoundIds.has(p.id) || allFound.has(p.id)) continue;
+      if (seenIds.has(p.id) || alreadyFoundIds.has(p.id) || allFound.has(p.id)) continue;
       // Apply rating filter (0 = no filter)
       if (minRating > 0 && (p.rating ?? 0) < minRating) continue;
 

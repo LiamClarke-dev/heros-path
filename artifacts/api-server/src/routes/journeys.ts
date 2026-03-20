@@ -660,8 +660,12 @@ router.patch("/journeys/:journeyId", requireAuth, async (req: Request, res: Resp
       );
     const pingCount = Number(pingResult[0]?.count ?? 0);
 
-    // Use allWaypoints length as proxy for "streets walked"
-    const allWaypointCount = waypoints?.length ?? 0;
+    // Use TOTAL persisted waypoints across the journey (not just the final-flush payload)
+    const totalWaypointResult = await db
+      .select({ count: count() })
+      .from(journeyWaypointsTable)
+      .where(eq(journeyWaypointsTable.journeyId, journeyId));
+    const allWaypointCount = Number(totalWaypointResult[0]?.count ?? 0);
 
     gamification = await awardJourneyGamification(user.id, journeyId, allWaypointCount, pingCount).catch(
       (err) => {

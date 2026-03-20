@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { journeysTable, journeyWaypointsTable, userDiscoveredPlacesTable } from "@workspace/db";
-import { eq, and, count, sum, isNotNull } from "drizzle-orm";
+import { eq, and, count, sum, isNotNull, sql } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 import { getRank } from "./auth";
 import { computeLevel } from "./journeys";
@@ -11,7 +11,7 @@ const router: IRouter = Router();
 router.get("/profile/stats", requireAuth, async (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
 
-  const [journeyCount, totalDist, placesCount, favCount, waypointCount] = await Promise.all([
+  const [journeyCount, totalDist, placesCount, favCount, waypointCount, daysActiveResult] = await Promise.all([
     db.select({ count: count() }).from(journeysTable).where(and(eq(journeysTable.userId, user.id), isNotNull(journeysTable.endedAt))),
     db.select({ total: sum(journeysTable.totalDistanceM) }).from(journeysTable).where(and(eq(journeysTable.userId, user.id), isNotNull(journeysTable.endedAt))),
     db.select({ count: count() }).from(userDiscoveredPlacesTable).where(eq(userDiscoveredPlacesTable.userId, user.id)),
@@ -24,6 +24,11 @@ router.get("/profile/stats", requireAuth, async (req: Request, res: Response) =>
       .select({ count: count() })
       .from(journeyWaypointsTable)
       .innerJoin(journeysTable, eq(journeyWaypointsTable.journeyId, journeysTable.id))
+      .where(and(eq(journeysTable.userId, user.id), isNotNull(journeysTable.endedAt))),
+    // Count distinct calendar days with at least one completed journey
+    db
+      .select({ days: sql<number>`count(distinct date(${journeysTable.endedAt} at time zone 'UTC'))` })
+      .from(journeysTable)
       .where(and(eq(journeysTable.userId, user.id), isNotNull(journeysTable.endedAt))),
   ]);
 
@@ -44,6 +49,7 @@ router.get("/profile/stats", requireAuth, async (req: Request, res: Response) =>
     totalPlacesDiscovered: Number(placesCount[0]?.count ?? 0),
     totalFavorited: Number(favCount[0]?.count ?? 0),
     totalStreetsExplored: Number(waypointCount[0]?.count ?? 0),
+    daysActive: Number(daysActiveResult[0]?.days ?? 0),
     currentStreak: user.streakDays,
     xp,
     level,

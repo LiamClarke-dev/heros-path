@@ -24,6 +24,7 @@ interface ProfileStats {
   totalPlacesDiscovered: number;
   totalFavorited: number;
   totalStreetsExplored: number;
+  daysActive: number;
   currentStreak: number;
   xp: number;
   level: number;
@@ -209,6 +210,7 @@ export default function ProfileScreen() {
             <StatCard icon="navigation" label="Distance" value={formatDistance(stats?.totalDistanceM ?? 0)} color={Colors.info} />
             <StatCard icon="map-pin" label="Places" value={`${stats?.totalPlacesDiscovered ?? 0}`} color="#AB47BC" />
             <StatCard icon="activity" label="Streets" value={`${stats?.totalStreetsExplored ?? 0}`} color="#8BC34A" />
+            <StatCard icon="calendar" label="Days Active" value={`${stats?.daysActive ?? 0}`} color={Colors.accent} />
           </View>
         </>
       )}

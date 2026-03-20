@@ -1,12 +1,64 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { userPreferencesTable, userBadgesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  userPreferencesTable,
+  userBadgesTable,
+  userDiscoveredPlacesTable,
+  journeysTable,
+  journeyDiscoveredPlacesTable,
+} from "@workspace/db";
+import { eq, and, count, isNotNull } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 import { getRank } from "./auth";
 import { BADGE_DEFINITIONS } from "./journeys";
 
 const router: IRouter = Router();
+
+// Shared badge evaluator: checks unlock conditions and awards any newly-earned badges
+async function evaluateAndAwardBadges(userId: string, streakDays: number): Promise<void> {
+  const [earnedBadgeRows, journeyCountResult, placeCountResult, pingMaxResult] = await Promise.all([
+    db.select().from(userBadgesTable).where(eq(userBadgesTable.userId, userId)),
+    db.select({ count: count() }).from(journeysTable).where(and(eq(journeysTable.userId, userId), isNotNull(journeysTable.endedAt))),
+    db.select({ count: count() }).from(userDiscoveredPlacesTable).where(eq(userDiscoveredPlacesTable.userId, userId)),
+    // Max pings in a single journey: count ping discoveries per journey, pick max
+    db.select({ journeyId: journeyDiscoveredPlacesTable.journeyId, cnt: count() })
+      .from(journeyDiscoveredPlacesTable)
+      .where(and(eq(journeyDiscoveredPlacesTable.userId, userId), eq(journeyDiscoveredPlacesTable.discoverySource, "ping")))
+      .groupBy(journeyDiscoveredPlacesTable.journeyId),
+  ]);
+
+  const earnedKeys = new Set(earnedBadgeRows.map((b) => b.badgeKey));
+  const totalJourneys = Number(journeyCountResult[0]?.count ?? 0);
+  const totalPlaces = Number(placeCountResult[0]?.count ?? 0);
+  const maxPingsInJourney = pingMaxResult.reduce((max, r) => Math.max(max, Number(r.cnt)), 0);
+
+  // Badge unlock conditions (must match keys in BADGE_DEFINITIONS)
+  const conditions: Record<string, boolean> = {
+    first_journey: totalJourneys >= 1,
+    streets_10: false, // evaluated at journey end via waypoint count
+    streets_50: false, // evaluated at journey end via waypoint count
+    discovery_first: totalPlaces >= 1,
+    discovery_10: totalPlaces >= 10,
+    night_explorer: false, // evaluated at journey end
+    globe_trotter: false, // evaluated at journey end
+    streak_3: streakDays >= 3,
+    streak_7: streakDays >= 7,
+    streak_30: streakDays >= 30,
+    ping_master: maxPingsInJourney >= 5,
+  };
+
+  for (const [key, unlocked] of Object.entries(conditions)) {
+    if (unlocked && !earnedKeys.has(key)) {
+      await db.insert(userBadgesTable).values({
+        id: crypto.randomUUID(),
+        userId,
+        badgeKey: key,
+      }).catch(() => {}); // ignore duplicates if any
+    }
+  }
+}
+
+export { evaluateAndAwardBadges };
 
 router.get("/me", requireAuth, async (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
@@ -37,7 +89,6 @@ router.get("/me/preferences", requireAuth, async (req: Request, res: Response) =
     return;
   }
 
-  // numeric columns return as strings from Postgres — parse to float for the client
   res.json({ placeTypes: prefs[0].placeTypes, minRating: parseFloat(String(prefs[0].minRating)) });
 });
 
@@ -45,7 +96,6 @@ router.put("/me/preferences", requireAuth, async (req: Request, res: Response) =
   const user = (req as AuthenticatedRequest).user;
   const { placeTypes, minRating } = req.body as { placeTypes?: string[]; minRating?: number };
 
-  // Validate minRating bounds: must be between 0 and 5, increments of 0.5
   const validRating = minRating != null ? Math.round(Math.min(5, Math.max(0, minRating)) * 2) / 2 : undefined;
 
   const existing = await db
@@ -81,6 +131,12 @@ router.put("/me/preferences", requireAuth, async (req: Request, res: Response) =
 
 router.get("/me/badges", requireAuth, async (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
+
+  // Evaluate and award any newly-earned badges on each profile/badge fetch
+  await evaluateAndAwardBadges(user.id, user.streakDays).catch((err) =>
+    console.error("badge evaluation on profile load failed", err),
+  );
+
   const earned = await db
     .select()
     .from(userBadgesTable)

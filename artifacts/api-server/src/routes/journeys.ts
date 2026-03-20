@@ -595,31 +595,56 @@ router.get("/journeys/explored-cells", requireAuth, async (req: Request, res: Re
     );
 
   const GRID = 0.0005; // ~55m cells
-  const cellMap = new Map<string, { lat: number; lng: number }>();
+
+  // Build set of explored cell keys
+  const exploredKeys = new Set<string>();
   for (const wp of waypoints) {
     const wLat = Number(wp.lat);
     const wLng = Number(wp.lng);
-    const cellLat = Math.round(wLat / GRID);
-    const cellLng = Math.round(wLng / GRID);
-    const key = `${cellLat},${cellLng}`;
-    if (!cellMap.has(key)) {
-      // Store cell center coordinates
-      cellMap.set(key, { lat: cellLat * GRID, lng: cellLng * GRID });
-    }
+    const key = `${Math.round(wLat / GRID)},${Math.round(wLng / GRID)}`;
+    exploredKeys.add(key);
   }
 
   // Check if user's current location is within an explored cell
   const currentCellKey = `${Math.round(lat / GRID)},${Math.round(lng / GRID)}`;
-  const isInExploredArea = cellMap.has(currentCellKey);
+  const isInExploredArea = exploredKeys.has(currentCellKey);
 
-  // Build list of explored cell centers for overlay rendering (cap at 500 for payload size)
-  const exploredCells = Array.from(cellMap.values()).slice(0, 500);
+  // Compute unexplored cells in the bounding box (cells in area NOT in explored set)
+  // Sample every 2nd cell to keep count manageable
+  const unexploredCells: Array<{ lat: number; lng: number }> = [];
+  const minCellLat = Math.floor((lat - radius) / GRID);
+  const maxCellLat = Math.ceil((lat + radius) / GRID);
+  const minCellLng = Math.floor((lng - radius) / GRID);
+  const maxCellLng = Math.ceil((lng + radius) / GRID);
+
+  // Only compute if there are explored cells (so user has history) — otherwise all is unexplored
+  if (exploredKeys.size > 0) {
+    for (let cLat = minCellLat; cLat <= maxCellLat; cLat += 2) {
+      for (let cLng = minCellLng; cLng <= maxCellLng; cLng += 2) {
+        const key = `${cLat},${cLng}`;
+        if (!exploredKeys.has(key)) {
+          unexploredCells.push({ lat: cLat * GRID, lng: cLng * GRID });
+        }
+        if (unexploredCells.length >= 200) break;
+      }
+      if (unexploredCells.length >= 200) break;
+    }
+  }
+
+  // Also return explored cell centers (for coloring walked paths)
+  const exploredCells: Array<{ lat: number; lng: number }> = [];
+  for (const key of exploredKeys) {
+    const [cLat, cLng] = key.split(",").map(Number);
+    exploredCells.push({ lat: cLat * GRID, lng: cLng * GRID });
+    if (exploredCells.length >= 300) break;
+  }
 
   res.json({
-    exploredCellCount: cellMap.size,
+    exploredCellCount: exploredKeys.size,
     isInExploredArea,
-    newTerritoryNearby: !isInExploredArea && cellMap.size > 0,
-    exploredCells, // array of {lat, lng} cell centers — for map overlay
+    newTerritoryNearby: !isInExploredArea && exploredKeys.size > 0,
+    exploredCells,   // gold circles over walked areas
+    unexploredCells, // teal circles over nearby unwalked areas
   });
 });
 

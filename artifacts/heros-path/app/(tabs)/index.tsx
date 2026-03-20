@@ -73,6 +73,7 @@ export default function JourneyScreen() {
   const [historicalJourneys, setHistoricalJourneys] = useState<HistoricalJourney[]>([]);
   const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
   const [exploredCells, setExploredCells] = useState<Array<{ lat: number; lng: number }>>([]);
+  const [unexploredCells, setUnexploredCells] = useState<Array<{ lat: number; lng: number }>>([]);
 
   // Quest panel state
   const [questPanelOpen, setQuestPanelOpen] = useState(false);
@@ -138,8 +139,12 @@ export default function JourneyScreen() {
         headers: authHeaders,
       });
       if (res.ok) {
-        const data = await res.json() as { exploredCells: Array<{ lat: number; lng: number }> };
+        const data = await res.json() as {
+          exploredCells: Array<{ lat: number; lng: number }>;
+          unexploredCells: Array<{ lat: number; lng: number }>;
+        };
         if (data.exploredCells) setExploredCells(data.exploredCells);
+        if (data.unexploredCells) setUnexploredCells(data.unexploredCells);
       }
     } catch {
       // non-critical
@@ -239,9 +244,11 @@ export default function JourneyScreen() {
             const data = await res.json() as {
               newTerritoryNearby: boolean;
               exploredCells: Array<{ lat: number; lng: number }>;
+              unexploredCells: Array<{ lat: number; lng: number }>;
             };
             setNewTerritoryNearby(!!data.newTerritoryNearby);
             if (data.exploredCells) setExploredCells(data.exploredCells);
+            if (data.unexploredCells) setUnexploredCells(data.unexploredCells);
           }
         } catch {
           // non-critical
@@ -417,14 +424,26 @@ export default function JourneyScreen() {
         }}
         mapType="standard"
       >
-        {/* Explored cells overlay — gold dots showing previously walked areas */}
+        {/* UNEXPLORED cells — teal/cyan glow to guide discovery (primary visual cue) */}
+        {unexploredCells.slice(0, 120).map((cell, idx) => (
+          <Circle
+            key={`unexplored-${idx}`}
+            center={{ latitude: cell.lat, longitude: cell.lng }}
+            radius={30}
+            fillColor="rgba(41,182,246,0.12)"
+            strokeColor="rgba(41,182,246,0.35)"
+            strokeWidth={1}
+          />
+        ))}
+
+        {/* Explored cells — subtle gold tint over previously walked areas */}
         {exploredCells.slice(0, 100).map((cell, idx) => (
           <Circle
-            key={`cell-${idx}`}
+            key={`explored-${idx}`}
             center={{ latitude: cell.lat, longitude: cell.lng }}
-            radius={28}
-            fillColor="rgba(212,160,23,0.15)"
-            strokeColor="rgba(212,160,23,0.3)"
+            radius={26}
+            fillColor="rgba(212,160,23,0.12)"
+            strokeColor="rgba(212,160,23,0.25)"
             strokeWidth={1}
           />
         ))}

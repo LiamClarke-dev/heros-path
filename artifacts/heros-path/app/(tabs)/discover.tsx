@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Modal,
   ScrollView,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -38,7 +39,9 @@ interface DiscoveredPlace {
   rating: number | null;
   types: string[];
   address: string | null;
+  photoUrl: string | null;
   firstDiscoveredAt: string;
+  lastDiscoveredAt: string;
   discoveryCount: number;
   isDismissed: boolean;
   isFavorited: boolean;
@@ -304,49 +307,60 @@ function SwipeablePlaceCard({
 
       <GestureDetector gesture={pan}>
         <Animated.View style={[styles.card, cardStyle]}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTitleRow}>
-              <Text style={styles.cardName} numberOfLines={1}>
-                {place.name}
-              </Text>
-              {place.isFavorited && (
-                <Feather name="heart" size={14} color={Colors.gold} />
-              )}
-              {place.isSnoozed && (
-                <Feather name="clock" size={14} color={Colors.info} />
-              )}
-            </View>
-            <View style={styles.cardMeta}>
-              <Text style={styles.cardType}>{mainType}</Text>
-              {place.rating !== null && (
-                <View style={styles.ratingRow}>
-                  <Feather name="star" size={11} color={Colors.gold} />
-                  <Text style={styles.ratingText}>{place.rating.toFixed(1)}</Text>
-                </View>
-              )}
-            </View>
-            {place.address && (
-              <Text style={styles.cardAddress} numberOfLines={1}>
-                {place.address}
-              </Text>
+          <View style={styles.cardRow}>
+            {place.photoUrl ? (
+              <Image source={{ uri: place.photoUrl }} style={styles.cardPhoto} resizeMode="cover" />
+            ) : (
+              <View style={[styles.cardPhoto, styles.cardPhotoPlaceholder]}>
+                <Feather name="image" size={20} color={Colors.parchmentDim} />
+              </View>
             )}
-            <View style={styles.cardFooter}>
-              <Text style={styles.discoveryCount}>
-                Found {place.discoveryCount}x
-              </Text>
-              <View style={styles.inlineActions}>
-                <Pressable style={styles.inlineBtn} onPress={() => {
-                  onAction(place.isFavorited ? "unfavorite" : "favorite");
-                }}>
-                  <Feather
-                    name="heart"
-                    size={13}
-                    color={place.isFavorited ? Colors.gold : Colors.parchmentDim}
-                  />
-                </Pressable>
-                <Pressable style={styles.inlineBtn} onPress={onAddToList}>
-                  <Feather name="plus-square" size={13} color={Colors.parchmentDim} />
-                </Pressable>
+            <View style={styles.cardContent}>
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardName} numberOfLines={1}>
+                  {place.name}
+                </Text>
+                <View style={styles.statusIcons}>
+                  {place.isFavorited && (
+                    <Feather name="heart" size={13} color={Colors.gold} />
+                  )}
+                  {place.isSnoozed && (
+                    <Feather name="clock" size={13} color={Colors.info} />
+                  )}
+                </View>
+              </View>
+              <View style={styles.cardMeta}>
+                <Text style={styles.cardType}>{mainType}</Text>
+                {place.rating !== null && (
+                  <View style={styles.ratingRow}>
+                    <Feather name="star" size={10} color={Colors.gold} />
+                    <Text style={styles.ratingText}>{place.rating.toFixed(1)}</Text>
+                  </View>
+                )}
+              </View>
+              {place.address && (
+                <Text style={styles.cardAddress} numberOfLines={1}>
+                  {place.address}
+                </Text>
+              )}
+              <View style={styles.cardFooter}>
+                <Text style={styles.discoveryCount}>
+                  Found {place.discoveryCount}x
+                </Text>
+                <View style={styles.inlineActions}>
+                  <Pressable style={styles.inlineBtn} onPress={() => {
+                    onAction(place.isFavorited ? "unfavorite" : "favorite");
+                  }}>
+                    <Feather
+                      name="heart"
+                      size={13}
+                      color={place.isFavorited ? Colors.gold : Colors.parchmentDim}
+                    />
+                  </Pressable>
+                  <Pressable style={styles.inlineBtn} onPress={onAddToList}>
+                    <Feather name="plus-square" size={13} color={Colors.parchmentDim} />
+                  </Pressable>
+                </View>
               </View>
             </View>
           </View>
@@ -516,9 +530,29 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 14,
+    overflow: "hidden",
   },
-  cardContent: { gap: 4 },
+  cardRow: {
+    flexDirection: "row",
+  },
+  cardPhoto: {
+    width: 80,
+    height: 90,
+    backgroundColor: Colors.surface,
+  },
+  cardPhotoPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardContent: {
+    flex: 1,
+    padding: 12,
+    gap: 4,
+  },
+  statusIcons: {
+    flexDirection: "row",
+    gap: 4,
+  },
   cardTitleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -526,7 +560,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cardName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
     color: Colors.parchment,
     fontFamily: "Inter_600SemiBold",

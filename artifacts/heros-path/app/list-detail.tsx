@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -26,6 +27,7 @@ interface PlaceInList {
   types: string[];
   address: string | null;
   photoReference: string | null;
+  photoUrl: string | null;
 }
 
 export default function ListDetailScreen() {
@@ -155,7 +157,13 @@ function PlaceCard({
 
   return (
     <View style={styles.card}>
-      <View style={styles.cardColorBar} />
+      {place.photoUrl ? (
+        <Image source={{ uri: place.photoUrl }} style={styles.cardPhoto} resizeMode="cover" />
+      ) : (
+        <View style={[styles.cardPhoto, styles.cardPhotoPlaceholder]}>
+          <View style={styles.cardColorBar} />
+        </View>
+      )}
       <View style={styles.cardBody}>
         <View style={styles.cardTitleRow}>
           <Text style={styles.cardName} numberOfLines={1}>{place.name}</Text>
@@ -241,8 +249,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     overflow: "hidden",
   },
+  cardPhoto: {
+    width: 72,
+    alignSelf: "stretch",
+  },
+  cardPhotoPlaceholder: {
+    backgroundColor: Colors.surface,
+  },
   cardColorBar: {
     width: 4,
+    height: "100%",
     backgroundColor: Colors.gold,
   },
   cardBody: {

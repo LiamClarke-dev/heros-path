@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,9 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  Platform,
 } from "react-native";
+import MapView, { Polyline, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -36,6 +38,8 @@ interface DiscoveredPlaceDetail {
   googlePlaceId: string;
   name: string;
   types: string[];
+  lat: number;
+  lng: number;
   rating: number | null;
   address: string | null;
   discoveredAt: string;
@@ -43,6 +47,7 @@ interface DiscoveredPlaceDetail {
   isFavorited: boolean;
   isSnoozed: boolean;
   isDismissed: boolean;
+  discoveryCount: number;
 }
 
 function formatDistance(meters: number | null): string {
@@ -82,6 +87,7 @@ export default function JourneyDetailScreen() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const mapRef = useRef<MapView>(null);
   const { journeyId } = useLocalSearchParams<{ journeyId: string }>();
 
   const apiBase = process.env.EXPO_PUBLIC_DOMAIN
@@ -115,11 +121,23 @@ export default function JourneyDetailScreen() {
   });
 
   const journey = journeyData?.journey;
+  const waypoints = journeyData?.waypoints ?? [];
   const places = discoveriesData?.places ?? [];
   const isLoading = journeyLoading || discoveriesLoading;
 
   const pingPlaces = places.filter((p) => p.discoverySource === "ping");
   const routePlaces = places.filter((p) => p.discoverySource === "route");
+
+  const routeCoords = waypoints.map((w) => ({ latitude: w.lat, longitude: w.lng }));
+
+  const mapInitialRegion = waypoints.length > 0
+    ? {
+        latitude: waypoints[Math.floor(waypoints.length / 2)].lat,
+        longitude: waypoints[Math.floor(waypoints.length / 2)].lng,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      }
+    : undefined;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -145,10 +163,54 @@ export default function JourneyDetailScreen() {
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.summaryCard}>
+          {/* Route Map */}
+          <View style={styles.mapContainer}>
+            {routeCoords.length > 0 ? (
+              <MapView
+                ref={mapRef}
+                style={styles.map}
+                provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+                customMapStyle={Colors.mapDark}
+                initialRegion={mapInitialRegion}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                mapType="standard"
+                onMapReady={() => {
+                  if (routeCoords.length > 1) {
+                    mapRef.current?.fitToCoordinates(routeCoords, {
+                      edgePadding: { top: 32, right: 32, bottom: 32, left: 32 },
+                      animated: false,
+                    });
+                  }
+                }}
+              >
+                <Polyline
+                  coordinates={routeCoords}
+                  strokeColor={Colors.gold}
+                  strokeWidth={4}
+                />
+                {pingPlaces.map((place) => (
+                  <Marker
+                    key={place.googlePlaceId}
+                    coordinate={{ latitude: place.lat, longitude: place.lng }}
+                    title={place.name}
+                    pinColor={Colors.gold}
+                  />
+                ))}
+              </MapView>
+            ) : (
+              <View style={[styles.map, styles.mapPlaceholder]}>
+                <Feather name="map" size={36} color={Colors.parchmentDim} />
+                <Text style={styles.mapPlaceholderText}>No route recorded</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Summary */}
+          <View style={[styles.summaryCard, { marginHorizontal: 16 }]}>
             <View style={styles.summaryRow}>
               <SummaryItem
                 icon="navigation"
@@ -186,28 +248,31 @@ export default function JourneyDetailScreen() {
             </View>
           </View>
 
-          {pingPlaces.length > 0 && (
-            <Section title="Pinged During Journey" icon="radio" count={pingPlaces.length}>
-              {pingPlaces.map((p) => (
-                <PlaceRow key={p.googlePlaceId} place={p} />
-              ))}
-            </Section>
-          )}
+          {/* Place lists */}
+          <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
+            {pingPlaces.length > 0 && (
+              <Section title="Pinged During Journey" icon="radio" count={pingPlaces.length}>
+                {pingPlaces.map((p) => (
+                  <PlaceRow key={p.googlePlaceId} place={p} />
+                ))}
+              </Section>
+            )}
 
-          {routePlaces.length > 0 && (
-            <Section title="Discovered Along Route" icon="compass" count={routePlaces.length}>
-              {routePlaces.map((p) => (
-                <PlaceRow key={p.googlePlaceId} place={p} />
-              ))}
-            </Section>
-          )}
+            {routePlaces.length > 0 && (
+              <Section title="Discovered Along Route" icon="compass" count={routePlaces.length}>
+                {routePlaces.map((p) => (
+                  <PlaceRow key={p.googlePlaceId} place={p} />
+                ))}
+              </Section>
+            )}
 
-          {places.length === 0 && (
-            <View style={styles.emptySection}>
-              <Feather name="map-pin" size={32} color={Colors.parchmentDim} />
-              <Text style={styles.emptyText}>No places discovered on this journey.</Text>
-            </View>
-          )}
+            {places.length === 0 && (
+              <View style={styles.emptySection}>
+                <Feather name="map-pin" size={32} color={Colors.parchmentDim} />
+                <Text style={styles.emptyText}>No places discovered on this journey.</Text>
+              </View>
+            )}
+          </View>
         </ScrollView>
       )}
     </View>
@@ -283,12 +348,10 @@ function PlaceRow({ place }: { place: DiscoveredPlaceDetail }) {
           )}
         </View>
       </View>
-      {place.isFavorited && (
-        <Feather name="heart" size={12} color={Colors.gold} />
-      )}
-      {place.isSnoozed && (
-        <Feather name="clock" size={12} color={Colors.info} />
-      )}
+      <View style={styles.placeStatusIcons}>
+        {place.isFavorited && <Feather name="heart" size={12} color={Colors.gold} />}
+        {place.isSnoozed && <Feather name="clock" size={12} color={Colors.info} />}
+      </View>
     </View>
   );
 }
@@ -338,13 +401,31 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontFamily: "Inter_400Regular",
   },
+  mapContainer: {
+    height: 220,
+    marginBottom: 16,
+    backgroundColor: Colors.surface,
+  },
+  map: {
+    width: "100%",
+    height: "100%",
+  },
+  mapPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  mapPlaceholderText: {
+    fontSize: 13,
+    color: Colors.parchmentDim,
+    fontFamily: "Inter_400Regular",
+  },
   summaryCard: {
     backgroundColor: Colors.card,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 16,
-    marginBottom: 16,
     gap: 12,
   },
   summaryRow: {
@@ -476,6 +557,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.gold,
     fontFamily: "Inter_500Medium",
+  },
+  placeStatusIcons: {
+    flexDirection: "row",
+    gap: 4,
   },
   emptySection: {
     alignItems: "center",

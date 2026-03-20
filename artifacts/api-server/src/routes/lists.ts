@@ -4,6 +4,14 @@ import { placeListsTable, placeListItemsTable, placeCacheTable } from "@workspac
 import { eq, and, count } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
+function buildPhotoUrl(photoReference: string | null, apiKey: string): string | null {
+  if (!photoReference || !apiKey) return null;
+  if (photoReference.includes("/")) {
+    return `https://places.googleapis.com/v1/${photoReference}/media?maxWidthPx=400&key=${apiKey}`;
+  }
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${encodeURIComponent(photoReference)}&key=${apiKey}`;
+}
+
 const router: IRouter = Router();
 
 async function ensureDefaultList(userId: string) {
@@ -146,7 +154,9 @@ router.get("/lists/:listId/places", requireAuth, async (req: Request, res: Respo
     .select({ place: placeCacheTable })
     .from(placeListItemsTable)
     .innerJoin(placeCacheTable, eq(placeListItemsTable.googlePlaceId, placeCacheTable.googlePlaceId))
-    .where(eq(placeListItemsTable.listId, listId));
+    .where(and(eq(placeListItemsTable.listId, listId), eq(placeListItemsTable.userId, user.id)));
+
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
 
   res.json({
     places: items.map(({ place }) => ({
@@ -157,6 +167,7 @@ router.get("/lists/:listId/places", requireAuth, async (req: Request, res: Respo
       rating: place.rating ? Number(place.rating) : null,
       types: place.types,
       photoReference: place.photoReference,
+      photoUrl: buildPhotoUrl(place.photoReference, apiKey),
       address: place.address,
       distanceM: null,
     })),

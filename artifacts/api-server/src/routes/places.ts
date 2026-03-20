@@ -14,6 +14,14 @@ import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
+function buildPhotoUrl(photoReference: string | null, apiKey: string): string | null {
+  if (!photoReference || !apiKey) return null;
+  if (photoReference.includes("/")) {
+    return `https://places.googleapis.com/v1/${photoReference}/media?maxWidthPx=400&key=${apiKey}`;
+  }
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${encodeURIComponent(photoReference)}&key=${apiKey}`;
+}
+
 router.get("/places/discover", requireAuth, async (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
   const filter = (req.query.filter as string) ?? "all";
@@ -59,6 +67,8 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
     .limit(limit)
     .offset(offset);
 
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+
   res.json({
     places: userPlaces.map(({ discovery, place }) => ({
       googlePlaceId: place.googlePlaceId,
@@ -68,6 +78,7 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
       rating: place.rating ? Number(place.rating) : null,
       types: place.types,
       photoReference: place.photoReference,
+      photoUrl: buildPhotoUrl(place.photoReference, apiKey),
       address: place.address,
       firstDiscoveredAt: discovery.firstDiscoveredAt,
       lastDiscoveredAt: discovery.lastDiscoveredAt,
@@ -112,7 +123,6 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
     return;
   }
 
-  const record = existing[0];
   type UpdateFields = {
     isDismissed?: boolean;
     isFavorited?: boolean;
@@ -144,6 +154,16 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
         return;
       }
       {
+        // Verify the target list belongs to the authenticated user
+        const ownedList = await db
+          .select({ id: placeListsTable.id })
+          .from(placeListsTable)
+          .where(and(eq(placeListsTable.id, listId), eq(placeListsTable.userId, user.id)))
+          .limit(1);
+        if (!ownedList.length) {
+          res.status(403).json({ error: "List not found or access denied" });
+          return;
+        }
         const existingItem = await db
           .select()
           .from(placeListItemsTable)
@@ -170,15 +190,27 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
         res.status(400).json({ error: "listId is required for remove_from_list" });
         return;
       }
-      await db
-        .delete(placeListItemsTable)
-        .where(
-          and(
-            eq(placeListItemsTable.listId, listId),
-            eq(placeListItemsTable.googlePlaceId, googlePlaceId),
-            eq(placeListItemsTable.userId, user.id),
-          ),
-        );
+      {
+        // Verify the target list belongs to the authenticated user
+        const ownedList = await db
+          .select({ id: placeListsTable.id })
+          .from(placeListsTable)
+          .where(and(eq(placeListsTable.id, listId), eq(placeListsTable.userId, user.id)))
+          .limit(1);
+        if (!ownedList.length) {
+          res.status(403).json({ error: "List not found or access denied" });
+          return;
+        }
+        await db
+          .delete(placeListItemsTable)
+          .where(
+            and(
+              eq(placeListItemsTable.listId, listId),
+              eq(placeListItemsTable.googlePlaceId, googlePlaceId),
+              eq(placeListItemsTable.userId, user.id),
+            ),
+          );
+      }
       break;
     default:
       res.status(400).json({ error: "Invalid action" });
@@ -207,6 +239,8 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
     listId: listId ?? null,
   });
 
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+
   const updated = await db
     .select({
       discovery: userDiscoveredPlacesTable,
@@ -228,6 +262,7 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
     rating: place.rating ? Number(place.rating) : null,
     types: place.types,
     photoReference: place.photoReference,
+    photoUrl: buildPhotoUrl(place.photoReference, apiKey),
     address: place.address,
     firstDiscoveredAt: discovery.firstDiscoveredAt,
     lastDiscoveredAt: discovery.lastDiscoveredAt,

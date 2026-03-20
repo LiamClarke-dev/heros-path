@@ -22,11 +22,6 @@
             "CFBundleURLSchemes": [
               "com.googleusercontent.apps.155152959717-a20bfhbkjp05k4kd3cahvasvbneimn7q"
             ]
-          },
-          {
-            "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.155152959717-a20bfhbkjp05k4kd3cahvasvbneimn7q"
-            ]
           }
         ],
         "ITSAppUsesNonExemptEncryption": false
@@ -52,11 +47,6 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "c1dd4c9b-e7b9-4aa0-bf73-a1c3f5846720"
-      }
     }
   }
 }

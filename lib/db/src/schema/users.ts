@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, date, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -20,7 +20,7 @@ export const userPreferencesTable = pgTable("user_preferences", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }).unique(),
   placeTypes: text("place_types").array().notNull().default([]),
-  minRating: integer("min_rating").notNull().default(0),
+  minRating: numeric("min_rating", { precision: 2, scale: 1 }).notNull().default("0"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

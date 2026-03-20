@@ -254,8 +254,9 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
     .where(eq(userPreferencesTable.userId, user.id))
     .limit(1);
 
-  const minRating = prefs[0]?.minRating ?? 0;
+  const minRating = parseFloat(String(prefs[0]?.minRating ?? "0"));
   const placeTypes = prefs[0]?.placeTypes ?? [];
+  const allowedTypesSet = placeTypes.length ? new Set(placeTypes) : null;
 
   const dismissed = await db
     .select({ googlePlaceId: userDiscoveredPlacesTable.googlePlaceId })
@@ -264,7 +265,9 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
 
   const dismissedIds = new Set(dismissed.map((d) => d.googlePlaceId));
 
-  const typeQuery = placeTypes.length ? `&type=${placeTypes[0]}` : "";
+  // For a single type, pass it as a filter to Google. For multiple types,
+  // fetch without a type filter and post-filter by the allowed set.
+  const typeQuery = placeTypes.length === 1 ? `&type=${placeTypes[0]}` : "";
   const nearbyUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=500&key=${apiKey}${typeQuery}`;
 
   const nearbyRes = await fetch(nearbyUrl);
@@ -287,7 +290,8 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
 
   const rawPlaces = (nearbyData.results ?? [])
     .filter((p) => !dismissedIds.has(p.place_id))
-    .filter((p) => !minRating || (p.rating ?? 0) >= minRating)
+    .filter((p) => minRating === 0 || (p.rating ?? 0) >= minRating)
+    .filter((p) => !allowedTypesSet || (p.types ?? []).some((t) => allowedTypesSet.has(t)))
     .slice(0, 10)
     .map((p) => ({
       googlePlaceId: p.place_id,
@@ -324,6 +328,39 @@ router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request,
   if (!existing.length) {
     res.status(404).json({ error: "Not found" });
     return;
+  }
+
+  const journey = existing[0];
+
+  // If journey has ended, check whether route discovery has run yet.
+  // If no discoveries exist at all (e.g., the fire-and-forget call hasn't finished),
+  // run it inline here so the client gets deterministic results on first fetch.
+  if (journey.status === "ended") {
+    const hasAnyDiscoveries = await db
+      .select({ googlePlaceId: journeyDiscoveredPlacesTable.googlePlaceId })
+      .from(journeyDiscoveredPlacesTable)
+      .where(
+        and(
+          eq(journeyDiscoveredPlacesTable.journeyId, journeyId),
+          eq(journeyDiscoveredPlacesTable.discoverySource, "route"),
+        ),
+      )
+      .limit(1);
+
+    if (!hasAnyDiscoveries.length && journey.polylineEncoded) {
+      // Fetch stored waypoints to run discovery
+      const storedWaypoints = await db
+        .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
+        .from(journeyWaypointsTable)
+        .where(eq(journeyWaypointsTable.journeyId, journeyId))
+        .orderBy(journeyWaypointsTable.recordedAt);
+
+      if (storedWaypoints.length >= 2) {
+        await discoverPlacesAlongRoute(journeyId, user.id, storedWaypoints).catch((err) =>
+          console.error("inline discovery failed", err),
+        );
+      }
+    }
   }
 
   const journeyPlaces = await db
@@ -392,9 +429,11 @@ async function discoverPlacesAlongRoute(
     .where(eq(userPreferencesTable.userId, userId))
     .limit(1);
 
-  const minRating = prefs[0]?.minRating ?? 0;
+  const minRating = parseFloat(String(prefs[0]?.minRating ?? "0"));
   const placeTypes = prefs[0]?.placeTypes ?? [];
-  const typeQuery = placeTypes.length ? `&type=${placeTypes[0]}` : "";
+  const allowedTypesSet = placeTypes.length ? new Set(placeTypes) : null;
+  // For a single type, pass it to Google. For multiple types, post-filter.
+  const typeQuery = placeTypes.length === 1 ? `&type=${placeTypes[0]}` : "";
 
   const dismissed = await db
     .select({ googlePlaceId: userDiscoveredPlacesTable.googlePlaceId })
@@ -448,20 +487,22 @@ async function discoverPlacesAlongRoute(
 
     for (const p of data.results ?? []) {
       if (dismissedIds.has(p.place_id) || alreadyFoundIds.has(p.place_id)) continue;
-      if (!minRating || (p.rating ?? 0) >= minRating) {
-        if (!allFound.has(p.place_id)) {
-          allFound.set(p.place_id, {
-            googlePlaceId: p.place_id,
-            name: p.name,
-            lat: p.geometry.location.lat,
-            lng: p.geometry.location.lng,
-            rating: p.rating ?? null,
-            types: p.types ?? [],
-            photoReference: p.photos?.[0]?.photo_reference ?? null,
-            address: p.vicinity ?? null,
-            distanceM: 0,
-          });
-        }
+      // Apply rating filter (0 = no filter)
+      if (minRating > 0 && (p.rating ?? 0) < minRating) continue;
+      // Apply multi-type filter: if allowedTypesSet is set, at least one type must match
+      if (allowedTypesSet && !(p.types ?? []).some((t) => allowedTypesSet.has(t))) continue;
+      if (!allFound.has(p.place_id)) {
+        allFound.set(p.place_id, {
+          googlePlaceId: p.place_id,
+          name: p.name,
+          lat: p.geometry.location.lat,
+          lng: p.geometry.location.lng,
+          rating: p.rating ?? null,
+          types: p.types ?? [],
+          photoReference: p.photos?.[0]?.photo_reference ?? null,
+          address: p.vicinity ?? null,
+          distanceM: 0,
+        });
       }
     }
   }

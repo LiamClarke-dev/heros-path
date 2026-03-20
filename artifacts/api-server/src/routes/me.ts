@@ -36,12 +36,16 @@ router.get("/me/preferences", requireAuth, async (req: Request, res: Response) =
     return;
   }
 
-  res.json({ placeTypes: prefs[0].placeTypes, minRating: prefs[0].minRating });
+  // numeric columns return as strings from Postgres — parse to float for the client
+  res.json({ placeTypes: prefs[0].placeTypes, minRating: parseFloat(String(prefs[0].minRating)) });
 });
 
 router.put("/me/preferences", requireAuth, async (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
   const { placeTypes, minRating } = req.body as { placeTypes?: string[]; minRating?: number };
+
+  // Validate minRating bounds: must be between 0 and 5, increments of 0.5
+  const validRating = minRating != null ? Math.round(Math.min(5, Math.max(0, minRating)) * 2) / 2 : undefined;
 
   const existing = await db
     .select()
@@ -54,12 +58,12 @@ router.put("/me/preferences", requireAuth, async (req: Request, res: Response) =
       .update(userPreferencesTable)
       .set({
         placeTypes: placeTypes ?? existing[0].placeTypes,
-        minRating: minRating ?? existing[0].minRating,
+        minRating: validRating != null ? String(validRating) : existing[0].minRating,
         updatedAt: new Date(),
       })
       .where(eq(userPreferencesTable.userId, user.id))
       .returning();
-    res.json({ placeTypes: updated[0].placeTypes, minRating: updated[0].minRating });
+    res.json({ placeTypes: updated[0].placeTypes, minRating: parseFloat(String(updated[0].minRating)) });
   } else {
     const created = await db
       .insert(userPreferencesTable)
@@ -67,10 +71,10 @@ router.put("/me/preferences", requireAuth, async (req: Request, res: Response) =
         id: crypto.randomUUID(),
         userId: user.id,
         placeTypes: placeTypes ?? [],
-        minRating: minRating ?? 0,
+        minRating: String(validRating ?? 0),
       })
       .returning();
-    res.json({ placeTypes: created[0].placeTypes, minRating: created[0].minRating });
+    res.json({ placeTypes: created[0].placeTypes, minRating: parseFloat(String(created[0].minRating)) });
   }
 });
 

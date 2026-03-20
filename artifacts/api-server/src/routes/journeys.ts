@@ -13,6 +13,14 @@ import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
+function buildPhotoUrl(photoReference: string | null, apiKey: string): string | null {
+  if (!photoReference || !apiKey) return null;
+  if (photoReference.includes("/")) {
+    return `https://places.googleapis.com/v1/${photoReference}/media?maxWidthPx=400&key=${apiKey}`;
+  }
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${encodeURIComponent(photoReference)}&key=${apiKey}`;
+}
+
 // ─── POST /journeys ─────────────────────────────────────────────────────────
 
 router.post("/journeys", requireAuth, async (req: Request, res: Response) => {
@@ -350,12 +358,46 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
     await saveDiscoveredPlaces(allFilteredPlaces, journeyId, user.id, "ping");
   }
 
-  // Only return net-new (not previously seen, not dismissed) to the client
-  const newPlaces = allFilteredPlaces
+  // Only return net-new (not previously seen) to the client
+  const newPlaceIds = allFilteredPlaces
     .filter((p) => !previouslySeenIds.has(p.googlePlaceId))
+    .map((p) => p.googlePlaceId)
     .slice(0, 10);
 
-  res.json({ places: newPlaces });
+  // Fetch the persisted user-level discovery state for the new places
+  const newPlaceStates =
+    newPlaceIds.length > 0
+      ? await db
+          .select()
+          .from(userDiscoveredPlacesTable)
+          .where(
+            and(
+              eq(userDiscoveredPlacesTable.userId, user.id),
+              inArray(userDiscoveredPlacesTable.googlePlaceId, newPlaceIds),
+            ),
+          )
+      : [];
+
+  const stateByPlaceId = new Map(newPlaceStates.map((s) => [s.googlePlaceId, s]));
+
+  res.json({
+    places: allFilteredPlaces
+      .filter((p) => newPlaceIds.includes(p.googlePlaceId))
+      .map((p) => {
+        const state = stateByPlaceId.get(p.googlePlaceId);
+        return {
+          ...p,
+          photoUrl: buildPhotoUrl(p.photoReference, apiKey),
+          discoveryCount: state?.discoveryCount ?? 1,
+          firstDiscoveredAt: state?.firstDiscoveredAt ?? new Date().toISOString(),
+          lastDiscoveredAt: state?.lastDiscoveredAt ?? new Date().toISOString(),
+          isFavorited: state?.isFavorited ?? false,
+          isDismissed: state?.isDismissed ?? false,
+          isSnoozed: state?.isSnoozed ?? false,
+          snoozedUntil: state?.snoozedUntil ?? null,
+        };
+      }),
+  });
 });
 
 // ─── GET /journeys/:journeyId/discoveries ────────────────────────────────────
@@ -410,7 +452,7 @@ router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request,
     .innerJoin(placeCacheTable, eq(journeyDiscoveredPlacesTable.googlePlaceId, placeCacheTable.googlePlaceId))
     .where(eq(journeyDiscoveredPlacesTable.journeyId, journeyId));
 
-  // Join with user's action state
+  // Join with user's action state; filter out dismissed places
   const placeIds = journeyPlaces.map((p) => p.googlePlaceId);
   const userStates =
     placeIds.length > 0
@@ -421,14 +463,19 @@ router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request,
             and(
               eq(userDiscoveredPlacesTable.userId, user.id),
               inArray(userDiscoveredPlacesTable.googlePlaceId, placeIds),
+              eq(userDiscoveredPlacesTable.isDismissed, false),
             ),
           )
       : [];
 
   const stateByPlaceId = new Map(userStates.map((s) => [s.googlePlaceId, s]));
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+
+  // Only return non-dismissed places
+  const nonDismissedPlaces = journeyPlaces.filter((p) => stateByPlaceId.has(p.place.googlePlaceId));
 
   res.json({
-    places: journeyPlaces.map((p) => {
+    places: nonDismissedPlaces.map((p) => {
       const state = stateByPlaceId.get(p.place.googlePlaceId);
       return {
         googlePlaceId: p.place.googlePlaceId,
@@ -438,11 +485,15 @@ router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request,
         rating: p.place.rating ? Number(p.place.rating) : null,
         types: p.place.types,
         photoReference: p.place.photoReference,
+        photoUrl: buildPhotoUrl(p.place.photoReference, apiKey),
         address: p.place.address,
         discoverySource: p.discoverySource,
         discoveredAt: p.discoveredAt,
+        discoveryCount: state?.discoveryCount ?? 1,
+        firstDiscoveredAt: state?.firstDiscoveredAt ?? p.discoveredAt,
+        lastDiscoveredAt: state?.lastDiscoveredAt ?? p.discoveredAt,
         isFavorited: state?.isFavorited ?? false,
-        isDismissed: state?.isDismissed ?? false,
+        isDismissed: false,
         isSnoozed: state?.isSnoozed ?? false,
       };
     }),

@@ -152,6 +152,70 @@ router.delete("/lists/:listId", requireAuth, async (req: Request, res: Response)
   res.status(204).send();
 });
 
+// Move a place from one list to another (atomic remove + add)
+router.post("/lists/:listId/places/:googlePlaceId/move", requireAuth, async (req: Request, res: Response) => {
+  const user = (req as AuthenticatedRequest).user;
+  const { listId, googlePlaceId } = req.params;
+  const { targetListId } = req.body as { targetListId: string };
+
+  if (!targetListId) {
+    res.status(400).json({ error: "targetListId is required" });
+    return;
+  }
+
+  if (listId === targetListId) {
+    res.status(400).json({ error: "Source and target lists must be different" });
+    return;
+  }
+
+  // Verify ownership of both lists
+  const ownedLists = await db
+    .select({ id: placeListsTable.id })
+    .from(placeListsTable)
+    .where(and(eq(placeListsTable.userId, user.id)));
+
+  const ownedIds = new Set(ownedLists.map((l) => l.id));
+  if (!ownedIds.has(listId) || !ownedIds.has(targetListId)) {
+    res.status(403).json({ error: "List not found or access denied" });
+    return;
+  }
+
+  // Remove from source list
+  await db
+    .delete(placeListItemsTable)
+    .where(
+      and(
+        eq(placeListItemsTable.listId, listId),
+        eq(placeListItemsTable.googlePlaceId, googlePlaceId),
+        eq(placeListItemsTable.userId, user.id),
+      ),
+    );
+
+  // Add to target list (upsert — skip if already there)
+  const existingInTarget = await db
+    .select({ id: placeListItemsTable.id })
+    .from(placeListItemsTable)
+    .where(
+      and(
+        eq(placeListItemsTable.listId, targetListId),
+        eq(placeListItemsTable.googlePlaceId, googlePlaceId),
+        eq(placeListItemsTable.userId, user.id),
+      ),
+    )
+    .limit(1);
+
+  if (!existingInTarget.length) {
+    await db.insert(placeListItemsTable).values({
+      id: crypto.randomUUID(),
+      listId: targetListId,
+      userId: user.id,
+      googlePlaceId,
+    });
+  }
+
+  res.json({ success: true });
+});
+
 router.get("/lists/:listId/places", requireAuth, async (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
   const { listId } = req.params;

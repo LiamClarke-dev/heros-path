@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   Alert,
   RefreshControl,
   Image,
+  Modal,
+  TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -30,12 +33,20 @@ interface PlaceInList {
   photoUrl: string | null;
 }
 
+interface PlaceList {
+  id: string;
+  name: string;
+}
+
 export default function ListDetailScreen() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const router = useRouter();
   const { listId, name } = useLocalSearchParams<{ listId: string; name: string }>();
+
+  const [moveTarget, setMoveTarget] = useState<PlaceInList | null>(null);
+  const [moveModalVisible, setMoveModalVisible] = useState(false);
 
   const apiBase = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
@@ -58,6 +69,17 @@ export default function ListDetailScreen() {
     enabled: !!listId,
   });
 
+  const { data: listsData } = useQuery({
+    queryKey: ["lists"],
+    queryFn: async () => {
+      const res = await fetch(`${apiBase}/lists`, { headers: authHeaders });
+      if (!res.ok) throw new Error("Failed to fetch lists");
+      return res.json() as Promise<{ lists: PlaceList[] }>;
+    },
+  });
+
+  const otherLists = (listsData?.lists ?? []).filter((l) => l.id !== listId);
+
   const removeFromListMutation = useMutation({
     mutationFn: async (googlePlaceId: string) => {
       const res = await fetch(`${apiBase}/places/${googlePlaceId}/action`, {
@@ -75,6 +97,25 @@ export default function ListDetailScreen() {
     onError: () => Alert.alert("Error", "Failed to remove place from list."),
   });
 
+  const moveToListMutation = useMutation({
+    mutationFn: async ({ googlePlaceId, targetListId }: { googlePlaceId: string; targetListId: string }) => {
+      const res = await fetch(`${apiBase}/lists/${listId}/places/${googlePlaceId}/move`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ targetListId }),
+      });
+      if (!res.ok) throw new Error("Failed to move place");
+      return res.json();
+    },
+    onSuccess: () => {
+      setMoveModalVisible(false);
+      setMoveTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["list-places", listId] });
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+    },
+    onError: () => Alert.alert("Error", "Failed to move place to list."),
+  });
+
   function confirmRemove(place: PlaceInList) {
     Alert.alert(
       "Remove Place",
@@ -88,6 +129,20 @@ export default function ListDetailScreen() {
         },
       ],
     );
+  }
+
+  function openMoveModal(place: PlaceInList) {
+    if (otherLists.length === 0) {
+      Alert.alert("No Other Lists", "Create another list first to move this place.");
+      return;
+    }
+    setMoveTarget(place);
+    setMoveModalVisible(true);
+  }
+
+  function handleMove(targetListId: string) {
+    if (!moveTarget) return;
+    moveToListMutation.mutate({ googlePlaceId: moveTarget.googlePlaceId, targetListId });
   }
 
   const places = data?.places ?? [];
@@ -137,11 +192,58 @@ export default function ListDetailScreen() {
             />
           }
           renderItem={({ item }) => (
-            <PlaceCard place={item} onRemove={() => confirmRemove(item)} />
+            <PlaceCard
+              place={item}
+              onRemove={() => confirmRemove(item)}
+              onMove={() => openMoveModal(item)}
+            />
           )}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         />
       )}
+
+      {/* Move to list modal */}
+      <Modal
+        visible={moveModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setMoveModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setMoveModalVisible(false)}
+        >
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <Text style={styles.modalTitle}>Move to list</Text>
+            <Text style={styles.modalSubtitle} numberOfLines={1}>
+              {moveTarget?.name}
+            </Text>
+            <ScrollView style={{ maxHeight: 320 }}>
+              {otherLists.map((list) => (
+                <TouchableOpacity
+                  key={list.id}
+                  style={styles.modalListItem}
+                  onPress={() => handleMove(list.id)}
+                  disabled={moveToListMutation.isPending}
+                >
+                  <Feather name="list" size={16} color={Colors.gold} />
+                  <Text style={styles.modalListName}>{list.name}</Text>
+                  {moveToListMutation.isPending && (
+                    <ActivityIndicator size="small" color={Colors.gold} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <Pressable
+              style={styles.modalCancelBtn}
+              onPress={() => setMoveModalVisible(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -149,9 +251,11 @@ export default function ListDetailScreen() {
 function PlaceCard({
   place,
   onRemove,
+  onMove,
 }: {
   place: PlaceInList;
   onRemove: () => void;
+  onMove: () => void;
 }) {
   const mainType = place.types[0]?.replace(/_/g, " ") ?? "place";
 
@@ -167,9 +271,14 @@ function PlaceCard({
       <View style={styles.cardBody}>
         <View style={styles.cardTitleRow}>
           <Text style={styles.cardName} numberOfLines={1}>{place.name}</Text>
-          <Pressable style={styles.removeBtn} onPress={onRemove}>
-            <Feather name="x" size={16} color={Colors.parchmentDim} />
-          </Pressable>
+          <View style={styles.cardActions}>
+            <Pressable style={styles.actionBtn} onPress={onMove} hitSlop={6}>
+              <Feather name="shuffle" size={15} color={Colors.parchmentMuted} />
+            </Pressable>
+            <Pressable style={styles.actionBtn} onPress={onRemove} hitSlop={6}>
+              <Feather name="x" size={16} color={Colors.parchmentDim} />
+            </Pressable>
+          </View>
         </View>
         <View style={styles.cardMeta}>
           <Text style={styles.cardType}>{mainType}</Text>
@@ -279,7 +388,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     flex: 1,
   },
-  removeBtn: {
+  cardActions: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  actionBtn: {
     padding: 2,
   },
   cardMeta: {
@@ -307,5 +421,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.parchmentDim,
     fontFamily: "Inter_400Regular",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: Colors.parchment,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  modalListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  modalListName: {
+    fontSize: 16,
+    color: Colors.parchment,
+    fontFamily: "Inter_500Medium",
+    flex: 1,
+  },
+  modalCancelBtn: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  modalCancelText: {
+    fontSize: 15,
+    color: Colors.parchmentMuted,
+    fontFamily: "Inter_500Medium",
   },
 });

@@ -93,12 +93,32 @@ export default function JourneyScreen() {
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentJourneyIdRef = useRef<string | null>(null);
 
-  function handleLocateMe() {
-    if (!currentLocation) return;
+  async function handleLocateMe() {
+    let loc = currentLocation;
+
+    // If we don't have a cached location yet (pre-journey / app cold start), fetch one now
+    if (!loc) {
+      try {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last) {
+          loc = { lat: last.coords.latitude, lng: last.coords.longitude };
+          setCurrentLocation(loc);
+        } else {
+          // Last known unavailable — request a fresh fix (may take a moment)
+          const fresh = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          loc = { lat: fresh.coords.latitude, lng: fresh.coords.longitude };
+          setCurrentLocation(loc);
+        }
+      } catch {
+        // Permissions not granted or location unavailable — silently ignore
+        return;
+      }
+    }
+
     mapRef.current?.animateToRegion(
       {
-        latitude: currentLocation.lat,
-        longitude: currentLocation.lng,
+        latitude: loc.lat,
+        longitude: loc.lng,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       },
@@ -127,6 +147,20 @@ export default function JourneyScreen() {
   });
 
   const activeQuests = (questsData?.active ?? []).slice(0, 3);
+
+  // Seed currentLocation on mount so the Locate Me button works before any journey starts
+  useEffect(() => {
+    void (async () => {
+      try {
+        const loc = await Location.getLastKnownPositionAsync();
+        if (loc) {
+          setCurrentLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      } catch {
+        // non-critical
+      }
+    })();
+  }, []);
 
   // Load historical journey polylines and explored cells on mount
   useEffect(() => {

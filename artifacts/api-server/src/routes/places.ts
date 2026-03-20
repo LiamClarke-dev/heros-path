@@ -6,6 +6,8 @@ import {
   placeListItemsTable,
   placeListsTable,
   userPlaceActionsTable,
+  PLACE_ACTIONS,
+  type PlaceAction,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
@@ -70,10 +72,19 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
   const user = (req as AuthenticatedRequest).user;
   const { googlePlaceId } = req.params;
   const { action, listId, snoozeDays = 7 } = req.body as {
-    action: string;
+    action: PlaceAction;
     listId?: string;
     snoozeDays?: number;
   };
+
+  // Application-level guard (mirrors DB check constraint)
+  if (!PLACE_ACTIONS.includes(action as PlaceAction)) {
+    res.status(400).json({
+      error: "Bad Request",
+      message: `action must be one of: ${PLACE_ACTIONS.join(", ")}`,
+    });
+    return;
+  }
 
   const existing = await db
     .select()

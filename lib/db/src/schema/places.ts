@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, numeric, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, integer, boolean, check } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -45,18 +46,37 @@ export const journeyDiscoveredPlacesTable = pgTable("journey_discovered_places",
  * The current derived state lives in user_discovered_places (booleans);
  * this table is the append-only event log behind it.
  */
-export const userPlaceActionsTable = pgTable("user_place_actions", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
-  googlePlaceId: text("google_place_id").notNull().references(() => placeCacheTable.googlePlaceId),
-  /** One of: dismiss | snooze | favorite | unfavorite | add_to_list | remove_from_list */
-  action: text("action").notNull(),
-  /** Populated when action = 'snooze' */
-  snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
-  /** Populated when action = 'add_to_list' or 'remove_from_list' */
-  listId: text("list_id"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const PLACE_ACTIONS = [
+  "dismiss",
+  "snooze",
+  "favorite",
+  "unfavorite",
+  "add_to_list",
+  "remove_from_list",
+] as const;
+export type PlaceAction = (typeof PLACE_ACTIONS)[number];
+
+export const userPlaceActionsTable = pgTable(
+  "user_place_actions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+    googlePlaceId: text("google_place_id").notNull().references(() => placeCacheTable.googlePlaceId),
+    /** Constrained to PLACE_ACTIONS values; enforced at DB and application layers */
+    action: text("action").notNull(),
+    /** Populated when action = 'snooze' */
+    snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+    /** Populated when action = 'add_to_list' or 'remove_from_list' */
+    listId: text("list_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "user_place_actions_action_check",
+      sql`${t.action} IN ('dismiss','snooze','favorite','unfavorite','add_to_list','remove_from_list')`,
+    ),
+  ],
+);
 
 export const insertPlaceCacheSchema = createInsertSchema(placeCacheTable);
 export const insertUserDiscoveredPlaceSchema = createInsertSchema(userDiscoveredPlacesTable);

@@ -47,12 +47,24 @@ router.post("/auth/google", async (req, res) => {
 
     // Validate token audience against our registered client IDs to prevent
     // tokens minted for other apps from being accepted.
+    // Fail-closed: in production, if no client IDs are configured the request
+    // is rejected rather than silently allowed through.
     const allowedClientIds = [
       process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_ID,
     ].filter(Boolean) as string[];
 
-    if (allowedClientIds.length > 0 && tokenInfo.aud) {
+    const isProduction = process.env.NODE_ENV === "production";
+
+    if (allowedClientIds.length === 0) {
+      if (isProduction) {
+        req.log.error("No Google client IDs configured — rejecting token in production");
+        res.status(500).json({ error: "Server misconfigured", message: "Google client ID not set" });
+        return;
+      }
+      // Development only: allow through but emit a warning
+      req.log.warn("No Google client IDs configured — skipping audience check (dev only)");
+    } else if (tokenInfo.aud) {
       // aud may be a single string or comma-separated list
       const tokenAudiences = tokenInfo.aud.split(",").map((s) => s.trim());
       const isValid = tokenAudiences.some((aud) => allowedClientIds.includes(aud));
@@ -61,6 +73,11 @@ router.post("/auth/google", async (req, res) => {
         res.status(401).json({ error: "Unauthorized", message: "Token audience mismatch" });
         return;
       }
+    } else if (isProduction) {
+      // In production, missing aud in the tokeninfo response is also rejected
+      req.log.warn("Token missing aud field — rejecting in production");
+      res.status(401).json({ error: "Unauthorized", message: "Token audience not present" });
+      return;
     }
 
     // Validate token expiry

@@ -66,16 +66,16 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
     .where(
       and(
         eq(userDiscoveredPlacesTable.userId, user.id),
+        // Dismissed places are NEVER shown in any discover filter
+        eq(userDiscoveredPlacesTable.isDismissed, false),
         filter === "favorited" ? eq(userDiscoveredPlacesTable.isFavorited, true) : undefined,
         filter === "snoozed" ? eq(userDiscoveredPlacesTable.isSnoozed, true) : undefined,
         filter === "unreviewed"
           ? and(
               eq(userDiscoveredPlacesTable.isFavorited, false),
-              eq(userDiscoveredPlacesTable.isDismissed, false),
               eq(userDiscoveredPlacesTable.isSnoozed, false),
             )
           : undefined,
-        filter === "all" ? eq(userDiscoveredPlacesTable.isDismissed, false) : undefined,
       ),
     )
     .orderBy(desc(userDiscoveredPlacesTable.lastDiscoveredAt))

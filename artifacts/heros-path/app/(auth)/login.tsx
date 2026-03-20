@@ -38,6 +38,7 @@ export default function LoginScreen() {
       responseType: "id_token",
       scopes: ["openid", "profile", "email"],
       extraParams: { nonce: Math.random().toString(36).slice(2) },
+      usePKCE: false,
     },
     discovery ?? null,
   );

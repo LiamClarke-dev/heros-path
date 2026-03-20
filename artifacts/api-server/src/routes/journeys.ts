@@ -292,8 +292,20 @@ async function awardJourneyGamification(
   const totalPingDiscoveries = Number(pingSourceResult[0]?.count ?? 0);
 
   // Evaluate and update quest progress
-  const userQuests = await db.select().from(userQuestsTable).where(eq(userQuestsTable.userId, userId));
-  const questMap = new Map(userQuests.map((q) => [q.questKey, q]));
+  // Fetch ALL rows ordered by startedAt DESC — most recent row per key wins
+  const allUserQuests = await db
+    .select()
+    .from(userQuestsTable)
+    .where(eq(userQuestsTable.userId, userId))
+    .orderBy(desc(userQuestsTable.startedAt));
+
+  // Build map: keep ONLY the latest row per questKey (first seen in DESC order)
+  const questMap = new Map<string, typeof allUserQuests[number]>();
+  for (const q of allUserQuests) {
+    if (!questMap.has(q.questKey)) {
+      questMap.set(q.questKey, q);
+    }
+  }
 
   const completedQuests: Array<{ key: string; title: string; xpReward: number }> = [];
 
@@ -560,8 +572,8 @@ router.get("/journeys/explored-cells", requireAuth, async (req: Request, res: Re
   const user = (req as AuthenticatedRequest).user;
   const lat = parseFloat(req.query.lat as string);
   const lng = parseFloat(req.query.lng as string);
-  // radius in degrees (default ~0.5km = 0.005°)
-  const radius = Math.min(0.02, parseFloat(req.query.radius as string) || 0.005);
+  // radius in degrees (~1km = 0.01°, max 0.02°)
+  const radius = Math.min(0.02, parseFloat(req.query.radius as string) || 0.01);
 
   if (isNaN(lat) || isNaN(lng)) {
     res.status(400).json({ error: "lat and lng are required" });
@@ -582,22 +594,32 @@ router.get("/journeys/explored-cells", requireAuth, async (req: Request, res: Re
       ),
     );
 
-  const GRID = 0.0005;
-  const cellSet = new Set<string>();
+  const GRID = 0.0005; // ~55m cells
+  const cellMap = new Map<string, { lat: number; lng: number }>();
   for (const wp of waypoints) {
-    const key = `${Math.round(Number(wp.lat) / GRID)},${Math.round(Number(wp.lng) / GRID)}`;
-    cellSet.add(key);
+    const wLat = Number(wp.lat);
+    const wLng = Number(wp.lng);
+    const cellLat = Math.round(wLat / GRID);
+    const cellLng = Math.round(wLng / GRID);
+    const key = `${cellLat},${cellLng}`;
+    if (!cellMap.has(key)) {
+      // Store cell center coordinates
+      cellMap.set(key, { lat: cellLat * GRID, lng: cellLng * GRID });
+    }
   }
 
   // Check if user's current location is within an explored cell
   const currentCellKey = `${Math.round(lat / GRID)},${Math.round(lng / GRID)}`;
-  const isInExploredArea = cellSet.has(currentCellKey);
+  const isInExploredArea = cellMap.has(currentCellKey);
+
+  // Build list of explored cell centers for overlay rendering (cap at 500 for payload size)
+  const exploredCells = Array.from(cellMap.values()).slice(0, 500);
 
   res.json({
-    exploredCellCount: cellSet.size,
+    exploredCellCount: cellMap.size,
     isInExploredArea,
-    // If not in explored area, there's new territory nearby
-    newTerritoryNearby: !isInExploredArea && cellSet.size > 0,
+    newTerritoryNearby: !isInExploredArea && cellMap.size > 0,
+    exploredCells, // array of {lat, lng} cell centers — for map overlay
   });
 });
 
@@ -720,9 +742,9 @@ router.patch("/journeys/:journeyId", requireAuth, async (req: Request, res: Resp
     updated = existing;
   }
 
-  // Trigger end-of-journey place discovery after polyline is persisted
+  // Trigger end-of-journey place discovery BEFORE gamification so XP includes route finds
   if (status === "ended" && updates.polylineEncoded) {
-    void discoverPlacesAlongRoute(journeyId, user.id, updates.polylineEncoded).catch((err) =>
+    await discoverPlacesAlongRoute(journeyId, user.id, updates.polylineEncoded).catch((err) =>
       console.error("end-of-journey discovery failed", err),
     );
   }

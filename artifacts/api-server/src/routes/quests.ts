@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { userQuestsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 import { QUEST_DEFINITIONS } from "./journeys";
 
@@ -11,65 +11,42 @@ router.get("/quests", requireAuth, async (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
   const now = new Date();
 
-  const userQuests = await db
+  // Fetch all rows ordered DESC by startedAt — latest wins per key
+  const allRows = await db
     .select()
     .from(userQuestsTable)
-    .where(eq(userQuestsTable.userId, user.id));
+    .where(eq(userQuestsTable.userId, user.id))
+    .orderBy(desc(userQuestsTable.startedAt));
 
-  const userQuestMap = new Map(userQuests.map((q) => [q.questKey, q]));
+  // Build latest-row map (first seen in DESC order = most recent)
+  const latestMap = new Map<string, typeof allRows[number]>();
+  for (const row of allRows) {
+    if (!latestMap.has(row.questKey)) {
+      latestMap.set(row.questKey, row);
+    }
+  }
 
+  // Ensure all quest definitions have a current row; create or reset as needed
   for (const def of QUEST_DEFINITIONS) {
-    const existing = userQuestMap.get(def.key);
+    const existing = latestMap.get(def.key);
 
     if (!existing) {
       const expiresAt = def.type === "weekly" ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
-      const newQuest = await db
+      const newRow = await db
         .insert(userQuestsTable)
-        .values({
-          id: crypto.randomUUID(),
-          userId: user.id,
-          questKey: def.key,
-          expiresAt,
-          progressJson: { current: 0 },
-        })
+        .values({ id: crypto.randomUUID(), userId: user.id, questKey: def.key, expiresAt, progressJson: { current: 0 } })
         .returning();
-      userQuestMap.set(def.key, newQuest[0]);
-    } else if (
-      def.type === "weekly" &&
-      existing.completedAt &&
-      existing.expiresAt &&
-      existing.expiresAt < now
-    ) {
-      // Weekly quest completed + expired — issue a fresh instance
-      const newQuest = await db
-        .insert(userQuestsTable)
-        .values({
-          id: crypto.randomUUID(),
-          userId: user.id,
-          questKey: def.key,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          progressJson: { current: 0 },
-        })
-        .returning();
-      userQuestMap.set(def.key, newQuest[0]);
-    } else if (
-      def.type === "weekly" &&
-      !existing.completedAt &&
-      existing.expiresAt &&
-      existing.expiresAt < now
-    ) {
-      // Weekly quest expired without completion — reset
-      const newQuest = await db
-        .insert(userQuestsTable)
-        .values({
-          id: crypto.randomUUID(),
-          userId: user.id,
-          questKey: def.key,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          progressJson: { current: 0 },
-        })
-        .returning();
-      userQuestMap.set(def.key, newQuest[0]);
+      latestMap.set(def.key, newRow[0]);
+    } else if (def.type === "weekly") {
+      const expired = existing.expiresAt && existing.expiresAt < now;
+      if (expired) {
+        // Start a fresh weekly quest instance regardless of completion status
+        const newRow = await db
+          .insert(userQuestsTable)
+          .values({ id: crypto.randomUUID(), userId: user.id, questKey: def.key, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), progressJson: { current: 0 } })
+          .returning();
+        latestMap.set(def.key, newRow[0]);
+      }
     }
   }
 
@@ -77,11 +54,11 @@ router.get("/quests", requireAuth, async (req: Request, res: Response) => {
   const completed = [];
 
   for (const def of QUEST_DEFINITIONS) {
-    const userQuest = userQuestMap.get(def.key);
-    if (!userQuest) continue;
+    const row = latestMap.get(def.key);
+    if (!row) continue;
 
-    const progress = (userQuest.progressJson as { current?: number })?.current ?? 0;
-    const isCompleted = !!userQuest.completedAt;
+    const progress = (row.progressJson as { current?: number })?.current ?? 0;
+    const isCompleted = !!row.completedAt;
 
     const quest = {
       key: def.key,
@@ -92,8 +69,8 @@ router.get("/quests", requireAuth, async (req: Request, res: Response) => {
       target: def.target,
       type: def.type,
       isCompleted,
-      completedAt: userQuest.completedAt ?? null,
-      expiresAt: userQuest.expiresAt ?? null,
+      completedAt: row.completedAt ?? null,
+      expiresAt: row.expiresAt ?? null,
     };
 
     if (isCompleted) {

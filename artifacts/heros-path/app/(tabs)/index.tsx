@@ -10,7 +10,7 @@ import {
   Animated,
   ScrollView,
 } from "react-native";
-import MapView, { Polyline, Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Polyline, Marker, Circle, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -72,6 +72,7 @@ export default function JourneyScreen() {
   const [pingCount, setPingCount] = useState(0);
   const [historicalJourneys, setHistoricalJourneys] = useState<HistoricalJourney[]>([]);
   const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
+  const [exploredCells, setExploredCells] = useState<Array<{ lat: number; lng: number }>>([]);
 
   // Quest panel state
   const [questPanelOpen, setQuestPanelOpen] = useState(false);
@@ -113,10 +114,37 @@ export default function JourneyScreen() {
 
   const activeQuests = (questsData?.active ?? []).slice(0, 3);
 
-  // Load historical journey polylines on mount
+  // Load historical journey polylines and explored cells on mount
   useEffect(() => {
     loadHistoricalJourneys();
+    loadExploredCells();
   }, []);
+
+  async function loadExploredCells(lat?: number, lng?: number) {
+    try {
+      // Use provided coords or try to get current location
+      let useLat = lat;
+      let useLng = lng;
+      if (useLat == null || useLng == null) {
+        const loc = await Location.getLastKnownPositionAsync();
+        if (loc) {
+          useLat = loc.coords.latitude;
+          useLng = loc.coords.longitude;
+        } else {
+          return; // no location yet
+        }
+      }
+      const res = await fetch(`${apiBase}/journeys/explored-cells?lat=${useLat}&lng=${useLng}&radius=0.015`, {
+        headers: authHeaders,
+      });
+      if (res.ok) {
+        const data = await res.json() as { exploredCells: Array<{ lat: number; lng: number }> };
+        if (data.exploredCells) setExploredCells(data.exploredCells);
+      }
+    } catch {
+      // non-critical
+    }
+  }
 
   async function loadHistoricalJourneys() {
     try {
@@ -204,12 +232,16 @@ export default function JourneyScreen() {
           if (dist < EXPLORED_CHECK_DISTANCE) return;
           lastExploredCheckLat = lat;
           lastExploredCheckLng = lng;
-          const res = await fetch(`${apiBase}/journeys/explored-cells?lat=${lat}&lng=${lng}`, {
+          const res = await fetch(`${apiBase}/journeys/explored-cells?lat=${lat}&lng=${lng}&radius=0.012`, {
             headers: authHeaders,
           });
           if (res.ok) {
-            const data = await res.json() as { newTerritoryNearby: boolean };
+            const data = await res.json() as {
+              newTerritoryNearby: boolean;
+              exploredCells: Array<{ lat: number; lng: number }>;
+            };
             setNewTerritoryNearby(!!data.newTerritoryNearby);
+            if (data.exploredCells) setExploredCells(data.exploredCells);
           }
         } catch {
           // non-critical
@@ -317,8 +349,9 @@ export default function JourneyScreen() {
         }, 500);
       }
 
-      // Reload historical overlays, then navigate to results
+      // Reload historical overlays and explored cells, then navigate to results
       void loadHistoricalJourneys();
+      void loadExploredCells();
       router.push(`/journey-results?journeyId=${jid}`);
     } catch {
       Alert.alert("Error", "Failed to save journey. Data may be incomplete.");
@@ -384,6 +417,18 @@ export default function JourneyScreen() {
         }}
         mapType="standard"
       >
+        {/* Explored cells overlay — gold dots showing previously walked areas */}
+        {exploredCells.slice(0, 100).map((cell, idx) => (
+          <Circle
+            key={`cell-${idx}`}
+            center={{ latitude: cell.lat, longitude: cell.lng }}
+            radius={28}
+            fillColor="rgba(212,160,23,0.15)"
+            strokeColor="rgba(212,160,23,0.3)"
+            strokeWidth={1}
+          />
+        ))}
+
         {/* Historical journey overlays (faded amber) */}
         {historicalJourneys.map((journey, idx) => {
           if (journey.waypoints.length < 2) return null;

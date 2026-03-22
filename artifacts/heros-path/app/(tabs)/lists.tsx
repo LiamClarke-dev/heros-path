@@ -19,7 +19,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 
 import Colors from "@/constants/colors";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/lib/auth";
 
 const GRID_GAP = 12;
 const SCREEN_WIDTH = Dimensions.get("window").width;

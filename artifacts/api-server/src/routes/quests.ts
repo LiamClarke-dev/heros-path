@@ -2,23 +2,24 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { userQuestsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 import { QUEST_DEFINITIONS } from "./journeys";
 
 const router: IRouter = Router();
 
-router.get("/quests", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/quests", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   const now = new Date();
 
-  // Fetch all rows ordered DESC by startedAt — latest wins per key
   const allRows = await db
     .select()
     .from(userQuestsTable)
     .where(eq(userQuestsTable.userId, user.id))
     .orderBy(desc(userQuestsTable.startedAt));
 
-  // Build latest-row map (first seen in DESC order = most recent)
   const latestMap = new Map<string, typeof allRows[number]>();
   for (const row of allRows) {
     if (!latestMap.has(row.questKey)) {
@@ -26,7 +27,6 @@ router.get("/quests", requireAuth, async (req: Request, res: Response) => {
     }
   }
 
-  // Ensure all quest definitions have a current row; create or reset as needed
   for (const def of QUEST_DEFINITIONS) {
     const existing = latestMap.get(def.key);
 
@@ -40,7 +40,6 @@ router.get("/quests", requireAuth, async (req: Request, res: Response) => {
     } else if (def.type === "weekly") {
       const expired = existing.expiresAt && existing.expiresAt < now;
       if (expired) {
-        // Start a fresh weekly quest instance regardless of completion status
         const newRow = await db
           .insert(userQuestsTable)
           .values({ id: crypto.randomUUID(), userId: user.id, questKey: def.key, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), progressJson: { current: 0 } })

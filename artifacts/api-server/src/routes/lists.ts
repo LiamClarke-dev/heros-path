@@ -2,7 +2,6 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { placeListsTable, placeListItemsTable, placeCacheTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
-import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 function buildPhotoUrl(photoReference: string | null, apiKey: string): string | null {
   if (!photoReference || !apiKey) return null;
@@ -31,8 +30,12 @@ async function ensureDefaultList(userId: string) {
   }
 }
 
-router.get("/lists", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/lists", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   await ensureDefaultList(user.id);
 
   const lists = await db
@@ -50,7 +53,6 @@ router.get("/lists", requireAuth, async (req: Request, res: Response) => {
         .from(placeListItemsTable)
         .where(eq(placeListItemsTable.listId, list.id));
 
-      // Get cover photo from the most recently added place with a photo
       const firstPhotoItem = await db
         .select({ photoReference: placeCacheTable.photoReference })
         .from(placeListItemsTable)
@@ -71,8 +73,12 @@ router.get("/lists", requireAuth, async (req: Request, res: Response) => {
   res.json({ lists: listsWithCounts });
 });
 
-router.post("/lists", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.post("/lists", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   const { name } = req.body as { name?: string };
 
   if (!name?.trim()) {
@@ -93,8 +99,12 @@ router.post("/lists", requireAuth, async (req: Request, res: Response) => {
   res.status(201).json({ ...list[0], placeCount: 0 });
 });
 
-router.put("/lists/:listId", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.put("/lists/:listId", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   const { listId } = req.params;
   const { name } = req.body as { name?: string };
 
@@ -128,8 +138,12 @@ router.put("/lists/:listId", requireAuth, async (req: Request, res: Response) =>
   res.json({ ...updated[0], placeCount: Number(countResult[0]?.count ?? 0) });
 });
 
-router.delete("/lists/:listId", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.delete("/lists/:listId", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   const { listId } = req.params;
 
   const existing = await db
@@ -152,9 +166,12 @@ router.delete("/lists/:listId", requireAuth, async (req: Request, res: Response)
   res.status(204).send();
 });
 
-// Move a place from one list to another (atomic remove + add)
-router.post("/lists/:listId/places/:googlePlaceId/move", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.post("/lists/:listId/places/:googlePlaceId/move", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   const { listId, googlePlaceId } = req.params;
   const { targetListId } = req.body as { targetListId: string };
 
@@ -168,7 +185,6 @@ router.post("/lists/:listId/places/:googlePlaceId/move", requireAuth, async (req
     return;
   }
 
-  // Verify ownership of both lists
   const ownedLists = await db
     .select({ id: placeListsTable.id })
     .from(placeListsTable)
@@ -180,7 +196,6 @@ router.post("/lists/:listId/places/:googlePlaceId/move", requireAuth, async (req
     return;
   }
 
-  // Remove from source list
   await db
     .delete(placeListItemsTable)
     .where(
@@ -191,7 +206,6 @@ router.post("/lists/:listId/places/:googlePlaceId/move", requireAuth, async (req
       ),
     );
 
-  // Add to target list (upsert — skip if already there)
   const existingInTarget = await db
     .select({ id: placeListItemsTable.id })
     .from(placeListItemsTable)
@@ -216,8 +230,12 @@ router.post("/lists/:listId/places/:googlePlaceId/move", requireAuth, async (req
   res.json({ success: true });
 });
 
-router.get("/lists/:listId/places", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/lists/:listId/places", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   const { listId } = req.params;
 
   const existing = await db

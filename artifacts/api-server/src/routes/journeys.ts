@@ -12,7 +12,6 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, count, desc, isNotNull, inArray, sql } from "drizzle-orm";
-import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -463,8 +462,9 @@ async function awardJourneyGamification(
 
 // ─── POST /journeys ─────────────────────────────────────────────────────────
 
-router.post("/journeys", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.post("/journeys", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = req.user;
   const { isDevSimulated = false } = req.body as { isDevSimulated?: boolean };
 
   const journey = await db
@@ -481,8 +481,9 @@ router.post("/journeys", requireAuth, async (req: Request, res: Response) => {
 
 // ─── GET /journeys ───────────────────────────────────────────────────────────
 
-router.get("/journeys", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/journeys", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = req.user;
   const limit = Math.min(Number(req.query.limit) || 20, 100);
   const offset = Number(req.query.offset) || 0;
 
@@ -533,8 +534,9 @@ router.get("/journeys", requireAuth, async (req: Request, res: Response) => {
 
 // ─── GET /journeys/history (historical polylines for map overlay) ─────────────
 
-router.get("/journeys/history", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/journeys/history", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = req.user;
 
   const completed = await db
     .select()
@@ -579,8 +581,9 @@ router.get("/journeys/history", requireAuth, async (req: Request, res: Response)
 // ─── GET /journeys/explored-cells ────────────────────────────────────────────
 // Returns explored grid cells near lat/lng to power the unexplored-territory nudge
 
-router.get("/journeys/explored-cells", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/journeys/explored-cells", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = req.user;
   const lat = parseFloat(req.query.lat as string);
   const lng = parseFloat(req.query.lng as string);
   // radius in degrees (~1km = 0.01°, max 0.02°)
@@ -661,8 +664,9 @@ router.get("/journeys/explored-cells", requireAuth, async (req: Request, res: Re
 
 // ─── GET /journeys/:journeyId ────────────────────────────────────────────────
 
-router.get("/journeys/:journeyId", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/journeys/:journeyId", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = req.user;
   const { journeyId } = req.params;
 
   const journeys = await db
@@ -702,8 +706,9 @@ router.get("/journeys/:journeyId", requireAuth, async (req: Request, res: Respon
 
 // ─── PATCH /journeys/:journeyId ──────────────────────────────────────────────
 
-router.patch("/journeys/:journeyId", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.patch("/journeys/:journeyId", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = req.user;
   const { journeyId } = req.params;
   const { waypoints, status } = req.body as {
     waypoints?: Array<{ lat: number; lng: number; recordedAt?: string }>;
@@ -851,8 +856,9 @@ router.patch("/journeys/:journeyId", requireAuth, async (req: Request, res: Resp
 
 // ─── POST /journeys/:journeyId/ping ─────────────────────────────────────────
 
-router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.post("/journeys/:journeyId/ping", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = req.user;
   const { journeyId } = req.params;
   const { lat, lng } = req.body as { lat?: number; lng?: number };
 
@@ -992,8 +998,9 @@ router.post("/journeys/:journeyId/ping", requireAuth, async (req: Request, res: 
 
 // ─── GET /journeys/:journeyId/discoveries ────────────────────────────────────
 
-router.get("/journeys/:journeyId/discoveries", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/journeys/:journeyId/discoveries", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = req.user;
   const { journeyId } = req.params;
 
   const existing = await db

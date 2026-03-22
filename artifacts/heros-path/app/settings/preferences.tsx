@@ -13,7 +13,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 import Colors from "@/constants/colors";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/lib/auth";
 
 const PLACE_CATEGORIES = [
   { type: "restaurant", label: "Restaurants", icon: "coffee" as const },

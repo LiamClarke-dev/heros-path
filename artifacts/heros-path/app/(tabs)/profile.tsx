@@ -16,7 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 
 import Colors from "@/constants/colors";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/lib/auth";
 
 interface ProfileStats {
   totalJourneys: number;
@@ -89,7 +89,7 @@ const FEATHER_ICONS: Record<string, React.ComponentProps<typeof Feather>["name"]
 };
 
 export default function ProfileScreen() {
-  const { user, signOut, token } = useAuth();
+  const { user, logout, token } = useAuth();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -136,7 +136,7 @@ export default function ProfileScreen() {
   function handleSignOut() {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: signOut },
+      { text: "Sign Out", style: "destructive", onPress: logout },
     ]);
   }
 
@@ -145,7 +145,7 @@ export default function ProfileScreen() {
   const completedQuests = (questsData?.completed ?? []).slice(0, 5);
   const earnedBadges = (badgesData?.badges ?? []).filter((b) => b.isEarned);
   const lockedBadges = (badgesData?.badges ?? []).filter((b) => !b.isEarned);
-  const rank = stats?.rank ?? user?.rank ?? "Wanderer";
+  const rank = stats?.rank ?? "Wanderer";
   const rankColor = RANK_COLORS[rank] ?? Colors.gold;
 
   return (
@@ -162,19 +162,23 @@ export default function ProfileScreen() {
         colors={[Colors.surface, Colors.background]}
         style={styles.heroCard}
       >
-        {user?.avatarUrl ? (
-          <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
+        {user?.profileImageUrl ? (
+          <Image source={{ uri: user.profileImageUrl }} style={styles.avatar} />
         ) : (
           <View style={styles.avatarPlaceholder}>
             <Feather name="user" size={32} color={Colors.gold} />
           </View>
         )}
         <View style={styles.heroInfo}>
-          <Text style={styles.displayName}>{user?.displayName ?? "Adventurer"}</Text>
+          <Text style={styles.displayName}>
+            {user?.firstName && user?.lastName
+              ? `${user.firstName} ${user.lastName}`
+              : user?.firstName ?? "Adventurer"}
+          </Text>
           <View style={styles.rankRow}>
             <Feather name="shield" size={14} color={rankColor} />
             <Text style={[styles.rankText, { color: rankColor }]}>{rank}</Text>
-            <Text style={styles.levelText}>Lv. {stats?.level ?? user?.level ?? 1}</Text>
+            <Text style={styles.levelText}>Lv. {stats?.level ?? 1}</Text>
           </View>
           <View style={styles.streakRow}>
             <Feather name="zap" size={12} color={Colors.gold} />

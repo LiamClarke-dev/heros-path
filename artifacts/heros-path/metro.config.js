@@ -3,6 +3,8 @@ const path = require("path");
 
 const config = getDefaultConfig(__dirname);
 
+config.resolver.blockList = [/\.cache\/openid-client\/.*/];
+
 const originalResolver = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {

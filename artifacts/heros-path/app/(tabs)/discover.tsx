@@ -24,7 +24,7 @@ import Animated, {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import Colors from "@/constants/colors";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/lib/auth";
 
 const REVEAL_WIDTH = 195;
 const SWIPE_THRESHOLD = 60;

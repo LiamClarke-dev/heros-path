@@ -12,7 +12,6 @@ import {
   type PlaceAction,
 } from "@workspace/db";
 import { eq, and, desc, lt, isNotNull } from "drizzle-orm";
-import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -37,13 +36,16 @@ function buildPhotoUrl(photoReference: string | null, apiKey: string): string | 
   return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${encodeURIComponent(photoReference)}&key=${apiKey}`;
 }
 
-router.get("/places/discover", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/places/discover", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   const filter = (req.query.filter as string) ?? "all";
   const limit = Math.min(Number(req.query.limit) || 20, 100);
   const offset = Number(req.query.offset) || 0;
 
-  // Auto-expire snoozed places whose snooze window has passed
   await db
     .update(userDiscoveredPlacesTable)
     .set({ isSnoozed: false, snoozedUntil: null, updatedAt: new Date() })
@@ -66,9 +68,7 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
     .where(
       and(
         eq(userDiscoveredPlacesTable.userId, user.id),
-        // Dismissed places are NEVER shown in any discover filter
         eq(userDiscoveredPlacesTable.isDismissed, false),
-        // Snoozed places are hidden from default/favorited feeds; only visible via filter=snoozed
         filter !== "snoozed" ? eq(userDiscoveredPlacesTable.isSnoozed, false) : undefined,
         filter === "favorited" ? eq(userDiscoveredPlacesTable.isFavorited, true) : undefined,
         filter === "snoozed" ? eq(userDiscoveredPlacesTable.isSnoozed, true) : undefined,
@@ -83,7 +83,6 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
 
-  // Fetch user's last known position from most recent journey waypoint for distance calc
   const lastWaypoints = await db
     .select({ lat: journeyWaypointsTable.lat, lng: journeyWaypointsTable.lng })
     .from(journeyWaypointsTable)
@@ -125,8 +124,12 @@ router.get("/places/discover", requireAuth, async (req: Request, res: Response) 
   });
 });
 
-router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.post("/places/:googlePlaceId/action", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const user = req.user;
   const { googlePlaceId } = req.params;
   const { action, listId, snoozeDays = 7 } = req.body as {
     action: PlaceAction;
@@ -134,7 +137,6 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
     snoozeDays?: number;
   };
 
-  // Application-level guard (mirrors DB check constraint)
   if (!PLACE_ACTIONS.includes(action as PlaceAction)) {
     res.status(400).json({
       error: "Bad Request",
@@ -187,7 +189,6 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
         return;
       }
       {
-        // Verify the target list belongs to the authenticated user
         const ownedList = await db
           .select({ id: placeListsTable.id })
           .from(placeListsTable)
@@ -224,7 +225,6 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
         return;
       }
       {
-        // Verify the target list belongs to the authenticated user
         const ownedList = await db
           .select({ id: placeListsTable.id })
           .from(placeListsTable)
@@ -262,7 +262,6 @@ router.post("/places/:googlePlaceId/action", requireAuth, async (req: Request, r
       );
   }
 
-  // Audit log: append every place action to user_place_actions
   await db.insert(userPlaceActionsTable).values({
     id: crypto.randomUUID(),
     userId: user.id,

@@ -19,7 +19,7 @@ import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import Colors from "@/constants/colors";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/lib/auth";
 import PingResultsSheet, { type DiscoveredPlace } from "@/components/PingResultsSheet";
 
 interface Waypoint {

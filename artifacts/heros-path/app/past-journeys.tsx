@@ -15,7 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 
 import Colors from "@/constants/colors";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/lib/auth";
 
 interface JourneyItem {
   id: string;

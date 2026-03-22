@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -30,3 +30,6 @@ timeoutMs = 20000
 [userenv.shared]
 EXPO_PUBLIC_GOOGLE_CLIENT_ID = "155152959717-9ja420d454urufbqmu8bh1aq9tu1epu7.apps.googleusercontent.com"
 EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = "155152959717-a20bfhbkjp05k4kd3cahvasvbneimn7q.apps.googleusercontent.com"
+
+[nix]
+channel = "stable-25_05"

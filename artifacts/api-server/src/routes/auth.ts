@@ -1,12 +1,100 @@
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import { usersTable, sessionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
+import * as oidc from "openid-client";
+import { Router, type IRouter, type Request, type Response } from "express";
+import {
+  GetCurrentAuthUserResponse,
+  ExchangeMobileAuthorizationCodeBody,
+  ExchangeMobileAuthorizationCodeResponse,
+  LogoutMobileSessionResponse,
+} from "@workspace/api-zod";
+import { db, usersTable } from "@workspace/db";
+import {
+  clearSession,
+  getOidcConfig,
+  getSessionId,
+  createSession,
+  deleteSession,
+  SESSION_COOKIE,
+  SESSION_TTL,
+  ISSUER_URL,
+  type SessionData,
+} from "../lib/auth";
+
+const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
 const router: IRouter = Router();
 
-function getRank(xp: number): string {
+function getOrigin(req: Request): string {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host =
+    req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
+  return `${proto}://${host}`;
+}
+
+function setSessionCookie(res: Response, sid: string) {
+  res.cookie(SESSION_COOKIE, sid, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_TTL,
+  });
+}
+
+function setOidcCookie(res: Response, name: string, value: string) {
+  res.cookie(name, value, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: OIDC_COOKIE_TTL,
+  });
+}
+
+function getSafeReturnTo(value: unknown): string {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/";
+  }
+  return value;
+}
+
+async function upsertUser(claims: Record<string, unknown>) {
+  const replitId = claims.sub as string;
+  const email = (claims.email as string) || null;
+  const firstName = (claims.first_name as string) || null;
+  const lastName = (claims.last_name as string) || null;
+  const profileImageUrl = ((claims.profile_image_url || claims.picture) as string) || null;
+
+  const displayName = [firstName, lastName].filter(Boolean).join(" ") || "Adventurer";
+
+  const [user] = await db
+    .insert(usersTable)
+    .values({
+      id: replitId,
+      replitId,
+      email,
+      firstName,
+      lastName,
+      profileImageUrl,
+      displayName,
+      avatarUrl: profileImageUrl,
+    })
+    .onConflictDoUpdate({
+      target: usersTable.replitId,
+      set: {
+        email,
+        firstName,
+        lastName,
+        profileImageUrl,
+        displayName,
+        avatarUrl: profileImageUrl,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  return user;
+}
+
+export function getRank(xp: number): string {
   if (xp < 100) return "Wanderer";
   if (xp < 300) return "Scout";
   if (xp < 700) return "Pathfinder";
@@ -15,268 +103,185 @@ function getRank(xp: number): string {
   return "Legend";
 }
 
-router.post("/auth/google", async (req, res) => {
+router.get("/auth/user", (req: Request, res: Response) => {
+  res.json(
+    GetCurrentAuthUserResponse.parse({
+      user: req.isAuthenticated() ? req.user : null,
+    }),
+  );
+});
+
+router.get("/login", async (req: Request, res: Response) => {
+  const config = await getOidcConfig();
+  const callbackUrl = `${getOrigin(req)}/api/callback`;
+
+  const returnTo = getSafeReturnTo(req.query.returnTo);
+
+  const state = oidc.randomState();
+  const nonce = oidc.randomNonce();
+  const codeVerifier = oidc.randomPKCECodeVerifier();
+  const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
+
+  const redirectTo = oidc.buildAuthorizationUrl(config, {
+    redirect_uri: callbackUrl,
+    scope: "openid email profile offline_access",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    prompt: "login consent",
+    state,
+    nonce,
+  });
+
+  setOidcCookie(res, "code_verifier", codeVerifier);
+  setOidcCookie(res, "nonce", nonce);
+  setOidcCookie(res, "state", state);
+  setOidcCookie(res, "return_to", returnTo);
+
+  res.redirect(redirectTo.href);
+});
+
+router.get("/callback", async (req: Request, res: Response) => {
+  const config = await getOidcConfig();
+  const callbackUrl = `${getOrigin(req)}/api/callback`;
+
+  const codeVerifier = req.cookies?.code_verifier;
+  const nonce = req.cookies?.nonce;
+  const expectedState = req.cookies?.state;
+
+  if (!codeVerifier || !expectedState) {
+    res.redirect("/api/login");
+    return;
+  }
+
+  const currentUrl = new URL(
+    `${callbackUrl}?${new URL(req.url, `http://${req.headers.host}`).searchParams}`,
+  );
+
+  let tokens: oidc.TokenEndpointResponse & oidc.TokenEndpointResponseHelpers;
   try {
-    const { idToken } = req.body as { idToken?: string };
-    if (!idToken) {
-      res.status(400).json({ error: "Bad Request", message: "idToken is required" });
+    tokens = await oidc.authorizationCodeGrant(config, currentUrl, {
+      pkceCodeVerifier: codeVerifier,
+      expectedNonce: nonce,
+      expectedState,
+      idTokenExpected: true,
+    });
+  } catch {
+    res.redirect("/api/login");
+    return;
+  }
+
+  const returnTo = getSafeReturnTo(req.cookies?.return_to);
+
+  res.clearCookie("code_verifier", { path: "/" });
+  res.clearCookie("nonce", { path: "/" });
+  res.clearCookie("state", { path: "/" });
+  res.clearCookie("return_to", { path: "/" });
+
+  const claims = tokens.claims();
+  if (!claims) {
+    res.redirect("/api/login");
+    return;
+  }
+
+  const dbUser = await upsertUser(claims as unknown as Record<string, unknown>);
+
+  const now = Math.floor(Date.now() / 1000);
+  const sessionData: SessionData = {
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+    },
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: tokens.expiresIn() ? now + tokens.expiresIn()! : claims.exp,
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+  res.redirect(returnTo);
+});
+
+router.get("/logout", async (req: Request, res: Response) => {
+  const config = await getOidcConfig();
+  const origin = getOrigin(req);
+
+  const sid = getSessionId(req);
+  await clearSession(res, sid);
+
+  const endSessionUrl = oidc.buildEndSessionUrl(config, {
+    client_id: process.env.REPL_ID!,
+    post_logout_redirect_uri: origin,
+  });
+
+  res.redirect(endSessionUrl.href);
+});
+
+router.post(
+  "/mobile-auth/token-exchange",
+  async (req: Request, res: Response) => {
+    const parsed = ExchangeMobileAuthorizationCodeBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Missing or invalid required parameters" });
       return;
     }
 
-    const tokenInfoRes = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
-    );
+    const { code, code_verifier, redirect_uri, state, nonce } = parsed.data;
 
-    if (!tokenInfoRes.ok) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid Google token" });
-      return;
-    }
+    try {
+      const config = await getOidcConfig();
 
-    const tokenInfo = (await tokenInfoRes.json()) as {
-      sub: string;
-      email?: string;
-      name?: string;
-      picture?: string;
-      exp?: string;
-      aud?: string;
-    };
+      const callbackUrl = new URL(redirect_uri);
+      callbackUrl.searchParams.set("code", code);
+      callbackUrl.searchParams.set("state", state);
+      callbackUrl.searchParams.set("iss", ISSUER_URL);
 
-    if (!tokenInfo.sub) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid token payload" });
-      return;
-    }
+      const tokens = await oidc.authorizationCodeGrant(config, callbackUrl, {
+        pkceCodeVerifier: code_verifier,
+        expectedNonce: nonce ?? undefined,
+        expectedState: state,
+        idTokenExpected: true,
+      });
 
-    // Validate token audience against our registered client IDs to prevent
-    // tokens minted for other apps from being accepted.
-    // Fail-closed: in production, if no client IDs are configured the request
-    // is rejected rather than silently allowed through.
-    const allowedClientIds = [
-      process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-      process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    ].filter(Boolean) as string[];
-
-    const isProduction = process.env.NODE_ENV === "production";
-
-    if (allowedClientIds.length === 0) {
-      if (isProduction) {
-        req.log.error("No Google client IDs configured — rejecting token in production");
-        res.status(500).json({ error: "Server misconfigured", message: "Google client ID not set" });
+      const claims = tokens.claims();
+      if (!claims) {
+        res.status(401).json({ error: "No claims in ID token" });
         return;
       }
-      // Development only: allow through but emit a warning
-      req.log.warn("No Google client IDs configured — skipping audience check (dev only)");
-    } else if (tokenInfo.aud) {
-      // aud may be a single string or comma-separated list
-      const tokenAudiences = tokenInfo.aud.split(",").map((s) => s.trim());
-      const isValid = tokenAudiences.some((aud) => allowedClientIds.includes(aud));
-      if (!isValid) {
-        req.log.warn({ aud: tokenInfo.aud }, "Token audience mismatch");
-        res.status(401).json({ error: "Unauthorized", message: "Token audience mismatch" });
-        return;
-      }
-    } else if (isProduction) {
-      // In production, missing aud in the tokeninfo response is also rejected
-      req.log.warn("Token missing aud field — rejecting in production");
-      res.status(401).json({ error: "Unauthorized", message: "Token audience not present" });
-      return;
+
+      const dbUser = await upsertUser(claims as unknown as Record<string, unknown>);
+
+      const now = Math.floor(Date.now() / 1000);
+      const sessionData: SessionData = {
+        user: {
+          id: dbUser.id,
+          email: dbUser.email,
+          firstName: dbUser.firstName,
+          lastName: dbUser.lastName,
+          profileImageUrl: dbUser.profileImageUrl,
+        },
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_at: tokens.expiresIn() ? now + tokens.expiresIn()! : claims.exp,
+      };
+
+      const sid = await createSession(sessionData);
+      res.json(ExchangeMobileAuthorizationCodeResponse.parse({ token: sid }));
+    } catch (err) {
+      req.log.error({ err }, "Mobile token exchange error");
+      res.status(500).json({ error: "Token exchange failed" });
     }
+  },
+);
 
-    // Validate token expiry
-    if (tokenInfo.exp && Number(tokenInfo.exp) * 1000 < Date.now()) {
-      res.status(401).json({ error: "Unauthorized", message: "Token has expired" });
-      return;
-    }
-
-    const existingUsers = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.googleId, tokenInfo.sub))
-      .limit(1);
-
-    let user = existingUsers[0];
-
-    if (!user) {
-      const userId = crypto.randomUUID();
-      const newUsers = await db
-        .insert(usersTable)
-        .values({
-          id: userId,
-          googleId: tokenInfo.sub,
-          displayName: tokenInfo.name ?? "Adventurer",
-          avatarUrl: tokenInfo.picture ?? null,
-          email: tokenInfo.email ?? null,
-        })
-        .returning();
-      user = newUsers[0];
-    } else {
-      const updated = await db
-        .update(usersTable)
-        .set({
-          displayName: tokenInfo.name ?? user.displayName,
-          avatarUrl: tokenInfo.picture ?? user.avatarUrl,
-          email: tokenInfo.email ?? user.email,
-          updatedAt: new Date(),
-        })
-        .where(eq(usersTable.id, user.id))
-        .returning();
-      user = updated[0];
-    }
-
-    const sessionToken = crypto.randomUUID() + "-" + crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-    await db.insert(sessionsTable).values({
-      id: crypto.randomUUID(),
-      userId: user.id,
-      token: sessionToken,
-      expiresAt,
-    });
-
-    res.json({
-      token: sessionToken,
-      user: {
-        id: user.id,
-        googleId: user.googleId,
-        displayName: user.displayName,
-        avatarUrl: user.avatarUrl,
-        email: user.email,
-        xp: user.xp,
-        level: user.level,
-        rank: getRank(user.xp),
-        streakDays: user.streakDays,
-        createdAt: user.createdAt,
-      },
-    });
-  } catch (err) {
-    req.log.error({ err }, "auth/google error");
-    res.status(500).json({ error: "Internal server error" });
+router.post("/mobile-auth/logout", async (req: Request, res: Response) => {
+  const sid = getSessionId(req);
+  if (sid) {
+    await deleteSession(sid);
   }
+  res.json(LogoutMobileSessionResponse.parse({ success: true }));
 });
 
-function makeSession() {
-  return {
-    token: crypto.randomUUID() + "-" + crypto.randomUUID(),
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-  };
-}
-
-function userResponse(user: typeof usersTable.$inferSelect) {
-  return {
-    id: user.id,
-    googleId: user.googleId,
-    displayName: user.displayName,
-    avatarUrl: user.avatarUrl,
-    email: user.email,
-    xp: user.xp,
-    level: user.level,
-    rank: getRank(user.xp),
-    streakDays: user.streakDays,
-  };
-}
-
-router.post("/auth/register", async (req, res) => {
-  try {
-    const { email, password, displayName } = req.body as {
-      email?: string;
-      password?: string;
-      displayName?: string;
-    };
-
-    if (!email || !password) {
-      res.status(400).json({ error: "Bad Request", message: "email and password are required" });
-      return;
-    }
-    if (password.length < 6) {
-      res.status(400).json({ error: "Bad Request", message: "password must be at least 6 characters" });
-      return;
-    }
-
-    const existing = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(eq(usersTable.email, email.toLowerCase().trim()))
-      .limit(1);
-
-    if (existing.length > 0) {
-      res.status(409).json({ error: "Conflict", message: "An account with this email already exists" });
-      return;
-    }
-
-    const passwordHash = await bcrypt.hash(password, 12);
-    const userId = crypto.randomUUID();
-
-    const newUsers = await db
-      .insert(usersTable)
-      .values({
-        id: userId,
-        displayName: displayName?.trim() || email.split("@")[0],
-        email: email.toLowerCase().trim(),
-        passwordHash,
-      })
-      .returning();
-
-    const user = newUsers[0];
-    const { token, expiresAt } = makeSession();
-
-    await db.insert(sessionsTable).values({
-      id: crypto.randomUUID(),
-      userId: user.id,
-      token,
-      expiresAt,
-    });
-
-    res.status(201).json({ token, user: userResponse(user) });
-  } catch (err) {
-    req.log.error({ err }, "auth/register error");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body as { email?: string; password?: string };
-
-    if (!email || !password) {
-      res.status(400).json({ error: "Bad Request", message: "email and password are required" });
-      return;
-    }
-
-    const users = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email.toLowerCase().trim()))
-      .limit(1);
-
-    const user = users[0];
-
-    if (!user || !user.passwordHash) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
-      return;
-    }
-
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
-      return;
-    }
-
-    const { token, expiresAt } = makeSession();
-
-    await db.insert(sessionsTable).values({
-      id: crypto.randomUUID(),
-      userId: user.id,
-      token,
-      expiresAt,
-    });
-
-    res.json({ token, user: userResponse(user) });
-  } catch (err) {
-    req.log.error({ err }, "auth/login error");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-export { getRank };
 export default router;

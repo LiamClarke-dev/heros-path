@@ -4,11 +4,15 @@ import { z } from "zod/v4";
 
 export const usersTable = pgTable("users", {
   id: text("id").primaryKey(),
+  replitId: text("replit_id").unique(),
   googleId: text("google_id").unique(),
   passwordHash: text("password_hash"),
-  displayName: text("display_name").notNull(),
+  displayName: text("display_name").notNull().default("Adventurer"),
   avatarUrl: text("avatar_url"),
   email: text("email"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  profileImageUrl: text("profile_image_url"),
   xp: integer("xp").notNull().default(0),
   level: integer("level").notNull().default(1),
   streakDays: integer("streak_days").notNull().default(0),
@@ -25,17 +29,7 @@ export const userPreferencesTable = pgTable("user_preferences", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const sessionsTable = pgTable("sessions", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
-  token: text("token").notNull().unique(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 export const insertUserSchema = createInsertSchema(usersTable);
-export const insertSessionSchema = createInsertSchema(sessionsTable);
 
 export type User = typeof usersTable.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type Session = typeof sessionsTable.$inferSelect;

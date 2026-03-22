@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import {
+  usersTable,
   userPreferencesTable,
   userBadgesTable,
   userDiscoveredPlacesTable,
@@ -8,19 +9,16 @@ import {
   journeyDiscoveredPlacesTable,
 } from "@workspace/db";
 import { eq, and, count, isNotNull } from "drizzle-orm";
-import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 import { getRank } from "./auth";
 import { BADGE_DEFINITIONS } from "./journeys";
 
 const router: IRouter = Router();
 
-// Shared badge evaluator: checks unlock conditions and awards any newly-earned badges
 async function evaluateAndAwardBadges(userId: string, streakDays: number): Promise<void> {
   const [earnedBadgeRows, journeyCountResult, placeCountResult, pingMaxResult] = await Promise.all([
     db.select().from(userBadgesTable).where(eq(userBadgesTable.userId, userId)),
     db.select({ count: count() }).from(journeysTable).where(and(eq(journeysTable.userId, userId), isNotNull(journeysTable.endedAt))),
     db.select({ count: count() }).from(userDiscoveredPlacesTable).where(eq(userDiscoveredPlacesTable.userId, userId)),
-    // Max pings in a single journey: count ping discoveries per journey, pick max
     db.select({ journeyId: journeyDiscoveredPlacesTable.journeyId, cnt: count() })
       .from(journeyDiscoveredPlacesTable)
       .where(and(eq(journeyDiscoveredPlacesTable.userId, userId), eq(journeyDiscoveredPlacesTable.discoverySource, "ping")))
@@ -32,15 +30,14 @@ async function evaluateAndAwardBadges(userId: string, streakDays: number): Promi
   const totalPlaces = Number(placeCountResult[0]?.count ?? 0);
   const maxPingsInJourney = pingMaxResult.reduce((max, r) => Math.max(max, Number(r.cnt)), 0);
 
-  // Badge unlock conditions (must match keys in BADGE_DEFINITIONS)
   const conditions: Record<string, boolean> = {
     first_journey: totalJourneys >= 1,
-    streets_10: false, // evaluated at journey end via waypoint count
-    streets_50: false, // evaluated at journey end via waypoint count
+    streets_10: false,
+    streets_50: false,
     discovery_first: totalPlaces >= 1,
     discovery_10: totalPlaces >= 10,
-    night_explorer: false, // evaluated at journey end
-    globe_trotter: false, // evaluated at journey end
+    night_explorer: false,
+    globe_trotter: false,
     streak_3: streakDays >= 3,
     streak_7: streakDays >= 7,
     streak_30: streakDays >= 30,
@@ -53,20 +50,29 @@ async function evaluateAndAwardBadges(userId: string, streakDays: number): Promi
         id: crypto.randomUUID(),
         userId,
         badgeKey: key,
-      }).catch(() => {}); // ignore duplicates if any
+      }).catch(() => {});
     }
   }
 }
 
 export { evaluateAndAwardBadges };
 
-router.get("/me", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/me", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const authUser = req.user;
+  const dbUsers = await db.select().from(usersTable).where(eq(usersTable.id, authUser.id)).limit(1);
+  const user = dbUsers[0];
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
   res.json({
     id: user.id,
-    googleId: user.googleId,
     displayName: user.displayName,
-    avatarUrl: user.avatarUrl,
+    avatarUrl: user.profileImageUrl ?? user.avatarUrl,
     email: user.email,
     xp: user.xp,
     level: user.level,
@@ -76,12 +82,16 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
   });
 });
 
-router.get("/me/preferences", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/me/preferences", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const authUser = req.user;
   const prefs = await db
     .select()
     .from(userPreferencesTable)
-    .where(eq(userPreferencesTable.userId, user.id))
+    .where(eq(userPreferencesTable.userId, authUser.id))
     .limit(1);
 
   if (!prefs.length) {
@@ -92,8 +102,12 @@ router.get("/me/preferences", requireAuth, async (req: Request, res: Response) =
   res.json({ placeTypes: prefs[0].placeTypes, minRating: parseFloat(String(prefs[0].minRating)) });
 });
 
-router.put("/me/preferences", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.put("/me/preferences", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const authUser = req.user;
   const { placeTypes, minRating } = req.body as { placeTypes?: string[]; minRating?: number };
 
   const validRating = minRating != null ? Math.round(Math.min(5, Math.max(0, minRating)) * 2) / 2 : undefined;
@@ -101,7 +115,7 @@ router.put("/me/preferences", requireAuth, async (req: Request, res: Response) =
   const existing = await db
     .select()
     .from(userPreferencesTable)
-    .where(eq(userPreferencesTable.userId, user.id))
+    .where(eq(userPreferencesTable.userId, authUser.id))
     .limit(1);
 
   if (existing.length) {
@@ -112,7 +126,7 @@ router.put("/me/preferences", requireAuth, async (req: Request, res: Response) =
         minRating: validRating != null ? String(validRating) : existing[0].minRating,
         updatedAt: new Date(),
       })
-      .where(eq(userPreferencesTable.userId, user.id))
+      .where(eq(userPreferencesTable.userId, authUser.id))
       .returning();
     res.json({ placeTypes: updated[0].placeTypes, minRating: parseFloat(String(updated[0].minRating)) });
   } else {
@@ -120,7 +134,7 @@ router.put("/me/preferences", requireAuth, async (req: Request, res: Response) =
       .insert(userPreferencesTable)
       .values({
         id: crypto.randomUUID(),
-        userId: user.id,
+        userId: authUser.id,
         placeTypes: placeTypes ?? [],
         minRating: String(validRating ?? 0),
       })
@@ -129,10 +143,19 @@ router.put("/me/preferences", requireAuth, async (req: Request, res: Response) =
   }
 });
 
-router.get("/me/badges", requireAuth, async (req: Request, res: Response) => {
-  const user = (req as AuthenticatedRequest).user;
+router.get("/me/badges", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const authUser = req.user;
+  const dbUsers = await db.select().from(usersTable).where(eq(usersTable.id, authUser.id)).limit(1);
+  const user = dbUsers[0];
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
 
-  // Evaluate and award any newly-earned badges on each profile/badge fetch
   await evaluateAndAwardBadges(user.id, user.streakDays).catch((err) =>
     console.error("badge evaluation on profile load failed", err),
   );

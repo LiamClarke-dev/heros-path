@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,10 +10,18 @@ import {
   Alert,
   ActionSheetIOS,
   Platform,
+  Linking,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { File as FSFile, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
+import * as WebBrowser from "expo-web-browser";
+import {
+  useAuthRequest,
+  useAutoDiscovery,
+  makeRedirectUri,
+  type AuthSessionResult,
+} from "expo-auth-session";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -21,6 +29,8 @@ import Colors from "../../constants/colors";
 import { apiFetch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { VisitLogSheet } from "../../components/VisitLogSheet";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const API_BASE =
   (process.env.EXPO_PUBLIC_API_BASE_URL as string | undefined) ??
@@ -60,6 +70,34 @@ export default function ListDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [logSheetPlace, setLogSheetPlace] = useState<{ id: string; name: string } | null>(null);
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+
+  const googleDiscovery = useAutoDiscovery("https://accounts.google.com");
+
+  const redirectUri = makeRedirectUri({ scheme: "herospath" });
+  const [, , googlePromptAsync] = useAuthRequest(
+    {
+      clientId: googleClientId ?? "__placeholder__",
+      scopes: googleClientId
+        ? [
+            "profile",
+            "email",
+            "https://www.googleapis.com/auth/drive.file",
+          ]
+        : [],
+      redirectUri,
+    },
+    googleDiscovery
+  );
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/auth/google/config`)
+      .then((r) => r.json())
+      .then((d: { clientId: string | null }) => {
+        if (d.clientId) setGoogleClientId(d.clientId);
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchDetail = useCallback(async () => {
     if (!token || !listId) return;
@@ -163,42 +201,105 @@ export default function ListDetailScreen() {
     Alert.alert("Link Copied", "Google Maps search link copied to clipboard.");
   }, [list]);
 
+  const createGoogleMyMap = useCallback(async () => {
+    if (!token || !listId || !list) return;
+    if (!googleClientId) {
+      Alert.alert(
+        "Google Not Connected",
+        "Google Drive integration is not configured. Use 'Download KML file' to export manually."
+      );
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const result: AuthSessionResult = await googlePromptAsync();
+
+      if (result.type !== "success") {
+        if (result.type === "cancel" || result.type === "dismiss") return;
+        Alert.alert("Sign-in Failed", "Could not sign in with Google. Please try again.");
+        return;
+      }
+
+      const googleAccessToken = result.authentication?.accessToken ?? result.params.access_token;
+      if (!googleAccessToken) {
+        Alert.alert("Sign-in Failed", "Could not retrieve Google access token.");
+        return;
+      }
+
+      const data: { fileId?: string; viewUrl?: string; error?: string } =
+        await apiFetch(`/api/lists/${listId}/export/google-my-maps`, {
+          method: "POST",
+          token,
+          body: JSON.stringify({ googleAccessToken }),
+        });
+
+      if (data.error || !data.viewUrl) {
+        Alert.alert("Export Failed", data.error ?? "Could not create the Google My Maps document.");
+        return;
+      }
+
+      Alert.alert(
+        "My Maps Created!",
+        `Your list "${list.name}" has been saved to Google Drive as a My Maps document.`,
+        [
+          {
+            text: "Open in Maps",
+            onPress: () => Linking.openURL(data.viewUrl!),
+          },
+          { text: "Done", style: "cancel" },
+        ]
+      );
+    } catch {
+      Alert.alert("Export Failed", "Something went wrong. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }, [token, listId, list, googleClientId, googlePromptAsync]);
+
   const openExportSheet = useCallback(() => {
     if (places.length === 0) {
       Alert.alert("Empty List", "Add some places to this list before exporting.");
       return;
     }
 
-    const infoMsg =
-      "Import the KML file into Google My Maps:\nmaps.google.com → ☰ → Your places → Maps → Create Map → Import";
+    const infoMsg = googleClientId
+      ? "Download a KML file, create a Google My Maps document directly, or copy a search link."
+      : "Import the KML file into Google My Maps:\nmaps.google.com → ☰ → Your places → Maps → Create Map → Import";
 
-    const options = ["Download KML file", "Copy Maps link", "Cancel"] as const;
+    const hasGoogle = !!googleClientId;
 
     if (Platform.OS === "ios") {
+      const options: string[] = [
+        "Download KML file",
+        ...(hasGoogle ? ["Create Google My Maps"] : []),
+        "Copy Maps link",
+        "Cancel",
+      ];
+      const cancelIdx = options.length - 1;
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: [...options],
-          cancelButtonIndex: 2,
+          options,
+          cancelButtonIndex: cancelIdx,
           title: `Export "${list?.name ?? "List"}"`,
           message: infoMsg,
         },
         (idx) => {
           if (idx === 0) exportKml();
-          else if (idx === 1) copyMapsLink();
+          else if (hasGoogle && idx === 1) createGoogleMyMap();
+          else if (idx === (hasGoogle ? 2 : 1)) copyMapsLink();
         }
       );
     } else {
-      Alert.alert(
-        `Export "${list?.name ?? "List"}"`,
-        infoMsg,
-        [
-          { text: "Download KML file", onPress: exportKml },
-          { text: "Copy Maps link", onPress: copyMapsLink },
-          { text: "Cancel", style: "cancel" },
-        ]
-      );
+      const buttons: { text: string; onPress?: () => void; style?: "cancel" | "default" | "destructive" }[] = [
+        { text: "Download KML file", onPress: exportKml },
+        ...(hasGoogle ? [{ text: "Create Google My Maps", onPress: createGoogleMyMap }] : []),
+        { text: "Copy Maps link", onPress: copyMapsLink },
+        { text: "Cancel", style: "cancel" as const },
+      ];
+      Alert.alert(`Export "${list?.name ?? "List"}"`, infoMsg, buttons);
     }
-  }, [places.length, list, exportKml, copyMapsLink]);
+  }, [places.length, list, exportKml, copyMapsLink, createGoogleMyMap, googleClientId]);
 
   const renderItem = useCallback(
     ({ item }: { item: ListPlace }) => {

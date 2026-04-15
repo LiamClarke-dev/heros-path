@@ -377,4 +377,99 @@ router.get("/:listId/export/json", async (req: Request, res: Response) => {
   res.json({ list, places });
 });
 
+router.post(
+  "/:listId/export/google-my-maps",
+  async (req: Request, res: Response) => {
+    const { user } = req as AuthenticatedRequest;
+    const listId = req.params.listId as string;
+    const { googleAccessToken } = req.body as {
+      googleAccessToken?: unknown;
+    };
+
+    if (!googleAccessToken || typeof googleAccessToken !== "string") {
+      res.status(400).json({ error: "googleAccessToken is required" });
+      return;
+    }
+
+    const list = await getListWithOwnerCheck(listId, user.id);
+    if (!list) {
+      res.status(404).json({ error: "List not found" });
+      return;
+    }
+
+    const places = await getListPlaces(listId);
+    if (places.length === 0) {
+      res
+        .status(400)
+        .json({ error: "List is empty — add some places before exporting" });
+      return;
+    }
+
+    const kml = generateKml(list.name, places);
+    const filename = sanitizeFilename(list.name) + ".kml";
+
+    const boundary = "herospath_kml_bnd_a1b2c3";
+    const metadata = JSON.stringify({
+      name: filename,
+      mimeType: "application/vnd.google-apps.map",
+    });
+
+    const body = [
+      `--${boundary}`,
+      "Content-Type: application/json; charset=UTF-8",
+      "",
+      metadata,
+      `--${boundary}`,
+      "Content-Type: application/vnd.google-earth.kml+xml",
+      "",
+      kml,
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    try {
+      const driveRes = await fetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${googleAccessToken}`,
+            "Content-Type": `multipart/related; boundary="${boundary}"`,
+          },
+          body,
+        }
+      );
+
+      if (!driveRes.ok) {
+        const errText = await driveRes.text();
+        logger.error(
+          { status: driveRes.status, body: errText },
+          "Google Drive upload failed"
+        );
+        if (driveRes.status === 401 || driveRes.status === 403) {
+          res
+            .status(401)
+            .json({ error: "Google token expired or invalid. Please re-connect Google." });
+        } else {
+          res
+            .status(502)
+            .json({ error: "Failed to create Google My Maps document" });
+        }
+        return;
+      }
+
+      const driveData = (await driveRes.json()) as {
+        id: string;
+        name?: string;
+      };
+      const viewUrl = `https://www.google.com/maps/d/edit?mid=${driveData.id}`;
+      res.json({ fileId: driveData.id, viewUrl });
+    } catch (err) {
+      logger.error({ err }, "Google Drive upload error");
+      res
+        .status(500)
+        .json({ error: "Internal error while creating My Maps document" });
+    }
+  }
+);
+
 export default router;

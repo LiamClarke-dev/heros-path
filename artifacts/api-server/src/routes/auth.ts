@@ -211,4 +211,9 @@ router.post("/logout", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+router.get("/google/config", (_req: Request, res: Response) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID ?? null;
+  res.json({ clientId });
+});
+
 export default router;

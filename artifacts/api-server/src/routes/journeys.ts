@@ -49,7 +49,7 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
     return;
   }
 
-  if (status === "ended" && existing.endedAt !== null) {
+  if (existing.endedAt !== null && (status === "ended" || incomingWaypoints?.length)) {
     res.status(409).json({ error: "Journey already ended" });
     return;
   }

@@ -9,12 +9,15 @@ import {
   Animated,
   Image,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import Colors from "../../constants/colors";
+
+const LAST_LEVEL_KEY = "@heros_path/last_known_level";
 
 interface Stats {
   xp: number;
@@ -95,6 +98,27 @@ function XpBar({ current, min, max }: { current: number; min: number; max: numbe
   );
 }
 
+function BadgeGridItem({ badge, earned }: { badge: BadgeItem; earned: boolean }) {
+  return (
+    <View style={[styles.badgeGridItem, !earned && styles.badgeGridItemLocked]}>
+      <View style={styles.badgeIconContainer}>
+        <Text style={styles.badgeGridIcon}>{badge.icon}</Text>
+        {!earned && (
+          <View style={styles.badgeLockOverlay}>
+            <Feather name="lock" size={12} color={Colors.parchmentMuted} />
+          </View>
+        )}
+      </View>
+      <Text style={[styles.badgeGridName, !earned && styles.badgeGridNameLocked]} numberOfLines={2}>
+        {badge.name}
+      </Text>
+      {earned && (
+        <Text style={styles.badgeGridDesc} numberOfLines={2}>{badge.description}</Text>
+      )}
+    </View>
+  );
+}
+
 function formatDistanceM(m: number): string {
   if (m >= 1000) return `${(m / 1000).toFixed(1)} km`;
   return `${m} m`;
@@ -108,6 +132,20 @@ export default function ProfileTab() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [badges, setBadges] = useState<{ earned: BadgeItem[]; available: BadgeItem[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [leveledUp, setLeveledUp] = useState(false);
+
+  const rankAnim = useRef(new Animated.Value(1)).current;
+
+  function triggerRankUpAnimation() {
+    setLeveledUp(true);
+    Animated.sequence([
+      Animated.timing(rankAnim, { toValue: 1.25, duration: 200, useNativeDriver: true }),
+      Animated.timing(rankAnim, { toValue: 0.9, duration: 100, useNativeDriver: true }),
+      Animated.timing(rankAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }),
+      Animated.timing(rankAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+    setTimeout(() => setLeveledUp(false), 4000);
+  }
 
   const loadData = useCallback(async () => {
     if (!token) return;
@@ -121,6 +159,13 @@ export default function ProfileTab() {
       ]);
       setStats(statsData);
       setBadges(badgesData);
+
+      const lastLevelStr = await AsyncStorage.getItem(LAST_LEVEL_KEY).catch(() => null);
+      const lastLevel = lastLevelStr ? parseInt(lastLevelStr, 10) : null;
+      if (lastLevel !== null && statsData.level > lastLevel) {
+        triggerRankUpAnimation();
+      }
+      await AsyncStorage.setItem(LAST_LEVEL_KEY, String(statsData.level)).catch(() => {});
     } catch (err) {
       console.warn("[Profile] loadData failed", err);
     } finally {
@@ -144,6 +189,10 @@ export default function ProfileTab() {
 
   const xpIntoLevel = stats.xp - stats.xpCurrentLevel;
   const xpNeeded = stats.xpNextLevel - stats.xpCurrentLevel;
+  const allBadges: Array<{ badge: BadgeItem; earned: boolean }> = [
+    ...(badges?.earned.map((b) => ({ badge: b, earned: true })) ?? []),
+    ...(badges?.available.map((b) => ({ badge: b, earned: false })) ?? []),
+  ];
 
   return (
     <ScrollView
@@ -163,10 +212,17 @@ export default function ProfileTab() {
           {stats.email ? (
             <Text style={styles.heroEmail}>{stats.email}</Text>
           ) : null}
-          <View style={styles.rankBadge}>
+          <Animated.View
+            style={[styles.rankBadge, { transform: [{ scale: rankAnim }] }]}
+          >
             <Feather name="award" size={14} color={Colors.gold} />
             <Text style={styles.rankText}>{stats.rankName}</Text>
-          </View>
+            {leveledUp && (
+              <View style={styles.rankUpPill}>
+                <Text style={styles.rankUpText}>Level Up!</Text>
+              </View>
+            )}
+          </Animated.View>
         </View>
       </View>
 
@@ -218,42 +274,19 @@ export default function ProfileTab() {
         <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
       </TouchableOpacity>
 
-      {badges && (
+      {allBadges.length > 0 && (
         <View style={styles.badgesSection}>
           <Text style={styles.sectionTitle}>
             Badges{" "}
             <Text style={styles.sectionCount}>
-              {badges.earned.length}/{badges.earned.length + badges.available.length}
+              {badges?.earned.length ?? 0}/{allBadges.length}
             </Text>
           </Text>
-
-          {badges.earned.length > 0 && (
-            <>
-              <Text style={styles.badgeSubtitle}>Earned</Text>
-              <View style={styles.badgeGrid}>
-                {badges.earned.map((badge) => (
-                  <View key={badge.key} style={styles.badgeChip}>
-                    <Text style={styles.badgeIcon}>{badge.icon}</Text>
-                    <Text style={styles.badgeName}>{badge.name}</Text>
-                  </View>
-                ))}
-              </View>
-            </>
-          )}
-
-          {badges.available.length > 0 && (
-            <>
-              <Text style={styles.badgeSubtitle}>Locked</Text>
-              <View style={styles.badgeGrid}>
-                {badges.available.map((badge) => (
-                  <View key={badge.key} style={[styles.badgeChip, styles.badgeChipLocked]}>
-                    <Text style={[styles.badgeIcon, styles.badgeIconLocked]}>{badge.icon}</Text>
-                    <Text style={[styles.badgeName, styles.badgeNameLocked]}>{badge.name}</Text>
-                  </View>
-                ))}
-              </View>
-            </>
-          )}
+          <View style={styles.badgeGrid}>
+            {allBadges.map(({ badge, earned }) => (
+              <BadgeGridItem key={badge.key} badge={badge} earned={earned} />
+            ))}
+          </View>
         </View>
       )}
 
@@ -329,11 +362,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
     marginTop: 4,
+    flexWrap: "wrap",
   },
   rankText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 14,
     color: Colors.gold,
+  },
+  rankUpPill: {
+    backgroundColor: Colors.gold,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginLeft: 4,
+  },
+  rankUpText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: Colors.background,
   },
   xpCard: {
     backgroundColor: Colors.surface,
@@ -402,58 +448,6 @@ const styles = StyleSheet.create({
     color: Colors.parchmentMuted,
     textAlign: "center",
   },
-  badgesSection: {
-    gap: 10,
-  },
-  sectionTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 17,
-    color: Colors.parchment,
-  },
-  sectionCount: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: Colors.parchmentMuted,
-  },
-  badgeSubtitle: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: Colors.parchmentMuted,
-    marginTop: 4,
-  },
-  badgeGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  badgeChip: {
-    backgroundColor: "rgba(212,160,23,0.15)",
-    borderWidth: 1,
-    borderColor: Colors.gold,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  badgeChipLocked: {
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderColor: Colors.border,
-    opacity: 0.5,
-  },
-  badgeIcon: {
-    fontSize: 14,
-  },
-  badgeIconLocked: {},
-  badgeName: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    color: Colors.parchment,
-  },
-  badgeNameLocked: {
-    color: Colors.parchmentMuted,
-  },
   navCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -470,6 +464,73 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 15,
     color: Colors.parchment,
+  },
+  badgesSection: {
+    gap: 10,
+  },
+  sectionTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 17,
+    color: Colors.parchment,
+  },
+  sectionCount: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.parchmentMuted,
+  },
+  badgeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  badgeGridItem: {
+    width: "47%",
+    backgroundColor: "rgba(212,160,23,0.1)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.gold,
+    padding: 12,
+    gap: 6,
+    alignItems: "center",
+  },
+  badgeGridItemLocked: {
+    opacity: 0.3,
+    backgroundColor: Colors.surface,
+    borderColor: Colors.border,
+  },
+  badgeIconContainer: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeGridIcon: {
+    fontSize: 28,
+  },
+  badgeLockOverlay: {
+    position: "absolute",
+    bottom: -4,
+    right: -8,
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  badgeGridName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: Colors.parchment,
+    textAlign: "center",
+  },
+  badgeGridNameLocked: {
+    color: Colors.parchmentMuted,
+  },
+  badgeGridDesc: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: Colors.parchmentMuted,
+    textAlign: "center",
+    lineHeight: 14,
   },
   signOutBtn: {
     flexDirection: "row",

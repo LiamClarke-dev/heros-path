@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, journeys, journeyWaypoints, journeyDiscoveredPlaces, placeCache } from "@workspace/db";
+import { db, journeys, journeyWaypoints, journeyDiscoveredPlaces, placeCache, userPlaceStates } from "@workspace/db";
 import { eq, and, desc, gte, lte, isNotNull, inArray, count, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
@@ -434,7 +434,7 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
     }));
   }
 
-  // Fetch discovered places joined with cache
+  // Fetch discovered places joined with cache + user place states
   const discovered = await db
     .select({
       googlePlaceId: journeyDiscoveredPlaces.googlePlaceId,
@@ -446,9 +446,18 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
       primaryType: placeCache.primaryType,
       photoReference: placeCache.photoReference,
       address: placeCache.address,
+      isFavorited: userPlaceStates.isFavorited,
+      isDismissed: userPlaceStates.isDismissed,
     })
     .from(journeyDiscoveredPlaces)
     .innerJoin(placeCache, eq(journeyDiscoveredPlaces.googlePlaceId, placeCache.googlePlaceId))
+    .leftJoin(
+      userPlaceStates,
+      and(
+        eq(userPlaceStates.googlePlaceId, journeyDiscoveredPlaces.googlePlaceId),
+        eq(userPlaceStates.userId, user.id)
+      )
+    )
     .where(eq(journeyDiscoveredPlaces.journeyId, journeyId));
 
   const places = discovered.map((p) => ({
@@ -461,6 +470,8 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
     photoUrl: makePhotoUrl(p.photoReference, 400),
     address: p.address,
     discoveredAt: p.discoveredAt,
+    isFavorited: p.isFavorited ?? false,
+    isDismissed: p.isDismissed ?? false,
   }));
 
   const durationSeconds =

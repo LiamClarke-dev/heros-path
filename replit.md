@@ -127,8 +127,8 @@ lib/
 |---|---|
 | `GOOGLE_MAPS_API_KEY` | Google Places API (New) + Static Maps API — required |
 | `JWT_SECRET` | JWT signing secret — required |
-| `GOOGLE_CLIENT_ID` | Replit OIDC client ID |
-| `GOOGLE_CLIENT_SECRET` | Replit OIDC client secret |
+| `REPLIT_CLIENT_ID` | Replit OIDC client ID |
+| `REPLIT_CLIENT_SECRET` | Replit OIDC client secret |
 | `DATABASE_URL` | PostgreSQL connection string (managed by Replit) |
 | `PORT` | HTTP port (managed per-workflow by Replit) |
 | `EXPO_PUBLIC_API_BASE_URL` | API base URL for mobile app (e.g. `https://xxx.replit.app`) |

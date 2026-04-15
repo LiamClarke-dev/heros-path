@@ -10,6 +10,7 @@ import {
   ActionSheetIOS,
   Platform,
   Linking,
+  Share,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../constants/colors";
@@ -96,21 +97,31 @@ export function PlaceCard({
     ]).start(() => onDismiss(place.googlePlaceId));
   }, [opacity, maxHeight, onDismiss, place.googlePlaceId]);
 
+  const handleShare = useCallback(() => {
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.googlePlaceId}`;
+    Share.share({
+      title: place.name,
+      message: `Check out ${place.name}${place.address ? ` — ${place.address}` : ""}!\n${mapsUrl}`,
+      url: mapsUrl,
+    }).catch(() => {});
+  }, [place]);
+
   const openMoreMenu = useCallback(() => {
     const mapsUrl =
       Platform.OS === "ios"
         ? `maps://?q=${encodeURIComponent(place.name)}&ll=${place.lat},${place.lng}`
         : `geo:${place.lat},${place.lng}?q=${encodeURIComponent(place.name)}`;
 
-    const options = ["Snooze", "Dismiss", "View on Maps", "Cancel"] as const;
+    const options = ["Snooze", "Dismiss", "View on Maps", "Share", "Cancel"] as const;
 
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
-        { options: [...options], cancelButtonIndex: 3, destructiveButtonIndex: 1, title: place.name },
+        { options: [...options], cancelButtonIndex: 4, destructiveButtonIndex: 1, title: place.name },
         (idx) => {
           if (idx === 0) openSnoozeMenu();
           else if (idx === 1) handleDismiss();
           else if (idx === 2) Linking.openURL(mapsUrl).catch(() => {});
+          else if (idx === 3) handleShare();
         }
       );
     } else {
@@ -118,10 +129,11 @@ export function PlaceCard({
         { text: "Snooze", onPress: openSnoozeMenu },
         { text: "Dismiss", style: "destructive", onPress: handleDismiss },
         { text: "View on Maps", onPress: () => Linking.openURL(mapsUrl).catch(() => {}) },
+        { text: "Share", onPress: handleShare },
         { text: "Cancel", style: "cancel" },
       ]);
     }
-  }, [place, handleDismiss]);
+  }, [place, handleDismiss, handleShare]);
 
   const openSnoozeMenu = useCallback(() => {
     const options = ["Snooze 1 Day", "Snooze 1 Week", "Snooze 1 Month", "Cancel"] as const;

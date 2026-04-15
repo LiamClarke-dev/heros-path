@@ -153,7 +153,11 @@ placeVisitsRouter.patch("/visits/:visitId", async (req: Request, res: Response) 
   if (body.notes !== undefined) updates.notes = body.notes ?? null;
   if (body.visitedAt !== undefined) {
     const parsed = new Date(body.visitedAt);
-    if (!isNaN(parsed.getTime())) updates.visitedAt = parsed;
+    if (isNaN(parsed.getTime())) {
+      res.status(400).json({ error: "visitedAt must be a valid ISO date string" });
+      return;
+    }
+    updates.visitedAt = parsed;
   }
 
   const [updated] = await db

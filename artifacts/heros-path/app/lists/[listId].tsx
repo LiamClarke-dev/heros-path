@@ -15,6 +15,7 @@ import { Feather } from "@expo/vector-icons";
 import Colors from "../../constants/colors";
 import { apiFetch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { VisitLogSheet } from "../../components/VisitLogSheet";
 
 interface ListPlace {
   googlePlaceId: string;
@@ -44,6 +45,7 @@ export default function ListDetailScreen() {
   const [list, setList] = useState<PlaceList | null>(null);
   const [places, setPlaces] = useState<ListPlace[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logSheetPlace, setLogSheetPlace] = useState<{ id: string; name: string } | null>(null);
 
   const fetchDetail = useCallback(async () => {
     if (!token || !listId) return;
@@ -104,7 +106,11 @@ export default function ListDetailScreen() {
         : item.types[0]?.replace(/_/g, " ") ?? "";
 
       return (
-        <View style={styles.card}>
+        <TouchableOpacity
+          style={styles.card}
+          activeOpacity={0.9}
+          onPress={() => router.push(`/place-detail?googlePlaceId=${item.googlePlaceId}`)}
+        >
           {item.photoUrl ? (
             <Image
               source={{ uri: item.photoUrl }}
@@ -134,16 +140,24 @@ export default function ListDetailScreen() {
             ) : null}
           </View>
 
-          <TouchableOpacity
-            style={styles.removeBtn}
-            onPress={() => handleRemove(item.googlePlaceId, item.name)}
-          >
-            <Feather name="trash-2" size={16} color={Colors.parchmentDim} />
-          </TouchableOpacity>
-        </View>
+          <View style={styles.actionCol}>
+            <TouchableOpacity
+              style={styles.visitedBtn}
+              onPress={() => setLogSheetPlace({ id: item.googlePlaceId, name: item.name })}
+            >
+              <Feather name="check-circle" size={18} color={Colors.gold} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.removeBtn}
+              onPress={() => handleRemove(item.googlePlaceId, item.name)}
+            >
+              <Feather name="trash-2" size={16} color={Colors.parchmentDim} />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       );
     },
-    [handleRemove]
+    [handleRemove, router]
   );
 
   return (
@@ -181,6 +195,15 @@ export default function ListDetailScreen() {
           }
         />
       )}
+
+      <VisitLogSheet
+        visible={logSheetPlace !== null}
+        googlePlaceId={logSheetPlace?.id ?? ""}
+        placeName={logSheetPlace?.name ?? ""}
+        token={token ?? ""}
+        onClose={() => setLogSheetPlace(null)}
+        onSaved={() => setLogSheetPlace(null)}
+      />
     </View>
   );
 }
@@ -264,8 +287,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.parchmentDim,
   },
+  actionCol: {
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  visitedBtn: {
+    padding: 6,
+  },
   removeBtn: {
-    padding: 16,
+    padding: 6,
   },
   center: {
     flex: 1,

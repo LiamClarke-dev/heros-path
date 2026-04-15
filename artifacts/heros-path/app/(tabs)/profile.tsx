@@ -293,7 +293,7 @@ export default function ProfileTab() {
         <Text style={styles.sectionTitle}>My Activity</Text>
         <TouchableOpacity
           style={styles.navCard}
-          onPress={() => router.push("/past-journeys")}
+          onPress={() => router.push("/my-visits")}
           activeOpacity={0.8}
         >
           <Feather name="check-square" size={18} color={Colors.gold} />

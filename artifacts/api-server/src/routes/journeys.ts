@@ -354,6 +354,13 @@ router.post("/:journeyId/discover", async (req: Request, res: Response) => {
 
   try {
     const result = await retryDiscovery(journeyId, user.id);
+    if (result.discoveryStatus === "failed") {
+      res.status(502).json({
+        ...result,
+        error: "Discovery failed — Places API could not be reached. Try again later.",
+      });
+      return;
+    }
     res.json(result);
   } catch (err) {
     const status =

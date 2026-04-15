@@ -144,9 +144,6 @@ export async function searchAlongRoute(
     }
     const data = (await res.json()) as { places?: RawPlace[] };
     const places = (data.places ?? []).map((p) => mapPlaceResult(p, apiKey));
-    logger.info(
-      `[discovery] Route search "${textQuery}": ${places.length} raw result(s)`
-    );
     return { places, apiError: false };
   } catch (err) {
     logger.warn({ err }, `[discovery] Route search "${textQuery}" threw`);

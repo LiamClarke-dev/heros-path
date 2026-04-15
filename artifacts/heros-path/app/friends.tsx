@@ -33,6 +33,16 @@ interface InviteCode {
   expiresAt: string;
 }
 
+interface PendingRequest {
+  id: string;
+  requesterId: string;
+  addresseeId: string;
+  status: string;
+  createdAt: string;
+  from?: { displayName: string; profileImageUrl: string | null } | null;
+  to?: { displayName: string; profileImageUrl: string | null } | null;
+}
+
 function FriendAvatar({ name, imageUrl, size = 44 }: { name: string; imageUrl?: string | null; size?: number }) {
   const initials = name.split(" ").slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
   if (imageUrl) {
@@ -63,6 +73,7 @@ export default function FriendsScreen() {
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [invite, setInvite] = useState<InviteCode | null>(null);
+  const [pendingIncoming, setPendingIncoming] = useState<PendingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [joiningCode, setJoiningCode] = useState("");
@@ -77,14 +88,16 @@ export default function FriendsScreen() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       try {
-        const [friendsData, inviteData] = await Promise.all([
+        const [friendsData, inviteData, requestsData] = await Promise.all([
           apiFetch("/api/friends", { token }),
           apiFetch("/api/friends/invite", { token }),
+          apiFetch("/api/friends/requests", { token }),
         ]);
         setFriends((friendsData as { friends: Friend[] }).friends ?? []);
         const inv = (inviteData as { code: string | null; expiresAt?: string });
         if (inv.code) setInvite({ code: inv.code, expiresAt: inv.expiresAt ?? "" });
         else setInvite(null);
+        setPendingIncoming((requestsData as { incoming: PendingRequest[]; outgoing: PendingRequest[] }).incoming ?? []);
       } catch {
       } finally {
         setLoading(false);
@@ -266,6 +279,27 @@ export default function FriendsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {pendingIncoming.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Pending Requests · {pendingIncoming.length}
+              </Text>
+              {pendingIncoming.map((req) => {
+                const person = req.from;
+                const name = person?.displayName ?? "Unknown";
+                return (
+                  <View key={req.id} style={styles.pendingRow}>
+                    <FriendAvatar name={name} imageUrl={person?.profileImageUrl} size={40} />
+                    <View style={styles.friendInfo}>
+                      <Text style={styles.friendName}>{name}</Text>
+                      <Text style={styles.pendingLabel}>Wants to be friends via invite code</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
@@ -536,5 +570,22 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     color: Colors.gold,
+  },
+  pendingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    marginBottom: 8,
+    gap: 12,
+  },
+  pendingLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    marginTop: 2,
   },
 });

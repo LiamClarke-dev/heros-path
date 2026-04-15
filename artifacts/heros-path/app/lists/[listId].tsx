@@ -54,6 +54,13 @@ interface PlaceList {
   id: string;
   name: string;
   emoji: string | null;
+  userId?: string;
+}
+
+interface CollaboratorPreview {
+  id: string;
+  displayName: string;
+  profileImageUrl: string | null;
 }
 
 function sanitizeFilename(name: string): string {
@@ -64,15 +71,17 @@ export default function ListDetailScreen() {
   const insets = useSafeAreaInsets();
   const { listId } = useLocalSearchParams<{ listId: string }>();
   const router = useRouter();
-  const { token } = useAuth();
-
+  const { token, user } = useAuth();
   const [list, setList] = useState<PlaceList | null>(null);
   const [places, setPlaces] = useState<ListPlace[]>([]);
+  const [collaborators, setCollaborators] = useState<CollaboratorPreview[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [logSheetPlace, setLogSheetPlace] = useState<{ id: string; name: string } | null>(null);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [showSharing, setShowSharing] = useState(false);
+
+  const isOwner = !!(list?.userId && user?.id && list.userId === user.id);
 
   const googleDiscovery = useAutoDiscovery("https://accounts.google.com");
 
@@ -111,11 +120,18 @@ export default function ListDetailScreen() {
       );
       setList(data.list);
       setPlaces(data.places);
+      if (data.list.userId === user?.id) {
+        apiFetch(`/api/lists/${listId}/collaborators`, { token })
+          .then((d: { collaborators: CollaboratorPreview[] }) =>
+            setCollaborators(d.collaborators ?? [])
+          )
+          .catch(() => {});
+      }
     } catch {
     } finally {
       setLoading(false);
     }
-  }, [token, listId]);
+  }, [token, listId, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -390,12 +406,17 @@ export default function ListDetailScreen() {
         <Text style={styles.title} numberOfLines={1}>
           {list?.name ?? ""}
         </Text>
-        {!loading && (
+        {!loading && isOwner && (
           <TouchableOpacity
             style={styles.exportBtn}
             onPress={() => setShowSharing(true)}
           >
-            <Feather name="users" size={20} color={Colors.parchmentMuted} />
+            <Feather name="users" size={20} color={collaborators.length > 0 ? Colors.gold : Colors.parchmentMuted} />
+            {collaborators.length > 0 && (
+              <View style={styles.collabBadge}>
+                <Text style={styles.collabBadgeText}>{collaborators.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         )}
         {!loading && places.length > 0 && (
@@ -485,6 +506,25 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     backgroundColor: Colors.goldGlow,
+    position: "relative",
+  },
+  collabBadge: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    backgroundColor: Colors.gold,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  collabBadgeText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: Colors.background,
+    lineHeight: 14,
   },
   list: {
     paddingHorizontal: 16,

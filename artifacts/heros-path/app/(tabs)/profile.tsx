@@ -135,6 +135,7 @@ export default function ProfileTab() {
 
   const [stats, setStats] = useState<Stats | null>(null);
   const [badges, setBadges] = useState<{ earned: BadgeItem[]; available: BadgeItem[] } | null>(null);
+  const [friendCount, setFriendCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [leveledUp, setLeveledUp] = useState(false);
   const [visitSummary, setVisitSummary] = useState<{
@@ -181,6 +182,12 @@ export default function ProfileTab() {
         triggerRankUpAnimation();
       }
       await AsyncStorage.setItem(LAST_LEVEL_KEY, String(statsData.level)).catch(() => {});
+      apiFetch("/api/friends", { token })
+        .then((fd: unknown) => {
+          const count = (fd as { friends: unknown[] }).friends?.length ?? 0;
+          setFriendCount(count);
+        })
+        .catch(() => {});
     } catch (err) {
       console.warn("[Profile] loadData failed", err);
     } finally {
@@ -286,6 +293,9 @@ export default function ProfileTab() {
       >
         <Feather name="users" size={18} color={Colors.gold} />
         <Text style={styles.navCardText}>Friends</Text>
+        {friendCount !== null && friendCount > 0 && (
+          <Text style={styles.navCardBadge}>{friendCount}</Text>
+        )}
         <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
       </TouchableOpacity>
 
@@ -528,6 +538,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 15,
     color: Colors.parchment,
+  },
+  navCardBadge: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: Colors.gold,
+    marginRight: 4,
   },
   activitySection: {
     gap: 10,

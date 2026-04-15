@@ -747,6 +747,12 @@ router.post(
       return;
     }
 
+    const isFriend = await areAcceptedFriends(user.id, targetUserId);
+    if (!isFriend) {
+      res.status(403).json({ error: "Not friends with this user" });
+      return;
+    }
+
     await db
       .insert(listCollaborators)
       .values({

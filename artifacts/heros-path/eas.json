@@ -12,6 +12,7 @@
       },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "ff0550f0-ceb2-4d52-a209-7054d365e4c2-00-1bh7yph6mfm94.expo.kirk.replit.dev",
+        "EXPO_PUBLIC_REPL_ID": "ff0550f0-ceb2-4d52-a209-7054d365e4c2",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "155152959717-9ja420d454urufbqmu8bh1aq9tu1epu7.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "155152959717-a20bfhbkjp05k4kd3cahvasvbneimn7q.apps.googleusercontent.com"
       }
@@ -20,6 +21,7 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_DOMAIN": "ff0550f0-ceb2-4d52-a209-7054d365e4c2-00-1bh7yph6mfm94.expo.kirk.replit.dev",
+        "EXPO_PUBLIC_REPL_ID": "ff0550f0-ceb2-4d52-a209-7054d365e4c2",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "155152959717-9ja420d454urufbqmu8bh1aq9tu1epu7.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "155152959717-a20bfhbkjp05k4kd3cahvasvbneimn7q.apps.googleusercontent.com"
       }
@@ -28,6 +30,7 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://heros-path.replit.app",
+        "EXPO_PUBLIC_REPL_ID": "ff0550f0-ceb2-4d52-a209-7054d365e4c2",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "155152959717-9ja420d454urufbqmu8bh1aq9tu1epu7.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "155152959717-a20bfhbkjp05k4kd3cahvasvbneimn7q.apps.googleusercontent.com"
       }

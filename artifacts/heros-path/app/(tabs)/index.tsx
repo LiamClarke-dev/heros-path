@@ -280,18 +280,21 @@ export default function JourneyTab() {
 
       const dist = formatDistance(result.totalDistanceM ?? 0);
       const elapsed = journeyStartedAt ? formatDuration(journeyStartedAt) : "—";
+      setJourneyId(null);
+      setJourneyStartedAt(null);
+      setCurrentHeading(null);
+      setWaypoints([]);
+      setJourneyStatus("idle");
+      loadHistory();
+      if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
       Alert.alert("Journey Complete!", `Distance: ${dist}\nTime: ${elapsed}`);
     } catch {
-      Alert.alert("Journey ended", "Could not retrieve journey summary.");
+      setJourneyStatus("active");
+      Alert.alert(
+        "Save failed",
+        "Could not save your journey. Your tracking is still active — try ending again."
+      );
     }
-
-    setJourneyId(null);
-    setJourneyStartedAt(null);
-    setCurrentHeading(null);
-    setWaypoints([]);
-    setJourneyStatus("idle");
-    loadHistory();
-    if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
   }
 
   if (IS_WEB) {
@@ -448,7 +451,7 @@ export default function JourneyTab() {
         {journeyStatus === "idle" && (
           <TouchableOpacity
             style={styles.iconBtn}
-            onPress={() => router.push("/settings/preferences" as any)}
+            onPress={() => router.push("/settings/preferences")}
           >
             <Feather name="sliders" size={20} color={Colors.parchment} />
           </TouchableOpacity>

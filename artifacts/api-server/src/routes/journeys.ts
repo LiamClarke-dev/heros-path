@@ -49,6 +49,11 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
     return;
   }
 
+  if (status === "ended" && existing.endedAt !== null) {
+    res.status(409).json({ error: "Journey already ended" });
+    return;
+  }
+
   if (incomingWaypoints?.length) {
     const validWaypoints = incomingWaypoints.filter((wp) => {
       const ts = new Date(wp.recordedAt);

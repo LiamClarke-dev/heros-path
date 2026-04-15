@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, journeys, journeyWaypoints } from "@workspace/db";
-import { eq, and, desc, gte, lte } from "drizzle-orm";
+import { eq, and, desc, gte, lte, isNotNull } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
   haversineDistance,
@@ -57,7 +57,12 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       lng: String(wp.lng),
       recordedAt: new Date(wp.recordedAt),
     }));
-    await db.insert(journeyWaypoints).values(rows).onConflictDoNothing();
+    await db
+      .insert(journeyWaypoints)
+      .values(rows)
+      .onConflictDoNothing({
+        target: [journeyWaypoints.journeyId, journeyWaypoints.recordedAt],
+      });
   }
 
   if (status === "ended") {
@@ -114,7 +119,7 @@ router.get("/history", async (req: Request, res: Response) => {
   const completed = await db
     .select()
     .from(journeys)
-    .where(and(eq(journeys.userId, user.id)))
+    .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt)))
     .orderBy(desc(journeys.startedAt))
     .limit(20);
 

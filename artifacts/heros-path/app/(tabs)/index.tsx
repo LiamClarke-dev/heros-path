@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import Colors from "../../constants/colors";
@@ -75,6 +76,7 @@ function formatDuration(startedAt: string): string {
 export default function JourneyTab() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
+  const router = useRouter();
   const mapRef = useRef<any>(null);
 
   const [journeyStatus, setJourneyStatus] = useState<JourneyStatus>("idle");
@@ -443,6 +445,14 @@ export default function JourneyTab() {
         <TouchableOpacity style={styles.iconBtn} onPress={handleLocateMe}>
           <Feather name="crosshair" size={20} color={Colors.parchment} />
         </TouchableOpacity>
+        {journeyStatus === "idle" && (
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => router.push("/settings/preferences" as any)}
+          >
+            <Feather name="sliders" size={20} color={Colors.parchment} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {journeyStatus === "active" && newTerritoryNearby && (
@@ -470,6 +480,13 @@ export default function JourneyTab() {
 
           {journeyStatus === "active" && (
             <View style={styles.activeButtons}>
+              <TouchableOpacity
+                style={styles.pingBtn}
+                onPress={() => Alert.alert("Ping", "Place discovery ping — coming in A4!")}
+              >
+                <Feather name="zap" size={16} color={Colors.gold} />
+                <Text style={styles.pingBtnText}>Ping</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.endBtn}
                 onPress={endJourney}
@@ -611,6 +628,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     alignItems: "center",
+  },
+  pingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: "rgba(212,160,23,0.12)",
+  },
+  pingBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: Colors.gold,
   },
   endBtn: {
     flexDirection: "row",

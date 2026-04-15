@@ -291,6 +291,9 @@ export default function JourneyTab() {
 
     setJourneyStatus("ending");
 
+    // Stop all tracking sources first — eliminates waypoint race
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
@@ -300,17 +303,15 @@ export default function JourneyTab() {
       flushIntervalRef.current = null;
     }
 
-    await flushWaypoints(jId);
+    // Drain buffer — include remaining waypoints atomically in the end request
+    const remainingWaypoints = waypointBufferRef.current.splice(0);
 
     try {
       const result = (await apiFetch(`/api/journeys/${jId}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "ended" }),
+        body: JSON.stringify({ status: "ended", waypoints: remainingWaypoints }),
       })) as { totalDistanceM: number; placeCount: number };
-
-      locationSubscriptionRef.current?.remove();
-      locationSubscriptionRef.current = null;
 
       const dist = formatDistance(result.totalDistanceM ?? 0);
       const elapsed = startedAtSnapshot ? formatDuration(startedAtSnapshot) : "—";
@@ -322,7 +323,10 @@ export default function JourneyTab() {
       loadHistory();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
       Alert.alert("Journey Complete!", `Distance: ${dist}\nTime: ${elapsed}`);
-    } catch {
+    } catch (err) {
+      console.warn("[JourneyMap] endJourney PATCH failed", err);
+      // Restore buffer and restart flush interval so waypoints can be retried
+      waypointBufferRef.current.unshift(...remainingWaypoints);
       flushIntervalRef.current = setInterval(() => flushWaypoints(jId), 10000);
       if (startedAtSnapshot) {
         timerIntervalRef.current = setInterval(() => {
@@ -332,7 +336,7 @@ export default function JourneyTab() {
       setJourneyStatus("active");
       Alert.alert(
         "Save failed",
-        "Could not save your journey. Tracking is still running — try ending again."
+        "Could not end your journey. Waypoints are preserved — try ending again."
       );
     }
   }

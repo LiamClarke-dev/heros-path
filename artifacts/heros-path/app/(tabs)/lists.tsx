@@ -115,9 +115,10 @@ export default function ListsTab() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
+              <Feather name="bookmark" size={40} color={Colors.parchmentDim} />
               <Text style={styles.emptyTitle}>No lists yet</Text>
               <Text style={styles.emptySubtitle}>
-                Create a list to save and organise your discovered places.
+                Create a list from the Discover tab to save your favourite places.
               </Text>
             </View>
           }
@@ -205,6 +206,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 60,
     paddingHorizontal: 32,
+    gap: 10,
   },
   emptyTitle: {
     fontFamily: "Inter_700Bold",

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { db, journeys, journeyWaypoints } from "@workspace/db";
-import { eq, and, desc, gte, lte, isNotNull, sql } from "drizzle-orm";
+import { db, journeys, journeyWaypoints, journeyDiscoveredPlaces, placeCache } from "@workspace/db";
+import { eq, and, desc, gte, lte, isNotNull, inArray, count, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
   haversineDistance,
@@ -19,6 +19,81 @@ import { awardJourneyGamification } from "../lib/gamification.js";
 import logger from "../logger.js";
 
 const router = Router();
+
+function buildStaticMapUrl(polylineEncoded: string | null): string | null {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key || !polylineEncoded) return null;
+  const base = "https://maps.googleapis.com/maps/api/staticmap";
+  const styles = [
+    "element:geometry|color:0x1A1510",
+    "element:labels.text.fill|color:0xA08060",
+    "element:labels.text.stroke|color:0x0D0A0B",
+    "feature:road|element:geometry|color:0x2A2018",
+    "feature:water|element:geometry|color:0x0A0E14",
+    "feature:poi|visibility:off",
+    "feature:transit|visibility:off",
+  ];
+  const size = "600x160";
+  const stylePart = styles.map((s) => `style=${encodeURIComponent(s)}`).join("&");
+  const pathPart = `path=weight:3|color:0xD4A017FF|enc:${encodeURIComponent(polylineEncoded)}`;
+  return `${base}?size=${size}&scale=2&${stylePart}&${pathPart}&key=${key}`;
+}
+
+function makePhotoUrl(ref: string | null | undefined, width = 400): string | null {
+  if (!ref) return null;
+  const key = process.env.GOOGLE_MAPS_API_KEY ?? "";
+  if (ref.includes("/")) {
+    return `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=${width}&key=${key}`;
+  }
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${width}&photoreference=${ref}&key=${key}`;
+}
+
+// GET /api/journeys — list of completed journeys with thumbnails
+router.get("/", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const limit = Math.min(parseInt(String(req.query.limit ?? "50")), 100);
+
+  const completed = await db
+    .select()
+    .from(journeys)
+    .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt)))
+    .orderBy(desc(journeys.startedAt))
+    .limit(limit);
+
+  if (completed.length === 0) {
+    res.json({ journeys: [] });
+    return;
+  }
+
+  const journeyIds = completed.map((j) => j.id);
+  const placeCountRows = await db
+    .select({ journeyId: journeyDiscoveredPlaces.journeyId, c: count() })
+    .from(journeyDiscoveredPlaces)
+    .where(inArray(journeyDiscoveredPlaces.journeyId, journeyIds))
+    .groupBy(journeyDiscoveredPlaces.journeyId);
+
+  const placeCountMap = new Map(placeCountRows.map((r) => [r.journeyId, Number(r.c)]));
+
+  const result = completed.map((j) => {
+    const durationSeconds =
+      j.endedAt && j.startedAt
+        ? Math.round((j.endedAt.getTime() - j.startedAt.getTime()) / 1000)
+        : null;
+    return {
+      id: j.id,
+      startedAt: j.startedAt,
+      endedAt: j.endedAt,
+      durationSeconds,
+      totalDistanceM: j.totalDistanceM !== null ? parseFloat(String(j.totalDistanceM)) : null,
+      placeCount: placeCountMap.get(j.id) ?? 0,
+      xpEarned: j.xpEarned,
+      discoveryStatus: j.discoveryStatus,
+      staticMapUrl: buildStaticMapUrl(j.polylineEncoded),
+    };
+  });
+
+  res.json({ journeys: result });
+});
 
 router.post("/", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
@@ -343,12 +418,68 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
     return;
   }
 
+  // Decode waypoints
+  let waypoints: Array<{ lat: number; lng: number }> = [];
+  if (journey.polylineEncoded) {
+    waypoints = decodePolyline(journey.polylineEncoded);
+  } else {
+    const raw = await db
+      .select({ lat: journeyWaypoints.lat, lng: journeyWaypoints.lng })
+      .from(journeyWaypoints)
+      .where(eq(journeyWaypoints.journeyId, journeyId))
+      .orderBy(journeyWaypoints.recordedAt);
+    waypoints = raw.map((wp) => ({
+      lat: parseFloat(String(wp.lat)),
+      lng: parseFloat(String(wp.lng)),
+    }));
+  }
+
+  // Fetch discovered places joined with cache
+  const discovered = await db
+    .select({
+      googlePlaceId: journeyDiscoveredPlaces.googlePlaceId,
+      discoveredAt: journeyDiscoveredPlaces.discoveredAt,
+      name: placeCache.name,
+      lat: placeCache.lat,
+      lng: placeCache.lng,
+      rating: placeCache.rating,
+      primaryType: placeCache.primaryType,
+      photoReference: placeCache.photoReference,
+      address: placeCache.address,
+    })
+    .from(journeyDiscoveredPlaces)
+    .innerJoin(placeCache, eq(journeyDiscoveredPlaces.googlePlaceId, placeCache.googlePlaceId))
+    .where(eq(journeyDiscoveredPlaces.journeyId, journeyId));
+
+  const places = discovered.map((p) => ({
+    googlePlaceId: p.googlePlaceId,
+    name: p.name,
+    lat: parseFloat(String(p.lat)),
+    lng: parseFloat(String(p.lng)),
+    rating: p.rating !== null ? parseFloat(String(p.rating)) : null,
+    primaryType: p.primaryType,
+    photoUrl: makePhotoUrl(p.photoReference, 400),
+    address: p.address,
+    discoveredAt: p.discoveredAt,
+  }));
+
+  const durationSeconds =
+    journey.endedAt && journey.startedAt
+      ? Math.round((journey.endedAt.getTime() - journey.startedAt.getTime()) / 1000)
+      : null;
+
   res.json({
-    ...journey,
-    totalDistanceM:
-      journey.totalDistanceM !== null
-        ? parseFloat(String(journey.totalDistanceM))
-        : null,
+    id: journey.id,
+    startedAt: journey.startedAt,
+    endedAt: journey.endedAt,
+    durationSeconds,
+    totalDistanceM: journey.totalDistanceM !== null ? parseFloat(String(journey.totalDistanceM)) : null,
+    xpEarned: journey.xpEarned,
+    pingCount: journey.pingCount,
+    discoveryStatus: journey.discoveryStatus,
+    waypoints,
+    places,
+    placeCount: places.length,
   });
 });
 

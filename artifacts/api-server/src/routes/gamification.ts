@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, userBadges, userQuests, users, journeys, journeyWaypoints, userDiscoveredPlaces } from "@workspace/db";
-import { eq, and, isNotNull, count, sql } from "drizzle-orm";
+import { eq, and, isNotNull, count, sql, sum } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
   BADGE_DEFINITIONS,
@@ -92,7 +92,7 @@ router.get("/badges", async (req: Request, res: Response) => {
 router.get("/me/stats", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
 
-  const [[dbUser], [journeyCountRow], [placeCountRow], cellsResult] =
+  const [[dbUser], [journeyCountRow], [placeCountRow], cellsResult, [distanceRow]] =
     await Promise.all([
       db.select().from(users).where(eq(users.id, user.id)),
       db
@@ -108,6 +108,10 @@ router.get("/me/stats", async (req: Request, res: Response) => {
         .from(journeyWaypoints)
         .innerJoin(journeys, eq(journeyWaypoints.journeyId, journeys.id))
         .where(eq(journeys.userId, user.id)),
+      db
+        .select({ total: sum(journeys.totalDistanceM) })
+        .from(journeys)
+        .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt))),
     ]);
 
   if (!dbUser) {
@@ -139,6 +143,8 @@ router.get("/me/stats", async (req: Request, res: Response) => {
     totalJourneys: Number(journeyCountRow?.c ?? 0),
     totalPlaces: Number(placeCountRow?.c ?? 0),
     totalStreetsWalked: cellSet.size,
+    totalDistanceM: distanceRow?.total != null ? Math.round(Number(distanceRow.total)) : 0,
+    joinedAt: dbUser.createdAt ?? null,
   });
 });
 

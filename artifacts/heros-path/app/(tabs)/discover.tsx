@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
+import { Feather } from "@expo/vector-icons";
 import Colors from "../../constants/colors";
 import { apiFetch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -186,10 +187,13 @@ export default function DiscoverTab() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>Nothing here yet</Text>
+              <Feather name="compass" size={40} color={Colors.parchmentDim} />
+              <Text style={styles.emptyTitle}>
+                {filter === "all" ? "No places discovered yet" : "Nothing here yet"}
+              </Text>
               <Text style={styles.emptySubtitle}>
                 {filter === "all"
-                  ? "Complete a journey to discover nearby places."
+                  ? "Start a journey to discover nearby places!"
                   : filter === "favorites"
                   ? "Favorite some places to see them here."
                   : "Snooze some places to see them here."}
@@ -272,6 +276,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 60,
     paddingHorizontal: 32,
+    gap: 10,
   },
   emptyTitle: {
     fontFamily: "Inter_700Bold",

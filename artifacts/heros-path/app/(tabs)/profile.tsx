@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,8 +10,7 @@ import {
   Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
-import { useCallback } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
@@ -30,6 +29,8 @@ interface Stats {
   totalJourneys: number;
   totalPlaces: number;
   totalStreetsWalked: number;
+  totalDistanceM: number;
+  joinedAt: string | null;
 }
 
 interface BadgeItem {
@@ -94,8 +95,14 @@ function XpBar({ current, min, max }: { current: number; min: number; max: numbe
   );
 }
 
+function formatDistanceM(m: number): string {
+  if (m >= 1000) return `${(m / 1000).toFixed(1)} km`;
+  return `${m} m`;
+}
+
 export default function ProfileTab() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { token, logout } = useAuth();
 
   const [stats, setStats] = useState<Stats | null>(null);
@@ -178,18 +185,38 @@ export default function ProfileTab() {
 
       <View style={styles.statsGrid}>
         {[
-          { label: "Journeys", value: stats.totalJourneys, icon: "map" as const },
-          { label: "Places Found", value: stats.totalPlaces, icon: "compass" as const },
-          { label: "Streets Walked", value: stats.totalStreetsWalked, icon: "navigation" as const },
-          { label: "Day Streak", value: stats.streakDays, icon: "zap" as const },
+          { label: "Journeys", value: stats.totalJourneys.toLocaleString(), icon: "map" as const },
+          { label: "Places Found", value: stats.totalPlaces.toLocaleString(), icon: "compass" as const },
+          { label: "Distance", value: formatDistanceM(stats.totalDistanceM), icon: "navigation" as const },
+          { label: "Day Streak", value: stats.streakDays.toLocaleString(), icon: "zap" as const },
         ].map((stat) => (
           <View key={stat.label} style={styles.statCard}>
             <Feather name={stat.icon} size={18} color={Colors.gold} />
-            <Text style={styles.statValue}>{stat.value.toLocaleString()}</Text>
+            <Text style={styles.statValue}>{stat.value}</Text>
             <Text style={styles.statLabel}>{stat.label}</Text>
           </View>
         ))}
       </View>
+
+      <TouchableOpacity
+        style={styles.navCard}
+        onPress={() => router.push("/past-journeys")}
+        activeOpacity={0.8}
+      >
+        <Feather name="clock" size={18} color={Colors.gold} />
+        <Text style={styles.navCardText}>View All Journeys</Text>
+        <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.navCard}
+        onPress={() => router.push("/settings")}
+        activeOpacity={0.8}
+      >
+        <Feather name="settings" size={18} color={Colors.parchmentMuted} />
+        <Text style={styles.navCardText}>Settings</Text>
+        <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+      </TouchableOpacity>
 
       {badges && (
         <View style={styles.badgesSection}>
@@ -426,6 +453,23 @@ const styles = StyleSheet.create({
   },
   badgeNameLocked: {
     color: Colors.parchmentMuted,
+  },
+  navCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+  },
+  navCardText: {
+    flex: 1,
+    fontFamily: "Inter_500Medium",
+    fontSize: 15,
+    color: Colors.parchment,
   },
   signOutBtn: {
     flexDirection: "row",

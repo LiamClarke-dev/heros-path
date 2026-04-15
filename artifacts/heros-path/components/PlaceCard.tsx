@@ -9,6 +9,7 @@ import {
   Alert,
   ActionSheetIOS,
   Platform,
+  Linking,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../constants/colors";
@@ -29,6 +30,8 @@ export interface DiscoveredPlace {
   isFavorited: boolean;
   isDismissed: boolean;
   isSnoozed: boolean;
+  visitCount: number;
+  lastVisitedAt: string | null;
 }
 
 interface Props {
@@ -38,6 +41,7 @@ interface Props {
   onDismiss: (id: string) => void;
   onSnooze: (id: string, duration: "1day" | "1week" | "1month") => void;
   onAddToList: (id: string) => void;
+  onMarkVisited: (id: string) => void;
 }
 
 function RatingStars({ rating }: { rating: number | null }) {
@@ -59,7 +63,15 @@ function RatingStars({ rating }: { rating: number | null }) {
   );
 }
 
-export function PlaceCard({ place, onPress, onFavorite, onDismiss, onSnooze, onAddToList }: Props) {
+export function PlaceCard({
+  place,
+  onPress,
+  onFavorite,
+  onDismiss,
+  onSnooze,
+  onAddToList,
+  onMarkVisited,
+}: Props) {
   const opacity = useRef(new Animated.Value(1)).current;
   const maxHeight = useRef(new Animated.Value(200)).current;
   const [photoLoaded, setPhotoLoaded] = useState(!place.photoUrl);
@@ -84,17 +96,40 @@ export function PlaceCard({ place, onPress, onFavorite, onDismiss, onSnooze, onA
     ]).start(() => onDismiss(place.googlePlaceId));
   }, [opacity, maxHeight, onDismiss, place.googlePlaceId]);
 
-  const handleSnooze = useCallback(() => {
+  const openMoreMenu = useCallback(() => {
+    const mapsUrl =
+      Platform.OS === "ios"
+        ? `maps://?q=${encodeURIComponent(place.name)}&ll=${place.lat},${place.lng}`
+        : `geo:${place.lat},${place.lng}?q=${encodeURIComponent(place.name)}`;
+
+    const options = ["Snooze", "Dismiss", "View on Maps", "Cancel"] as const;
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: [...options], cancelButtonIndex: 3, destructiveButtonIndex: 1, title: place.name },
+        (idx) => {
+          if (idx === 0) openSnoozeMenu();
+          else if (idx === 1) handleDismiss();
+          else if (idx === 2) Linking.openURL(mapsUrl).catch(() => {});
+        }
+      );
+    } else {
+      Alert.alert(place.name, undefined, [
+        { text: "Snooze", onPress: openSnoozeMenu },
+        { text: "Dismiss", style: "destructive", onPress: handleDismiss },
+        { text: "View on Maps", onPress: () => Linking.openURL(mapsUrl).catch(() => {}) },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  }, [place, handleDismiss]);
+
+  const openSnoozeMenu = useCallback(() => {
     const options = ["Snooze 1 Day", "Snooze 1 Week", "Snooze 1 Month", "Cancel"] as const;
     const durations = ["1day", "1week", "1month"] as const;
 
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [...options],
-          cancelButtonIndex: 3,
-          title: `Snooze "${place.name}"`,
-        },
+        { options: [...options], cancelButtonIndex: 3, title: `Snooze "${place.name}"` },
         (idx) => {
           if (idx < 3) onSnooze(place.googlePlaceId, durations[idx]);
         }
@@ -147,11 +182,21 @@ export function PlaceCard({ place, onPress, onFavorite, onDismiss, onSnooze, onA
         <View style={styles.content}>
           <View style={styles.header}>
             <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
-            {place.discoveryCount > 1 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{place.discoveryCount}x</Text>
-              </View>
-            )}
+            <View style={styles.badges}>
+              {place.discoveryCount > 1 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{place.discoveryCount}x</Text>
+                </View>
+              )}
+              {place.visitCount > 0 && (
+                <View style={styles.visitBadge}>
+                  <Feather name="check-circle" size={10} color="#22C55E" />
+                  <Text style={styles.visitBadgeText}>
+                    Visited{place.visitCount > 1 ? ` ${place.visitCount}x` : ""}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
 
           {typeLabel !== "" && (
@@ -168,29 +213,44 @@ export function PlaceCard({ place, onPress, onFavorite, onDismiss, onSnooze, onA
 
           <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.actionBtn}
+              style={[styles.actionBtn, place.isFavorited && styles.actionBtnActive]}
               onPress={() => onFavorite(place.googlePlaceId, place.isFavorited)}
             >
               <Feather
                 name="heart"
-                size={18}
+                size={16}
                 color={place.isFavorited ? Colors.error : Colors.parchmentMuted}
               />
+              <Text style={[styles.actionLabel, place.isFavorited && { color: Colors.error }]}>
+                Fav
+              </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionBtn} onPress={handleSnooze}>
-              <Feather name="moon" size={18} color={Colors.parchmentMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionBtn} onPress={handleDismiss}>
-              <Feather name="x-circle" size={18} color={Colors.parchmentMuted} />
+            <TouchableOpacity
+              style={[styles.actionBtn, place.visitCount > 0 && styles.actionBtnVisited]}
+              onPress={() => onMarkVisited(place.googlePlaceId)}
+            >
+              <Feather
+                name="check-circle"
+                size={16}
+                color={place.visitCount > 0 ? "#22C55E" : Colors.parchmentMuted}
+              />
+              <Text style={[styles.actionLabel, place.visitCount > 0 && { color: "#22C55E" }]}>
+                Visited
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={() => onAddToList(place.googlePlaceId)}
             >
-              <Feather name="plus-square" size={18} color={Colors.parchmentMuted} />
+              <Feather name="plus-square" size={16} color={Colors.parchmentMuted} />
+              <Text style={styles.actionLabel}>List</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtn} onPress={openMoreMenu}>
+              <Feather name="more-horizontal" size={16} color={Colors.parchmentMuted} />
+              <Text style={styles.actionLabel}>More</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -231,41 +291,59 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 6,
     marginBottom: 2,
   },
   name: {
-    flex: 1,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Inter_600SemiBold",
     fontSize: 14,
     color: Colors.parchment,
+    flex: 1,
+  },
+  badges: {
+    flexDirection: "row",
+    gap: 4,
+    alignItems: "center",
+    flexShrink: 0,
   },
   badge: {
     backgroundColor: Colors.goldGlow,
-    borderColor: Colors.gold,
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   badgeText: {
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Inter_600SemiBold",
     fontSize: 10,
     color: Colors.gold,
   },
+  visitBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(34,197,94,0.12)",
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  visitBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: "#22C55E",
+  },
   type: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.parchmentMuted,
     textTransform: "capitalize",
-    marginBottom: 3,
+    marginBottom: 4,
   },
   stars: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    marginBottom: 3,
+    marginBottom: 4,
   },
   ratingText: {
     fontFamily: "Inter_400Regular",
@@ -277,16 +355,36 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 11,
     color: Colors.parchmentDim,
-    marginBottom: 4,
   },
-  spacer: {
-    flex: 1,
-  },
+  spacer: { flex: 1 },
   actions: {
     flexDirection: "row",
     gap: 4,
+    marginTop: 8,
   },
   actionBtn: {
-    padding: 6,
+    flex: 1,
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  actionBtnActive: {
+    borderColor: "#ef444440",
+    backgroundColor: "rgba(239,68,68,0.08)",
+  },
+  actionBtnVisited: {
+    borderColor: "rgba(34,197,94,0.3)",
+    backgroundColor: "rgba(34,197,94,0.08)",
+  },
+  actionLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: Colors.parchmentMuted,
   },
 });

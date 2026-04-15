@@ -5,6 +5,7 @@ import {
   userPreferences,
   userDiscoveredPlaces,
   userPlaceStates,
+  placeVisits,
 } from "@workspace/db";
 import { eq, and, or, isNull, gt, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
@@ -73,6 +74,8 @@ router.get("/discovered", async (req: Request, res: Response) => {
       isDismissed: userPlaceStates.isDismissed,
       isSnoozed: userPlaceStates.isSnoozed,
       snoozeUntil: userPlaceStates.snoozeUntil,
+      visitCount: sql<number>`COALESCE((SELECT COUNT(*) FROM ${placeVisits} WHERE ${placeVisits.googlePlaceId} = ${placeCache.googlePlaceId} AND ${placeVisits.userId} = ${user.id}), 0)::int`,
+      lastVisitedAt: sql<string | null>`(SELECT MAX(visited_at) FROM ${placeVisits} WHERE google_place_id = ${placeCache.googlePlaceId} AND user_id = ${user.id})`,
     })
     .from(userDiscoveredPlaces)
     .innerJoin(placeCache, eq(userDiscoveredPlaces.googlePlaceId, placeCache.googlePlaceId))
@@ -114,10 +117,30 @@ router.get("/discovered", async (req: Request, res: Response) => {
     isFavorited: p.isFavorited ?? false,
     isDismissed: p.isDismissed ?? false,
     isSnoozed: p.isSnoozed ?? false,
+    visitCount: Number(p.visitCount ?? 0),
+    lastVisitedAt: p.lastVisitedAt ?? null,
     photoUrl: makePhotoUrl(p.photoReference),
   }));
 
   res.json({ places, total, page });
+});
+
+router.get("/:googlePlaceId/state", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const googlePlaceId = req.params.googlePlaceId as string;
+
+  const [stateRow] = await db
+    .select()
+    .from(userPlaceStates)
+    .where(
+      and(eq(userPlaceStates.userId, user.id), eq(userPlaceStates.googlePlaceId, googlePlaceId))
+    );
+
+  res.json({
+    isFavorited: stateRow?.isFavorited ?? false,
+    isDismissed: stateRow?.isDismissed ?? false,
+    isSnoozed: stateRow?.isSnoozed ?? false,
+  });
 });
 
 router.post("/:googlePlaceId/state", async (req: Request, res: Response) => {

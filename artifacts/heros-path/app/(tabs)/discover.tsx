@@ -17,6 +17,7 @@ import { useAuth } from "../../lib/auth";
 import { PlaceCard, type DiscoveredPlace } from "../../components/PlaceCard";
 import { AddToListSheet } from "../../components/AddToListSheet";
 import { CreateListSheet } from "../../components/CreateListSheet";
+import { VisitLogSheet, type VisitRecord } from "../../components/VisitLogSheet";
 
 type FilterType = "all" | "favorites" | "snoozed";
 
@@ -36,6 +37,7 @@ export default function DiscoverTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [addToListId, setAddToListId] = useState<string | null>(null);
   const [showCreateList, setShowCreateList] = useState(false);
+  const [visitPlaceId, setVisitPlaceId] = useState<string | null>(null);
 
   const fetchPlaces = useCallback(
     async (isRefresh = false) => {
@@ -134,6 +136,22 @@ export default function DiscoverTab() {
     [token]
   );
 
+  const handleVisitSaved = useCallback((visit: VisitRecord) => {
+    setPlaces((prev) =>
+      prev.map((p) =>
+        p.googlePlaceId === visit.googlePlaceId
+          ? {
+              ...p,
+              visitCount: p.visitCount + 1,
+              lastVisitedAt: visit.visitedAt,
+            }
+          : p
+      )
+    );
+  }, []);
+
+  const visitPlace = places.find((p) => p.googlePlaceId === visitPlaceId) ?? null;
+
   const renderItem = useCallback(
     ({ item }: { item: DiscoveredPlace }) => (
       <PlaceCard
@@ -143,6 +161,7 @@ export default function DiscoverTab() {
         onDismiss={handleDismiss}
         onSnooze={handleSnooze}
         onAddToList={(id) => setAddToListId(id)}
+        onMarkVisited={(id) => setVisitPlaceId(id)}
       />
     ),
     [router, handleFavorite, handleDismiss, handleSnooze]
@@ -217,6 +236,15 @@ export default function DiscoverTab() {
         visible={showCreateList}
         onClose={() => setShowCreateList(false)}
         onCreate={handleCreateList}
+      />
+
+      <VisitLogSheet
+        visible={visitPlaceId !== null}
+        placeName={visitPlace?.name ?? ""}
+        googlePlaceId={visitPlaceId ?? ""}
+        token={token ?? ""}
+        onClose={() => setVisitPlaceId(null)}
+        onSaved={handleVisitSaved}
       />
     </View>
   );

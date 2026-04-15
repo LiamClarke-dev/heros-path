@@ -137,6 +137,10 @@ export default function ProfileTab() {
   const [badges, setBadges] = useState<{ earned: BadgeItem[]; available: BadgeItem[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [leveledUp, setLeveledUp] = useState(false);
+  const [visitSummary, setVisitSummary] = useState<{
+    total: number;
+    recent: Array<{ googlePlaceId: string; name: string; photoUrl: string | null; reaction: string | null }>;
+  } | null>(null);
 
   const rankAnim = useRef(new Animated.Value(1)).current;
 
@@ -154,15 +158,22 @@ export default function ProfileTab() {
   const loadData = useCallback(async () => {
     if (!token) return;
     try {
-      const [statsData, badgesData] = await Promise.all([
+      const [statsData, badgesData, visitsData] = await Promise.all([
         apiFetch("/api/me/stats", { headers: { Authorization: `Bearer ${token}` } }) as Promise<Stats>,
         apiFetch("/api/badges", { headers: { Authorization: `Bearer ${token}` } }) as Promise<{
           earned: BadgeItem[];
           available: BadgeItem[];
         }>,
+        apiFetch("/api/me/visits?limit=3&sort=recent", { headers: { Authorization: `Bearer ${token}` } }).catch(() => null) as Promise<{
+          visits: Array<{ googlePlaceId: string; name: string; photoUrl: string | null; reaction: string | null }>;
+          total: number;
+        } | null>,
       ]);
       setStats(statsData);
       setBadges(badgesData);
+      if (visitsData) {
+        setVisitSummary({ total: visitsData.total, recent: visitsData.visits });
+      }
 
       const lastLevelStr = await AsyncStorage.getItem(LAST_LEVEL_KEY).catch(() => null);
       const lastLevel = lastLevelStr ? parseInt(lastLevelStr, 10) : null;
@@ -277,6 +288,45 @@ export default function ProfileTab() {
         <Text style={styles.navCardText}>Settings</Text>
         <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
       </TouchableOpacity>
+
+      <View style={styles.activitySection}>
+        <Text style={styles.sectionTitle}>My Activity</Text>
+        <TouchableOpacity
+          style={styles.navCard}
+          onPress={() => router.push("/past-journeys")}
+          activeOpacity={0.8}
+        >
+          <Feather name="check-square" size={18} color={Colors.gold} />
+          <Text style={styles.navCardText}>
+            My Visits
+            {visitSummary !== null && visitSummary.total > 0
+              ? ` · ${visitSummary.total}`
+              : ""}
+          </Text>
+          <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+        </TouchableOpacity>
+        {visitSummary && visitSummary.recent.length > 0 && (
+          <View style={styles.recentVisits}>
+            {visitSummary.recent.map((v) => (
+              <TouchableOpacity
+                key={v.googlePlaceId + v.reaction}
+                style={styles.recentVisitChip}
+                onPress={() => router.push(`/place-detail?googlePlaceId=${v.googlePlaceId}`)}
+                activeOpacity={0.8}
+              >
+                {v.photoUrl ? (
+                  <Image source={{ uri: v.photoUrl }} style={styles.recentVisitPhoto} />
+                ) : (
+                  <View style={[styles.recentVisitPhoto, styles.recentVisitPhotoFallback]}>
+                    <Feather name="map-pin" size={12} color={Colors.parchmentDim} />
+                  </View>
+                )}
+                <Text style={styles.recentVisitName} numberOfLines={1}>{v.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
 
       {allBadges.length > 0 && (
         <View style={styles.badgesSection}>
@@ -468,6 +518,37 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 15,
     color: Colors.parchment,
+  },
+  activitySection: {
+    gap: 10,
+  },
+  recentVisits: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  recentVisitChip: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: "hidden",
+    minWidth: 0,
+  },
+  recentVisitPhoto: {
+    width: "100%",
+    height: 60,
+  },
+  recentVisitPhotoFallback: {
+    backgroundColor: Colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recentVisitName: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.parchmentMuted,
+    padding: 6,
   },
   badgesSection: {
     gap: 10,

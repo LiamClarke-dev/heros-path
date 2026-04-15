@@ -1,5 +1,5 @@
 kind = "api"
-previewPath = "/api" # TODO - should be excluded from preview in the first place
+previewPath = "/api"
 title = "API Server"
 version = "1.0.0"
 id = "3B4_FFSkEVBkAeYMFRJ2e"
@@ -14,12 +14,7 @@ run = "pnpm --filter @workspace/api-server run dev"
 
 [services.production]
 build = "pnpm --filter @workspace/api-server run build"
-
-[services.production.run]
-args = ["node", "artifacts/api-server/dist/index.cjs"]
-
-[services.production.run.env]
-PORT = "8080"
+run = "pnpm --filter @workspace/api-server run start"
 
 [services.production.health.startup]
-path = "/api/healthz"
+path = "/api/health"

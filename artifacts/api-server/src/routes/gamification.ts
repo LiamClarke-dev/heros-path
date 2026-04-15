@@ -130,11 +130,15 @@ router.get("/me/stats", async (req: Request, res: Response) => {
   const xp = dbUser.xp ?? 0;
   const level = computeLevel(xp);
 
+  const streak = dbUser.streakDays ?? 0;
+  const cells = cellSet.size;
   res.json({
     xp,
     level,
     rankName: rankName(level),
-    streakDays: dbUser.streakDays ?? 0,
+    // A6 field names (kept for backward compatibility)
+    streakDays: streak,
+    totalStreetsWalked: cells,
     displayName: dbUser.displayName,
     email: dbUser.email ?? null,
     profileImageUrl: dbUser.profileImageUrl ?? null,
@@ -142,9 +146,12 @@ router.get("/me/stats", async (req: Request, res: Response) => {
     xpNextLevel: xpForNextLevel(level),
     totalJourneys: Number(journeyCountRow?.c ?? 0),
     totalPlaces: Number(placeCountRow?.c ?? 0),
-    totalStreetsWalked: cellSet.size,
     totalDistanceM: distanceRow?.total != null ? Math.round(Number(distanceRow.total)) : 0,
     joinedAt: dbUser.createdAt ?? null,
+    // A7 contract field names
+    currentStreak: streak,
+    longestStreak: streak,
+    totalNewCells: cells,
   });
 });
 

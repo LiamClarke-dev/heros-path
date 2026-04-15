@@ -34,6 +34,10 @@ interface Stats {
   totalStreetsWalked: number;
   totalDistanceM: number;
   joinedAt: string | null;
+  // A7 contract field names (also provided by API)
+  currentStreak?: number;
+  longestStreak?: number;
+  totalNewCells?: number;
 }
 
 interface BadgeItem {

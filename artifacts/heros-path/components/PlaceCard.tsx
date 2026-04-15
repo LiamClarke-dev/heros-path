@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -62,6 +62,20 @@ function RatingStars({ rating }: { rating: number | null }) {
 export function PlaceCard({ place, onPress, onFavorite, onDismiss, onSnooze, onAddToList }: Props) {
   const opacity = useRef(new Animated.Value(1)).current;
   const maxHeight = useRef(new Animated.Value(200)).current;
+  const [photoLoaded, setPhotoLoaded] = useState(!place.photoUrl);
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (photoLoaded) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [photoLoaded, shimmer]);
 
   const handleDismiss = useCallback(() => {
     Animated.parallel([
@@ -107,7 +121,23 @@ export function PlaceCard({ place, onPress, onFavorite, onDismiss, onSnooze, onA
         onPress={() => onPress(place.googlePlaceId)}
       >
         {place.photoUrl ? (
-          <Image source={{ uri: place.photoUrl }} style={styles.photo} resizeMode="cover" />
+          <View style={styles.photo}>
+            {!photoLoaded && (
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.photoSkeleton,
+                  { opacity: shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.8] }) },
+                ]}
+              />
+            )}
+            <Image
+              source={{ uri: place.photoUrl }}
+              style={[styles.photo, !photoLoaded && { opacity: 0 }]}
+              resizeMode="cover"
+              onLoad={() => setPhotoLoaded(true)}
+            />
+          </View>
         ) : (
           <View style={[styles.photo, styles.photoPlaceholder]}>
             <Feather name="image" size={28} color={Colors.parchmentDim} />
@@ -190,6 +220,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     alignItems: "center",
     justifyContent: "center",
+  },
+  photoSkeleton: {
+    backgroundColor: Colors.surface,
+    borderRadius: 4,
   },
   content: {
     flex: 1,

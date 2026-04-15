@@ -84,28 +84,40 @@ export default function DiscoverTab() {
 
   const handleDismiss = useCallback(
     async (id: string) => {
-      setPlaces((prev) => prev.filter((p) => p.googlePlaceId !== id));
+      let removed: DiscoveredPlace | undefined;
+      setPlaces((prev) => {
+        removed = prev.find((p) => p.googlePlaceId === id);
+        return prev.filter((p) => p.googlePlaceId !== id);
+      });
       try {
         await apiFetch(`/api/places/${id}/state`, {
           method: "POST",
           token: token!,
           body: JSON.stringify({ action: "dismiss" }),
         });
-      } catch {}
+      } catch {
+        if (removed) setPlaces((prev) => [removed!, ...prev]);
+      }
     },
     [token]
   );
 
   const handleSnooze = useCallback(
     async (id: string, duration: "1day" | "1week" | "1month") => {
-      setPlaces((prev) => prev.filter((p) => p.googlePlaceId !== id));
+      let removed: DiscoveredPlace | undefined;
+      setPlaces((prev) => {
+        removed = prev.find((p) => p.googlePlaceId === id);
+        return prev.filter((p) => p.googlePlaceId !== id);
+      });
       try {
         await apiFetch(`/api/places/${id}/state`, {
           method: "POST",
           token: token!,
           body: JSON.stringify({ action: "snooze", snoozeFor: duration }),
         });
-      } catch {}
+      } catch {
+        if (removed) setPlaces((prev) => [removed!, ...prev]);
+      }
     },
     [token]
   );

@@ -202,13 +202,6 @@ router.get("/:googlePlaceId", async (req: Request, res: Response) => {
     : Infinity;
 
   if (cached && cacheAge < CACHE_MAX_AGE_MS) {
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
-    const photoRef = cached.photoReference;
-    const photoUrl =
-      photoRef && photoRef.includes("/")
-        ? `https://places.googleapis.com/v1/${photoRef}/media?maxWidthPx=800&key=${apiKey}`
-        : null;
-
     const hours = await fetchOpeningHours(googlePlaceId);
 
     res.json({
@@ -226,7 +219,7 @@ router.get("/:googlePlaceId", async (req: Request, res: Response) => {
       googleMapsUri: cached.googleMapsUri,
       phoneNumber: cached.phoneNumber,
       address: cached.address,
-      photoUrl,
+      photoUrl: makePhotoUrl(cached.photoReference, 800),
       openNow: hours.openNow,
       openingHoursText: hours.openingHoursText,
     });

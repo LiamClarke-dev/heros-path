@@ -219,6 +219,40 @@ export default function JourneyTab() {
     }
   }
 
+  const locationWatchOptions: Location.LocationOptions = {
+    accuracy: Location.Accuracy.BestForNavigation,
+    distanceInterval: 5,
+    timeInterval: 2000,
+  };
+
+  function onLocationUpdate(position: Location.LocationObject) {
+    const loc = {
+      lat: position.coords.latitude,
+      lng: position.coords.longitude,
+    };
+    const heading = position.coords.heading;
+    const wp: Waypoint = {
+      ...loc,
+      recordedAt: new Date(position.timestamp).toISOString(),
+    };
+    setCurrentLocation(loc);
+    setCurrentHeading(heading !== null && heading >= 0 ? heading : null);
+    setWaypoints((prev) => [...prev, wp]);
+    waypointBufferRef.current.push(wp);
+    if (
+      !lastCellCheckDistRef.current ||
+      haversineM(loc.lat, loc.lng, lastCellCheckDistRef.current.lat, lastCellCheckDistRef.current.lng) > 50
+    ) {
+      lastCellCheckDistRef.current = loc;
+      loadExploredCells(loc.lat, loc.lng);
+    }
+  }
+
+  async function attachLocationWatcher() {
+    const subscription = await Location.watchPositionAsync(locationWatchOptions, onLocationUpdate);
+    locationSubscriptionRef.current = subscription;
+  }
+
   async function startJourney() {
     if (IS_WEB || !token) return;
 
@@ -246,41 +280,9 @@ export default function JourneyTab() {
     waypointBufferRef.current = [];
     setJourneyStatus("active");
 
-    const subscription = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.BestForNavigation,
-        distanceInterval: 5,
-        timeInterval: 2000,
-      },
-      (position) => {
-        const loc = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        const heading = position.coords.heading;
-        const wp: Waypoint = {
-          ...loc,
-          recordedAt: new Date(position.timestamp).toISOString(),
-        };
-
-        setCurrentLocation(loc);
-        setCurrentHeading(heading !== null && heading >= 0 ? heading : null);
-        setWaypoints((prev) => [...prev, wp]);
-        waypointBufferRef.current.push(wp);
-
-        if (
-          !lastCellCheckDistRef.current ||
-          haversineM(loc.lat, loc.lng, lastCellCheckDistRef.current.lat, lastCellCheckDistRef.current.lng) > 50
-        ) {
-          lastCellCheckDistRef.current = loc;
-          loadExploredCells(loc.lat, loc.lng);
-        }
-      }
-    );
-    locationSubscriptionRef.current = subscription;
+    await attachLocationWatcher();
 
     flushIntervalRef.current = setInterval(() => flushWaypoints(jId), 10000);
-
     timerIntervalRef.current = setInterval(() => {
       setElapsedDisplay(formatDuration(data.startedAt));
     }, 1000);
@@ -293,8 +295,9 @@ export default function JourneyTab() {
 
     setJourneyStatus("ending");
 
-    // Stop display timer and automatic flush; keep location watcher running
-    // so any waypoints collected during the PATCH continue buffering for retry
+    // Stop all tracking sources before drain — makes the buffer capture atomic
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
@@ -304,7 +307,7 @@ export default function JourneyTab() {
       flushIntervalRef.current = null;
     }
 
-    // Drain buffer — include remaining waypoints atomically in the end request
+    // Definitive drain — no new waypoints can arrive after watcher is stopped
     const remainingWaypoints = waypointBufferRef.current.splice(0);
 
     try {
@@ -313,10 +316,6 @@ export default function JourneyTab() {
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: "ended", waypoints: remainingWaypoints }),
       })) as { totalDistanceM: number; placeCount: number };
-
-      // Success — now stop location tracking
-      locationSubscriptionRef.current?.remove();
-      locationSubscriptionRef.current = null;
 
       const dist = formatDistance(result.totalDistanceM ?? 0);
       const elapsed = startedAtSnapshot ? formatDuration(startedAtSnapshot) : "—";
@@ -330,8 +329,9 @@ export default function JourneyTab() {
       Alert.alert("Journey Complete!", `Distance: ${dist}\nTime: ${elapsed}`);
     } catch (err) {
       console.warn("[JourneyMap] endJourney PATCH failed", err);
-      // Restore buffer; location watcher is still running for continued capture
+      // Restore buffer and restart full tracking so user can retry
       waypointBufferRef.current.unshift(...remainingWaypoints);
+      await attachLocationWatcher().catch(() => {});
       flushIntervalRef.current = setInterval(() => flushWaypoints(jId), 10000);
       if (startedAtSnapshot) {
         timerIntervalRef.current = setInterval(() => {
@@ -341,7 +341,7 @@ export default function JourneyTab() {
       setJourneyStatus("active");
       Alert.alert(
         "Save failed",
-        "Could not end your journey. Tracking is still active — try ending again."
+        "Could not end your journey. Tracking has resumed — try ending again."
       );
     }
   }

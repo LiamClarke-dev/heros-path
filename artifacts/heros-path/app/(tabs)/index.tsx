@@ -431,6 +431,7 @@ export default function JourneyTab() {
       waypointBufferRef.current.unshift(...remainingWaypoints);
       await attachLocationWatcher().catch(() => {});
       flushIntervalRef.current = setInterval(() => flushWaypoints(jId), 10000);
+      questRefreshRef.current = setInterval(() => loadQuests(), 30000);
       if (startedAtSnapshot) {
         timerIntervalRef.current = setInterval(() => {
           setElapsedDisplay(formatDuration(startedAtSnapshot));

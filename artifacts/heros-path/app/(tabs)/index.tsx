@@ -7,6 +7,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
@@ -38,6 +39,7 @@ if (!IS_WEB) {
 
 import { CharacterMarker } from "../../components/CharacterMarker";
 import PingResultsSheet, { type PlaceResult as PingPlace } from "../../components/PingResultsSheet";
+import QuestProgressBar from "../../components/QuestProgressBar";
 
 interface Waypoint {
   lat: number;
@@ -57,6 +59,31 @@ interface ExploredCell {
 }
 
 type JourneyStatus = "idle" | "active" | "ending";
+
+interface QuestItem {
+  key: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  progress: number;
+  target: number;
+  isCompleted: boolean;
+}
+
+interface BadgeItem {
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+interface GamificationResult {
+  xpGained: number;
+  newLevel: number;
+  newBadges: BadgeItem[];
+  completedQuests: Array<{ key: string; title: string; xpReward: number }>;
+  newStreak: number;
+}
 
 const HISTORY_COLORS = [
   "rgba(212,160,23,0.45)",
@@ -110,6 +137,14 @@ export default function JourneyTab() {
   const [pingPlaces, setPingPlaces] = useState<PingPlace[]>([]);
   const [pingNewCount, setPingNewCount] = useState(0);
 
+  // Gamification
+  const [quests, setQuests] = useState<QuestItem[]>([]);
+  const [questPanelExpanded, setQuestPanelExpanded] = useState(false);
+  const [celebrationVisible, setCelebrationVisible] = useState(false);
+  const [celebrationData, setCelebrationData] = useState<GamificationResult | null>(null);
+  const celebrationOpacity = useRef(new Animated.Value(0)).current;
+  const questRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const waypointBufferRef = useRef<Waypoint[]>([]);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -127,6 +162,18 @@ export default function JourneyTab() {
       setHistoricalJourneys(data.journeys);
     } catch (err) {
       console.warn("[JourneyMap] loadHistory failed", err);
+    }
+  }, [token]);
+
+  const loadQuests = useCallback(async () => {
+    if (!token || IS_WEB) return;
+    try {
+      const data = (await apiFetch("/api/quests", {
+        headers: { Authorization: `Bearer ${token}` },
+      })) as { active: QuestItem[]; completed: QuestItem[] };
+      setQuests(data.active.slice(0, 3));
+    } catch (err) {
+      console.warn("[JourneyMap] loadQuests failed", err);
     }
   }, [token]);
 
@@ -160,8 +207,9 @@ export default function JourneyTab() {
       } else {
         await loadHistory();
       }
+      loadQuests();
     })();
-  }, [token, loadHistory, loadExploredCells]);
+  }, [token, loadHistory, loadExploredCells, loadQuests]);
 
   useEffect(() => {
     if (!currentLocation || hasAutocenteredRef.current || IS_WEB) return;
@@ -182,6 +230,7 @@ export default function JourneyTab() {
       locationSubscriptionRef.current?.remove();
       if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (questRefreshRef.current) clearInterval(questRefreshRef.current);
     };
   }, []);
 
@@ -301,6 +350,8 @@ export default function JourneyTab() {
     timerIntervalRef.current = setInterval(() => {
       setElapsedDisplay(formatDuration(data.startedAt));
     }, 1000);
+    questRefreshRef.current = setInterval(() => loadQuests(), 30000);
+    loadQuests();
   }
 
   async function endJourney() {
@@ -328,23 +379,52 @@ export default function JourneyTab() {
     // Definitive drain — no new waypoints can arrive after watcher is stopped
     const remainingWaypoints = waypointBufferRef.current.splice(0);
 
+    if (questRefreshRef.current) {
+      clearInterval(questRefreshRef.current);
+      questRefreshRef.current = null;
+    }
+
     try {
       const result = (await apiFetch(`/api/journeys/${jId}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: "ended", waypoints: remainingWaypoints }),
-      })) as { totalDistanceM: number; placeCount: number };
+      })) as {
+        totalDistanceM: number;
+        placeCount: number;
+        xpGained?: number;
+        newLevel?: number;
+        newBadges?: BadgeItem[];
+        completedQuests?: Array<{ key: string; title: string; xpReward: number }>;
+        newStreak?: number;
+      };
 
-      const dist = formatDistance(result.totalDistanceM ?? 0);
-      const elapsed = startedAtSnapshot ? formatDuration(startedAtSnapshot) : "—";
       setJourneyId(null);
       setJourneyStartedAt(null);
       setCurrentHeading(null);
       setWaypoints([]);
       setJourneyStatus("idle");
       loadHistory();
+      loadQuests();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
-      Alert.alert("Journey Complete!", `Distance: ${dist}\nTime: ${elapsed}`);
+
+      if ((result.xpGained ?? 0) > 0) {
+        const gamResult: GamificationResult = {
+          xpGained: result.xpGained ?? 0,
+          newLevel: result.newLevel ?? 1,
+          newBadges: result.newBadges ?? [],
+          completedQuests: result.completedQuests ?? [],
+          newStreak: result.newStreak ?? 0,
+        };
+        setCelebrationData(gamResult);
+        setCelebrationVisible(true);
+        celebrationOpacity.setValue(0);
+        Animated.sequence([
+          Animated.timing(celebrationOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.delay(3000),
+          Animated.timing(celebrationOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+        ]).start(() => setCelebrationVisible(false));
+      }
     } catch (err) {
       console.warn("[JourneyMap] endJourney PATCH failed", err);
       // Restore buffer and restart full tracking so user can retry
@@ -551,6 +631,36 @@ export default function JourneyTab() {
         </View>
       )}
 
+      {journeyStatus === "active" && quests.length > 0 && (
+        <View style={[styles.questPanel, { top: insets.top + 56 }]}>
+          <TouchableOpacity
+            style={styles.questPanelHeader}
+            onPress={() => setQuestPanelExpanded((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.questPanelTitle}>⚔️ Active Quests</Text>
+            <Feather
+              name={questPanelExpanded ? "chevron-up" : "chevron-down"}
+              size={14}
+              color={Colors.parchmentMuted}
+            />
+          </TouchableOpacity>
+          {questPanelExpanded && (
+            <View style={styles.questList}>
+              {quests.map((q) => (
+                <QuestProgressBar
+                  key={q.key}
+                  title={q.title}
+                  progress={q.progress}
+                  target={q.target}
+                  xpReward={q.xpReward}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
       <LinearGradient
         colors={["transparent", "rgba(13,10,11,0.5)", "rgba(13,10,11,0.95)"]}
         style={[
@@ -606,6 +716,37 @@ export default function JourneyTab() {
         newCount={pingNewCount}
         onClose={() => setPingSheetVisible(false)}
       />
+
+      {celebrationVisible && celebrationData && (
+        <Animated.View
+          style={[styles.celebrationOverlay, { opacity: celebrationOpacity }]}
+          pointerEvents="none"
+        >
+          <View style={styles.celebrationCard}>
+            <Text style={styles.celebrationEmoji}>⚔️</Text>
+            <Text style={styles.celebrationTitle}>Journey Complete!</Text>
+            <Text style={styles.celebrationXp}>+{celebrationData.xpGained} XP Earned</Text>
+            {celebrationData.newBadges.length > 0 && (
+              <View style={styles.chipRow}>
+                {celebrationData.newBadges.map((b) => (
+                  <View key={b.key} style={styles.badgeChip}>
+                    <Text style={styles.chipText}>{b.icon} {b.name}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {celebrationData.completedQuests.length > 0 && (
+              <View style={styles.chipRow}>
+                {celebrationData.completedQuests.map((q) => (
+                  <View key={q.key} style={styles.questChip}>
+                    <Text style={styles.chipText}>✅ {q.title}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -770,5 +911,92 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 14,
     color: Colors.parchmentMuted,
+  },
+  questPanel: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    backgroundColor: "rgba(13,10,11,0.88)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    zIndex: 15,
+    overflow: "hidden",
+  },
+  questPanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  questPanelTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.parchment,
+  },
+  questList: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  celebrationOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    zIndex: 100,
+  },
+  celebrationCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+    padding: 28,
+    alignItems: "center",
+    maxWidth: 320,
+    gap: 8,
+  },
+  celebrationEmoji: {
+    fontSize: 52,
+  },
+  celebrationTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 22,
+    color: Colors.parchment,
+    marginTop: 4,
+  },
+  celebrationXp: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 18,
+    color: Colors.gold,
+    marginBottom: 4,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  badgeChip: {
+    backgroundColor: "rgba(212,160,23,0.18)",
+    borderWidth: 1,
+    borderColor: Colors.gold,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  questChip: {
+    backgroundColor: "rgba(76,175,80,0.18)",
+    borderWidth: 1,
+    borderColor: "#4CAF50",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  chipText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: Colors.parchment,
   },
 });

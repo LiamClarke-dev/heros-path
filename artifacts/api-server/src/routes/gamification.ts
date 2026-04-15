@@ -1,0 +1,145 @@
+import { Router, type Request, type Response } from "express";
+import { db, userBadges, userQuests, users, journeys, journeyWaypoints, userDiscoveredPlaces } from "@workspace/db";
+import { eq, and, isNotNull, count, sql } from "drizzle-orm";
+import type { AuthenticatedRequest } from "../middlewares/auth.js";
+import {
+  BADGE_DEFINITIONS,
+  QUEST_DEFINITIONS,
+  computeLevel,
+  rankName,
+  xpForCurrentLevel,
+  xpForNextLevel,
+} from "../lib/gamification.js";
+
+const router = Router();
+
+// GET /api/quests
+router.get("/quests", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+
+  const rows = await db
+    .select()
+    .from(userQuests)
+    .where(eq(userQuests.userId, user.id));
+
+  const rowMap = new Map(rows.map((r) => [r.questKey, r]));
+
+  const active = [];
+  const completed = [];
+
+  for (const def of QUEST_DEFINITIONS) {
+    const row = rowMap.get(def.key);
+    const progress = row?.progress ?? 0;
+    const isCompleted = row?.completedAt != null;
+    const item = {
+      key: def.key,
+      title: def.title,
+      description: def.description,
+      xpReward: def.xpReward,
+      progress,
+      target: def.target,
+      isCompleted,
+      completedAt: row?.completedAt ?? null,
+    };
+    if (isCompleted) {
+      completed.push(item);
+    } else {
+      active.push(item);
+    }
+  }
+
+  res.json({ active, completed });
+});
+
+// GET /api/badges
+router.get("/badges", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+
+  const rows = await db
+    .select()
+    .from(userBadges)
+    .where(eq(userBadges.userId, user.id));
+
+  const earnedMap = new Map(rows.map((r) => [r.badgeKey, r.earnedAt]));
+
+  const earned = [];
+  const available = [];
+
+  for (const def of BADGE_DEFINITIONS) {
+    if (earnedMap.has(def.key)) {
+      earned.push({
+        key: def.key,
+        name: def.name,
+        description: def.description,
+        icon: def.icon,
+        earnedAt: earnedMap.get(def.key),
+      });
+    } else {
+      available.push({
+        key: def.key,
+        name: def.name,
+        description: def.description,
+        icon: def.icon,
+        earnedAt: null,
+      });
+    }
+  }
+
+  res.json({ earned, available });
+});
+
+// GET /api/me/stats — summary for profile screen (fresh DB read)
+router.get("/me/stats", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+
+  const [[dbUser], [journeyCountRow], [placeCountRow], cellsResult] =
+    await Promise.all([
+      db.select().from(users).where(eq(users.id, user.id)),
+      db
+        .select({ c: count() })
+        .from(journeys)
+        .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt))),
+      db
+        .select({ c: count() })
+        .from(userDiscoveredPlaces)
+        .where(eq(userDiscoveredPlaces.userId, user.id)),
+      db
+        .select({ lat: journeyWaypoints.lat, lng: journeyWaypoints.lng })
+        .from(journeyWaypoints)
+        .innerJoin(journeys, eq(journeyWaypoints.journeyId, journeys.id))
+        .where(eq(journeys.userId, user.id)),
+    ]);
+
+  if (!dbUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const CELL = 0.0005;
+  const cellSet = new Set<string>();
+  for (const wp of cellsResult) {
+    const cLat = Math.floor(parseFloat(String(wp.lat)) / CELL) * CELL;
+    const cLng = Math.floor(parseFloat(String(wp.lng)) / CELL) * CELL;
+    cellSet.add(`${cLat.toFixed(4)},${cLng.toFixed(4)}`);
+  }
+
+  const xp = dbUser.xp ?? 0;
+  const level = computeLevel(xp);
+
+  res.json({
+    xp,
+    level,
+    rankName: rankName(level),
+    streakDays: dbUser.streakDays ?? 0,
+    displayName: dbUser.displayName,
+    email: dbUser.email ?? null,
+    profileImageUrl: dbUser.profileImageUrl ?? null,
+    xpCurrentLevel: xpForCurrentLevel(level),
+    xpNextLevel: xpForNextLevel(level),
+    totalJourneys: Number(journeyCountRow?.c ?? 0),
+    totalPlaces: Number(placeCountRow?.c ?? 0),
+    totalStreetsWalked: cellSet.size,
+  });
+});
+
+export default router;

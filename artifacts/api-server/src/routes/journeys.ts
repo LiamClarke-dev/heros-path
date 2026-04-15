@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, journeys, journeyWaypoints } from "@workspace/db";
-import { eq, and, desc, gte, lte, isNotNull } from "drizzle-orm";
+import { eq, and, desc, gte, lte, isNotNull, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
   haversineDistance,
@@ -15,6 +15,7 @@ import {
   discoverNearbyForPing,
   retryDiscovery,
 } from "../lib/discovery.js";
+import { awardJourneyGamification } from "../lib/gamification.js";
 import logger from "../logger.js";
 
 const router = Router();
@@ -133,7 +134,7 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       if (snapped) polylineEncoded = encodePolyline(snapped);
     }
 
-    const [updated] = await db
+    await db
       .update(journeys)
       .set({
         endedAt: new Date(),
@@ -141,30 +142,72 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
         polylineEncoded,
         discoveryStatus: "pending",
       })
-      .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
-      .returning();
+      .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)));
 
     const userId = user.id;
+
+    // Step 1: Await discovery (not fire-and-forget) so gamification sees new places
+    let placeCount = 0;
     if (polylineEncoded) {
-      const poly = polylineEncoded;
-      setImmediate(() => {
-        discoverPlacesAlongRoute(journeyId, userId, poly).catch((err) =>
-          logger.warn({ err }, "discoverPlacesAlongRoute background failed")
-        );
-      });
+      try {
+        const disc = await discoverPlacesAlongRoute(journeyId, userId, polylineEncoded);
+        placeCount = disc.placesFound;
+      } catch (err) {
+        logger.warn({ err }, "discoverPlacesAlongRoute failed during end-journey");
+      }
     } else {
-      setImmediate(() => {
-        db.update(journeys)
-          .set({ discoveryStatus: "completed" })
-          .where(eq(journeys.id, journeyId))
-          .catch((err) => logger.warn({ err }, "Short journey status finalization failed"));
-      });
+      await db
+        .update(journeys)
+        .set({ discoveryStatus: "completed" })
+        .where(eq(journeys.id, journeyId))
+        .catch((err) => logger.warn({ err }, "Short journey status finalization failed"));
     }
 
+    // Step 2: Fetch current journey's ping count and compute duration
+    const [journeyRow] = await db
+      .select()
+      .from(journeys)
+      .where(eq(journeys.id, journeyId));
+
+    const pingCount = journeyRow?.pingCount ?? 0;
+    const startedAt = journeyRow?.startedAt ?? new Date();
+    const durationSeconds = Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
+
+    // Step 3: Award gamification
+    let gamificationResult = {
+      xpGained: 0,
+      newLevel: 1,
+      newBadges: [] as Array<{ key: string; name: string; description: string; icon: string }>,
+      completedQuests: [] as Array<{ key: string; title: string; xpReward: number }>,
+      newStreak: 0,
+    };
+    try {
+      gamificationResult = await awardJourneyGamification(
+        userId,
+        journeyId,
+        pingCount,
+        distM,
+        durationSeconds
+      );
+    } catch (err) {
+      logger.warn({ err }, "awardJourneyGamification failed");
+    }
+
+    // Step 4: Store xpEarned on the journey
+    await db
+      .update(journeys)
+      .set({ xpEarned: gamificationResult.xpGained })
+      .where(eq(journeys.id, journeyId));
+
     res.json({
-      ...updated,
-      placeCount: 0,
+      id: journeyId,
+      placeCount,
       totalDistanceM: distM,
+      xpGained: gamificationResult.xpGained,
+      newLevel: gamificationResult.newLevel,
+      newBadges: gamificationResult.newBadges,
+      completedQuests: gamificationResult.completedQuests,
+      newStreak: gamificationResult.newStreak,
     });
     return;
   }
@@ -348,6 +391,11 @@ router.post("/:journeyId/ping", async (req: Request, res: Response) => {
       res.status(503).json({ error: "Places API unavailable — try again shortly" });
       return;
     }
+    // Increment ping count on journey
+    await db
+      .update(journeys)
+      .set({ pingCount: sql`${journeys.pingCount} + 1` })
+      .where(eq(journeys.id, journeyId));
     res.json({ places, newCount });
   } catch (err) {
     logger.warn({ err }, "Ping discovery failed");

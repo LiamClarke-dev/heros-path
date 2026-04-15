@@ -109,6 +109,7 @@ export default function JourneyTab() {
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flushInFlightRef = useRef<Promise<void> | null>(null);
   const lastCellCheckDistRef = useRef<{ lat: number; lng: number } | null>(null);
   const hasAutocenteredRef = useRef(false);
 
@@ -208,15 +209,22 @@ export default function JourneyTab() {
   async function flushWaypoints(jId: string) {
     const buffer = waypointBufferRef.current.splice(0);
     if (!buffer.length || !token) return;
-    try {
-      await apiFetch(`/api/journeys/${jId}`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ waypoints: buffer }),
-      });
-    } catch (err) {
-      waypointBufferRef.current.unshift(...buffer);
-    }
+    let promise!: Promise<void>;
+    promise = (async () => {
+      try {
+        await apiFetch(`/api/journeys/${jId}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ waypoints: buffer }),
+        });
+      } catch (err) {
+        waypointBufferRef.current.unshift(...buffer);
+      } finally {
+        if (flushInFlightRef.current === promise) flushInFlightRef.current = null;
+      }
+    })();
+    flushInFlightRef.current = promise;
+    await promise;
   }
 
   const locationWatchOptions: Location.LocationOptions = {
@@ -295,6 +303,9 @@ export default function JourneyTab() {
     const startedAtSnapshot = journeyStartedAt;
 
     setJourneyStatus("ending");
+
+    // Await any in-flight flush so its waypoints land (or return to buffer) before we end
+    await flushInFlightRef.current;
 
     // Stop all tracking sources before drain — makes the buffer capture atomic
     locationSubscriptionRef.current?.remove();

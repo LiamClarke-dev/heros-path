@@ -6,12 +6,36 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { useAutoDiscovery, useAuthRequest, makeRedirectUri } from "expo-auth-session";
 import { apiFetch } from "./api";
 
 const TOKEN_KEY = "auth_token";
 const REPLIT_ISSUER = "https://replit.com/oidc";
+
+const storage = {
+  async get(key: string): Promise<string | null> {
+    if (Platform.OS === "web") {
+      return typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
+    }
+    return SecureStore.getItemAsync(key);
+  },
+  async set(key: string, value: string): Promise<void> {
+    if (Platform.OS === "web") {
+      if (typeof localStorage !== "undefined") localStorage.setItem(key, value);
+      return;
+    }
+    return SecureStore.setItemAsync(key, value);
+  },
+  async remove(key: string): Promise<void> {
+    if (Platform.OS === "web") {
+      if (typeof localStorage !== "undefined") localStorage.removeItem(key);
+      return;
+    }
+    return SecureStore.deleteItemAsync(key);
+  },
+};
 
 export interface AuthUser {
   id: string;
@@ -77,7 +101,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [request, response, promptAsync] = useAuthRequest(
     {
-      clientId: process.env.EXPO_PUBLIC_REPLIT_CLIENT_ID ?? process.env.EXPO_PUBLIC_REPL_ID ?? "herospath",
+      clientId:
+        process.env.EXPO_PUBLIC_REPLIT_CLIENT_ID ??
+        process.env.EXPO_PUBLIC_REPL_ID ??
+        "herospath",
       redirectUri,
       scopes: ["openid", "profile", "email"],
       usePKCE: true,
@@ -90,14 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const stored = await SecureStore.getItemAsync(TOKEN_KEY);
+        const stored = await storage.get(TOKEN_KEY);
         if (stored) {
           const decoded = decodePayload(stored);
           if (decoded) {
             setToken(stored);
             setUser(decoded);
           } else {
-            await SecureStore.deleteItemAsync(TOKEN_KEY);
+            await storage.remove(TOKEN_KEY);
           }
         }
       } finally {
@@ -137,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [response]);
 
   async function persistToken(newToken: string, newUser: AuthUser) {
-    await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+    await storage.set(TOKEN_KEY, newToken);
     setToken(newToken);
     setUser(newUser);
   }
@@ -173,7 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [request, promptAsync]);
 
   const logout = useCallback(async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await storage.remove(TOKEN_KEY);
     setToken(null);
     setUser(null);
     try {

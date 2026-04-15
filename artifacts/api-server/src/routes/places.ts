@@ -1,6 +1,12 @@
 import { Router, type Request, type Response } from "express";
-import { db, placeCache, userPreferences } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  placeCache,
+  userPreferences,
+  userDiscoveredPlaces,
+  userPlaceStates,
+} from "@workspace/db";
+import { eq, and, or, isNull, gt, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import { fetchPlaceDetail, fetchOpeningHours } from "../lib/placesApi.js";
 import logger from "../logger.js";
@@ -8,6 +14,161 @@ import logger from "../logger.js";
 const router = Router();
 
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function makePhotoUrl(ref: string | null | undefined, width = 400): string | null {
+  if (!ref) return null;
+  const key = process.env.GOOGLE_MAPS_API_KEY ?? "";
+  return ref.includes("/")
+    ? `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=${width}&key=${key}`
+    : null;
+}
+
+router.get("/discovered", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const filter = (req.query.filter as string) ?? "all";
+  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
+  const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10)));
+  const offset = (page - 1) * limit;
+
+  const now = new Date();
+
+  const rows = await db
+    .select({
+      googlePlaceId: placeCache.googlePlaceId,
+      name: placeCache.name,
+      lat: placeCache.lat,
+      lng: placeCache.lng,
+      rating: placeCache.rating,
+      types: placeCache.types,
+      primaryType: placeCache.primaryType,
+      photoReference: placeCache.photoReference,
+      address: placeCache.address,
+      discoveryCount: userDiscoveredPlaces.discoveryCount,
+      firstDiscoveredAt: userDiscoveredPlaces.firstDiscoveredAt,
+      lastDiscoveredAt: userDiscoveredPlaces.lastDiscoveredAt,
+      isFavorited: userPlaceStates.isFavorited,
+      isDismissed: userPlaceStates.isDismissed,
+      isSnoozed: userPlaceStates.isSnoozed,
+      snoozeUntil: userPlaceStates.snoozeUntil,
+    })
+    .from(userDiscoveredPlaces)
+    .innerJoin(
+      placeCache,
+      eq(userDiscoveredPlaces.googlePlaceId, placeCache.googlePlaceId)
+    )
+    .leftJoin(
+      userPlaceStates,
+      and(
+        eq(userPlaceStates.userId, user.id),
+        eq(userPlaceStates.googlePlaceId, placeCache.googlePlaceId)
+      )
+    )
+    .where(
+      and(
+        eq(userDiscoveredPlaces.userId, user.id),
+        or(
+          isNull(userPlaceStates.isDismissed),
+          eq(userPlaceStates.isDismissed, false)
+        ),
+        filter === "favorites"
+          ? eq(userPlaceStates.isFavorited, true)
+          : filter === "snoozed"
+          ? and(
+              eq(userPlaceStates.isSnoozed, true),
+              gt(userPlaceStates.snoozeUntil!, now)
+            )
+          : or(
+              isNull(userPlaceStates.isSnoozed),
+              eq(userPlaceStates.isSnoozed, false),
+              and(
+                eq(userPlaceStates.isSnoozed, true),
+                or(isNull(userPlaceStates.snoozeUntil), sql`${userPlaceStates.snoozeUntil} <= ${now}`)
+              )
+            )
+      )
+    )
+    .orderBy(sql`${userDiscoveredPlaces.lastDiscoveredAt} DESC`)
+    .limit(limit)
+    .offset(offset);
+
+  const countRow = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(userDiscoveredPlaces)
+    .where(eq(userDiscoveredPlaces.userId, user.id));
+
+  const total = countRow[0]?.total ?? 0;
+
+  const places = rows.map((p) => ({
+    ...p,
+    lat: parseFloat(String(p.lat)),
+    lng: parseFloat(String(p.lng)),
+    rating: p.rating !== null ? parseFloat(String(p.rating)) : null,
+    isFavorited: p.isFavorited ?? false,
+    isDismissed: p.isDismissed ?? false,
+    isSnoozed: p.isSnoozed ?? false,
+    photoUrl: makePhotoUrl(p.photoReference),
+  }));
+
+  res.json({ places, total, page });
+});
+
+router.post("/:googlePlaceId/state", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const googlePlaceId = req.params.googlePlaceId as string;
+  const { action, snoozeFor } = req.body as {
+    action?: string;
+    snoozeFor?: string;
+  };
+
+  const validActions = ["favorite", "unfavorite", "dismiss", "snooze", "unsnooze"];
+  if (!action || !validActions.includes(action)) {
+    res.status(400).json({ error: `action must be one of: ${validActions.join(", ")}` });
+    return;
+  }
+
+  let snoozeUntil: Date | null = null;
+  if (action === "snooze") {
+    const now = new Date();
+    if (snoozeFor === "1day") snoozeUntil = new Date(now.getTime() + 86400000);
+    else if (snoozeFor === "1week") snoozeUntil = new Date(now.getTime() + 7 * 86400000);
+    else if (snoozeFor === "1month") snoozeUntil = new Date(now.getTime() + 30 * 86400000);
+    else {
+      res.status(400).json({ error: "snoozeFor must be 1day | 1week | 1month" });
+      return;
+    }
+  }
+
+  const updates: {
+    isFavorited?: boolean;
+    isDismissed?: boolean;
+    isSnoozed?: boolean;
+    snoozeUntil?: Date | null;
+    updatedAt: Date;
+  } = { updatedAt: new Date() };
+
+  switch (action) {
+    case "favorite":    updates.isFavorited = true; break;
+    case "unfavorite":  updates.isFavorited = false; break;
+    case "dismiss":     updates.isDismissed = true; break;
+    case "snooze":      updates.isSnoozed = true; updates.snoozeUntil = snoozeUntil; break;
+    case "unsnooze":    updates.isSnoozed = false; updates.snoozeUntil = null; break;
+  }
+
+  await db
+    .insert(userPlaceStates)
+    .values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      googlePlaceId,
+      ...updates,
+    })
+    .onConflictDoUpdate({
+      target: [userPlaceStates.userId, userPlaceStates.googlePlaceId],
+      set: updates,
+    });
+
+  res.json({ ok: true });
+});
 
 router.get("/:googlePlaceId", async (req: Request, res: Response) => {
   const googlePlaceId = req.params.googlePlaceId as string;

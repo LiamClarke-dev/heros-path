@@ -74,7 +74,8 @@ function FriendAvatar({ name, imageUrl, size = 56 }: { name: string; imageUrl?: 
 
 export function FriendDetailSheet({ visible, friend, token, onClose, onFriendRemoved, onExplorationToggle }: Props) {
   const router = useRouter();
-  const [sharedLists, setSharedLists] = useState<SharedList[]>([]);
+  const [listsFromFriend, setListsFromFriend] = useState<SharedList[]>([]);
+  const [listsToFriend, setListsToFriend] = useState<SharedList[]>([]);
   const [listsLoading, setListsLoading] = useState(false);
   const [sharingEnabled, setSharingEnabled] = useState(false);
   const [sharingToggling, setSharingToggling] = useState(false);
@@ -84,12 +85,18 @@ export function FriendDetailSheet({ visible, friend, token, onClose, onFriendRem
     setSharingEnabled(friend.explorationSharing);
 
     setListsLoading(true);
-    apiFetch("/api/lists/shared-with-me", { token })
-      .then((d: { lists: SharedList[] }) => {
-        const fromFriend = (d.lists ?? []).filter(
-          (l) => l.sharedBy?.id === friend.id
-        );
-        setSharedLists(fromFriend);
+    Promise.all([
+      apiFetch("/api/lists/shared-with-me", { token }).then(
+        (d: { lists: SharedList[] }) =>
+          (d.lists ?? []).filter((l) => l.sharedBy?.id === friend.id)
+      ),
+      apiFetch(`/api/lists/shared-with/${friend.id}`, { token }).then(
+        (d: { lists: SharedList[] }) => d.lists ?? []
+      ),
+    ])
+      .then(([fromFriend, toFriend]) => {
+        setListsFromFriend(fromFriend);
+        setListsToFriend(toFriend);
       })
       .catch(() => {})
       .finally(() => setListsLoading(false));
@@ -200,10 +207,10 @@ export function FriendDetailSheet({ visible, friend, token, onClose, onFriendRem
               <Text style={styles.sectionTitle}>Lists They Shared With You</Text>
               {listsLoading ? (
                 <ActivityIndicator color={Colors.gold} />
-              ) : sharedLists.length === 0 ? (
+              ) : listsFromFriend.length === 0 ? (
                 <Text style={styles.emptyText}>No lists shared with you yet.</Text>
               ) : (
-                sharedLists.map((l) => (
+                listsFromFriend.map((l) => (
                   <TouchableOpacity
                     key={l.id}
                     style={styles.listRow}
@@ -219,6 +226,37 @@ export function FriendDetailSheet({ visible, friend, token, onClose, onFriendRem
                       <Text style={styles.listMeta}>
                         {l.itemCount} place{l.itemCount !== 1 ? "s" : ""}
                         {l.canEdit ? " · Collaborative" : ""}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Lists You Shared With Them</Text>
+              {listsLoading ? (
+                <ActivityIndicator color={Colors.gold} />
+              ) : listsToFriend.length === 0 ? (
+                <Text style={styles.emptyText}>No lists shared with {friend.displayName} yet.</Text>
+              ) : (
+                listsToFriend.map((l) => (
+                  <TouchableOpacity
+                    key={l.id}
+                    style={styles.listRow}
+                    onPress={() => {
+                      onClose();
+                      router.push(`/lists/${l.id}`);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.listEmoji}>{l.emoji ?? "📍"}</Text>
+                    <View style={styles.listInfo}>
+                      <Text style={styles.listName}>{l.name}</Text>
+                      <Text style={styles.listMeta}>
+                        {l.itemCount} place{l.itemCount !== 1 ? "s" : ""}
+                        {l.canEdit ? " · Collaborative" : " · View only"}
                       </Text>
                     </View>
                     <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />

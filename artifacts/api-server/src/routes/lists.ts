@@ -160,6 +160,59 @@ router.get("/shared-with-me", async (req: Request, res: Response) => {
   res.json({ lists });
 });
 
+router.get("/shared-with/:friendId", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const friendId = req.params.friendId as string;
+
+  const shares = await db
+    .select({
+      listId: listShares.listId,
+      canEdit: listShares.canEdit,
+      createdAt: listShares.createdAt,
+    })
+    .from(listShares)
+    .where(
+      and(
+        eq(listShares.sharedByUserId, user.id),
+        eq(listShares.sharedWithUserId, friendId)
+      )
+    );
+
+  if (shares.length === 0) {
+    res.json({ lists: [] });
+    return;
+  }
+
+  const listIds = shares.map((s) => s.listId);
+  const listRows = await db
+    .select({
+      id: placeLists.id,
+      name: placeLists.name,
+      emoji: placeLists.emoji,
+      createdAt: placeLists.createdAt,
+      itemCount: count(placeListItems.id),
+    })
+    .from(placeLists)
+    .leftJoin(placeListItems, eq(placeListItems.listId, placeLists.id))
+    .where(
+      sql`${placeLists.id} = ANY(ARRAY[${sql.join(
+        listIds.map((id) => sql`${id}::text`),
+        sql`, `
+      )}])`
+    )
+    .groupBy(placeLists.id);
+
+  const listMap = Object.fromEntries(listRows.map((l) => [l.id, l]));
+
+  const lists = shares.map((s) => ({
+    ...listMap[s.listId],
+    canEdit: s.canEdit,
+    sharedAt: s.createdAt,
+  }));
+
+  res.json({ lists });
+});
+
 router.get("/:listId", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const listId = req.params.listId as string;
@@ -641,6 +694,15 @@ router.post("/:listId/share", async (req: Request, res: Response) => {
         role: "editor",
       })
       .onConflictDoNothing();
+  } else {
+    await db
+      .delete(listCollaborators)
+      .where(
+        and(
+          eq(listCollaborators.listId, listId),
+          eq(listCollaborators.userId, friendId)
+        )
+      );
   }
 
   res.json({ ok: true });

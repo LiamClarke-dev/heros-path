@@ -17,6 +17,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../constants/colors";
 import { orderedTagGroups, TAG_BY_KEY } from "../constants/visitTags";
+import { apiFetch } from "../lib/api";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.78;
@@ -109,25 +110,16 @@ export function VisitLogSheet({ visible, placeName, googlePlaceId, onClose, onSa
     setSaving(true);
     setError(null);
     try {
-      const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? "";
-      const resp = await fetch(`${baseUrl}/api/places/${googlePlaceId}/visits`, {
+      const { visit } = (await apiFetch(`/api/places/${googlePlaceId}/visits`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        token,
         body: JSON.stringify({
           visitedAt: visitDate.toISOString(),
           reaction: reaction ?? undefined,
           tags: selectedTags,
           notes: notes.trim() || undefined,
         }),
-      });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? "Failed to save visit");
-      }
-      const { visit } = (await resp.json()) as { visit: VisitRecord };
+      })) as { visit: VisitRecord };
       onSaved(visit);
       handleClose();
     } catch (err) {

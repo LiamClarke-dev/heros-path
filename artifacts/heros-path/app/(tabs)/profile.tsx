@@ -307,9 +307,9 @@ export default function ProfileTab() {
         </TouchableOpacity>
         {visitSummary && visitSummary.recent.length > 0 && (
           <View style={styles.recentVisits}>
-            {visitSummary.recent.map((v) => (
+            {visitSummary.recent.map((v, idx) => (
               <TouchableOpacity
-                key={v.googlePlaceId + v.reaction}
+                key={`${v.googlePlaceId}-${idx}`}
                 style={styles.recentVisitChip}
                 onPress={() => router.push(`/place-detail?googlePlaceId=${v.googlePlaceId}`)}
                 activeOpacity={0.8}

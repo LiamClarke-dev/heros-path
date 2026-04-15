@@ -109,7 +109,7 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
         totalDistanceM: String(distM.toFixed(2)),
         polylineEncoded,
       })
-      .where(eq(journeys.id, journeyId))
+      .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
       .returning();
 
     setImmediate(() => {

@@ -276,6 +276,7 @@ export default function JourneyTab() {
     const jId = data.id;
     setJourneyId(jId);
     setJourneyStartedAt(data.startedAt);
+    setElapsedDisplay("0:00");
     setWaypoints([]);
     waypointBufferRef.current = [];
     setJourneyStatus("active");
@@ -474,10 +475,7 @@ export default function JourneyTab() {
                     ? waypoints.reduce((acc, wp, i) => {
                         if (i === 0) return 0;
                         const prev = waypoints[i - 1];
-                        const dlat = (wp.lat - prev.lat) * 111000;
-                        const dlng =
-                          (wp.lng - prev.lng) * 111000 * Math.cos((wp.lat * Math.PI) / 180);
-                        return acc + Math.sqrt(dlat ** 2 + dlng ** 2);
+                        return acc + haversineM(prev.lat, prev.lng, wp.lat, wp.lng);
                       }, 0)
                     : 0
                 )}

@@ -1,37 +1,35 @@
 {
   "expo": {
     "name": "Hero's Path",
-    "slug": "herospath-replit",
+    "slug": "heros-path",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "heros-path",
-    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "scheme": "herospath",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0D0A0B"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.herospath.app",
+      "icon": "./assets/icon.png",
       "infoPlist": {
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.155152959717-a20bfhbkjp05k4kd3cahvasvbneimn7q"
-            ]
-          }
-        ],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.herospath.app"
+      "package": "com.herospath.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0D0A0B"
+      }
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       [
@@ -41,12 +39,10 @@
         }
       ],
       "expo-font",
-      "expo-web-browser",
       "expo-dev-client"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     },
     "extra": {
       "eas": {

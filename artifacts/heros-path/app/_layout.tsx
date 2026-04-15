@@ -1,75 +1,56 @@
+import { createContext, useContext } from "react";
+import { Stack } from "expo-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
+import { useFonts } from "expo-font";
 import {
   Inter_400Regular,
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
-  useFonts,
 } from "@expo-google-fonts/inter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter, useSegments } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import * as SecureStore from "expo-secure-store";
-import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
-
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthProvider, useAuth } from "@/lib/auth";
+import { useEffect } from "react";
+import Colors from "../constants/colors";
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 1000 * 60 * 5,
+    },
+  },
+});
 
-const apiBase = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
-  : "http://localhost:3000/api";
+export interface AuthUser {
+  id: string;
+  email?: string | null;
+  displayName: string;
+  xp: number;
+  level: number;
+}
 
-setBaseUrl(apiBase);
-setAuthTokenGetter(() => SecureStore.getItemAsync("auth_session_token"));
+interface AuthContextValue {
+  token: string | null;
+  user: AuthUser | null;
+  isLoading: boolean;
+}
 
-function RootLayoutNav() {
-  const { user, isLoading } = useAuth();
-  const router = useRouter();
-  const segments = useSegments();
+const AuthContext = createContext<AuthContextValue>({
+  token: null,
+  user: null,
+  isLoading: false,
+});
 
-  useEffect(() => {
-    if (isLoading) return;
-
-    const inAuthGroup = segments[0] === "(auth)";
-
-    if (!user && !inAuthGroup) {
-      router.replace("/(auth)/login");
-    } else if (user && inAuthGroup) {
-      router.replace("/(tabs)");
-    }
-  }, [user, isLoading, segments]);
-
-  return (
-    <Stack
-      screenOptions={{
-        contentStyle: { backgroundColor: "#0D0A0B" },
-        headerStyle: { backgroundColor: "#0D0A0B" },
-        headerTintColor: "#D4A017",
-        headerTitleStyle: { color: "#F5E6C8" },
-      }}
-    >
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen name="dev" options={{ title: "Dev Tools", presentation: "modal" }} />
-      <Stack.Screen name="journey-results" options={{ headerShown: false }} />
-      <Stack.Screen name="settings" options={{ headerShown: false }} />
-      <Stack.Screen name="past-journeys" options={{ headerShown: false }} />
-      <Stack.Screen name="journey-detail" options={{ headerShown: false }} />
-      <Stack.Screen name="list-detail" options={{ headerShown: false }} />
-      <Stack.Screen name="+not-found" />
-    </Stack>
-  );
+export function useAuth() {
+  return useContext(AuthContext);
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
+  const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -77,26 +58,24 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if (fontsLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsLoaded) return null;
 
   return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <AuthProvider>
-                <RootLayoutNav />
-              </AuthProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <QueryClientProvider client={queryClient}>
+      <SafeAreaProvider>
+        <AuthContext.Provider value={{ token: null, user: null, isLoading: false }}>
+          <StatusBar style="light" backgroundColor={Colors.background} />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(tabs)" />
+          </Stack>
+        </AuthContext.Provider>
+      </SafeAreaProvider>
+    </QueryClientProvider>
   );
 }

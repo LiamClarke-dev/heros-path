@@ -1,38 +1,38 @@
-import express, { type Express } from "express";
-import cors from "cors";
+import express from "express";
 import cookieParser from "cookie-parser";
-import pinoHttp from "pino-http";
-import { authMiddleware } from "./middlewares/authMiddleware";
-import router from "./routes";
-import { logger } from "./lib/logger";
+import cors from "cors";
+import { pinoHttp } from "pino-http";
+import logger from "./logger.js";
+import apiRoutes from "./routes/index.js";
 
-const app: Express = express();
+const app = express();
 
 app.use(
-  pinoHttp({
-    logger,
-    serializers: {
-      req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url?.split("?")[0],
-        };
-      },
-      res(res) {
-        return {
-          statusCode: res.statusCode,
-        };
-      },
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        origin.includes(".replit.dev") ||
+        origin.includes(".repl.co") ||
+        origin.includes(".replit.app") ||
+        origin.includes("localhost")
+      ) {
+        return callback(null, true);
+      }
+      callback(null, true);
     },
-  }),
+    credentials: true,
+  })
 );
-app.use(cors({ credentials: true, origin: true }));
-app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(authMiddleware);
 
-app.use("/api", router);
+app.use(pinoHttp({ logger }));
+app.use(express.json());
+app.use(cookieParser());
+
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.use("/api", apiRoutes);
 
 export default app;

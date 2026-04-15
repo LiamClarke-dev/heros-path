@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Hero's Path** is a gamified city exploration mobile app (Expo/React Native + Express backend). It tracks GPS journeys, permanently colors walked streets on a map, discovers nearby places via Google Places API, manages discovered places, and gamifies exploration with quests, XP, badges, and adventurer rank progression.
+**Hero's Path** is a gamified city exploration mobile app (Expo/React Native + Express backend). It tracks GPS journeys, permanently colors walked streets on a map, discovers nearby places via Google Places API (New), manages discovered places, and gamifies exploration with quests, XP, badges, and adventurer rank progression.
 
 pnpm workspace monorepo using TypeScript.
 
@@ -12,12 +12,11 @@ pnpm workspace monorepo using TypeScript.
 - **Node.js version**: 24
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
-- **API framework**: Express 5
+- **API framework**: Express 5 + pino logger
 - **Mobile**: Expo (SDK 54) + React Native 0.81
 - **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **State management**: TanStack Query v5
+- **Build**: tsx (dev), esbuild (prod)
 
 ## Adventurer Theme
 
@@ -31,45 +30,54 @@ pnpm workspace monorepo using TypeScript.
 
 ```text
 artifacts/
-├── api-server/         # Express API server (port 8080)
+├── api-server/         # Express API server (port from $PORT env, default 8080)
 │   └── src/
-│       ├── routes/     # auth, me, journeys, places, lists, quests, profile, health
-│       └── middlewares/# requireAuth (Bearer token from sessions table)
+│       ├── app.ts      # Express setup (cors, pino-http, body-parser, cookie-parser)
+│       ├── index.ts    # Server entry
+│       ├── logger.ts   # Pino logger
+│       ├── routes/     # index.ts — API routes (expanding each task)
+│       └── middlewares/# auth.ts — requireAuth (placeholder → filled by A2)
 ├── heros-path/         # Expo React Native app
-│   └── app/
-│       ├── (auth)/     # login.tsx — Google OAuth login screen
-│       ├── (tabs)/     # index (Journey), discover, lists, profile
-│       └── dev/        # simulate.tsx — dev journey simulator (__DEV__ only)
+│   ├── app/
+│   │   ├── _layout.tsx       # Root layout: QueryClientProvider, SafeAreaProvider, AuthContext
+│   │   ├── (auth)/           # Auth screens (login — built in A2)
+│   │   └── (tabs)/           # 4 tabs: Journey (index), Discover, Lists, Profile
+│   ├── assets/
+│   │   ├── icon.png          # App icon
+│   │   └── sprites/          # link_idle.gif + 4 directional walk GIFs
+│   ├── constants/
+│   │   └── colors.ts         # Adventurer color palette + Google Maps dark style
+│   └── lib/
+│       └── api.ts            # Centralized apiFetch() using EXPO_PUBLIC_API_BASE_URL
 └── mockup-sandbox/     # Vite component preview server
 lib/
-├── api-spec/           # OpenAPI 3.1 spec + Orval codegen config
-├── api-client-react/   # Generated React Query hooks + custom-fetch.ts
-├── api-zod/            # Generated Zod schemas from OpenAPI
 └── db/                 # Drizzle ORM schema + DB connection
+    └── src/
+        ├── index.ts    # db export (drizzle + pg Pool)
+        └── schema/
+            ├── index.ts
+            └── users.ts  # users, sessions, user_preferences tables
 ```
 
 ## Key Files
 
-- `lib/api-spec/openapi.yaml` — full API spec
-- `lib/db/src/schema/` — users, sessions, journeys, places, lists, gamification tables
-- `artifacts/api-server/src/routes/auth.ts` — Google token verification + session creation
-- `artifacts/api-server/src/middlewares/auth.ts` — `requireAuth` middleware
-- `artifacts/heros-path/context/AuthContext.tsx` — auth state + SecureStore persistence
-- `artifacts/heros-path/app/_layout.tsx` — root layout with auth redirect logic
+- `lib/db/src/schema/users.ts` — users, sessions, user_preferences tables
+- `artifacts/api-server/src/app.ts` — Express app setup
+- `artifacts/api-server/src/middlewares/auth.ts` — requireAuth placeholder
+- `artifacts/heros-path/app/_layout.tsx` — root layout + AuthContext (stub)
+- `artifacts/heros-path/lib/api.ts` — centralized apiFetch utility
 - `artifacts/heros-path/constants/colors.ts` — adventurer color palette + dark map style
 
-## Auth Flow
+## Auth Flow (A2 — not yet built)
 
-1. Expo uses `expo-auth-session` to get a Google ID token
-2. ID token sent to `POST /api/auth/google` — verified via `oauth2.googleapis.com/tokeninfo`
-3. User upserted in DB, session token generated with `crypto.randomUUID()`
-4. Token stored in `expo-secure-store`, loaded back on app start
-5. `setAuthTokenGetter()` wires token into all API calls via Bearer header
+Planned: Email/Password (dev testing) + Replit OIDC/PKCE (`expo-auth-session`).
 
 ## Environment Variables / Secrets
 
-- `GOOGLE_MAPS_API_KEY` (secret) — Google Places API for place discovery pings
-- `EXPO_PUBLIC_GOOGLE_CLIENT_ID` (shared env var) — Google OAuth Web Client ID for login
+- `GOOGLE_MAPS_API_KEY` (secret) — Google Places API (New) for place discovery
+- `GOOGLE_CLIENT_ID` (secret) — used by Replit Auth OIDC
+- `GOOGLE_CLIENT_SECRET` (secret) — used by Replit Auth OIDC
+- `EXPO_PUBLIC_API_BASE_URL` (env var) — API base URL for mobile app
 - `DATABASE_URL` (runtime managed) — PostgreSQL connection string
 - `PORT` (runtime managed) — assigned per workflow
 
@@ -77,17 +85,24 @@ lib/
 
 - **Pin to exactly `1.18.0`** — only version compatible with Expo Go
 - **Do NOT add to plugins array** in app.json — will crash
-- Web stub at `stubs/react-native-maps.web.js` (aliased via metro.config.js)
+- Web stub via `metro.config.js` `resolveRequest` returning `{ type: "empty" }`
+- `expo-image` required for animated GIF sprites (RN Image does not animate GIFs on iOS)
 
-## TypeScript & Composite Projects
+## Critical Implementation Notes
 
-Every package extends `tsconfig.base.json`. Run `pnpm run typecheck` from root for full build graph.
+- `useAnimatedStyle` must NEVER be called inside `.map()` or conditionally — extract to component
+- API server imports use relative paths (`../middlewares/auth`) NOT `@/` aliases
+- All top padding uses `useSafeAreaInsets()` — never hardcoded pt values
+- `apiFetch` in `lib/api.ts` is the single API client — all features import from here
+- `EXPO_PUBLIC_API_BASE_URL` must be set as env var in Replit secrets
 
-## DB Schema Tables
+## DB Schema Tables (A1 — initial)
 
-`users`, `sessions`, `user_preferences`, `journeys`, `journey_waypoints`, `place_cache`, `user_discovered_places`, `journey_discovered_places`, `place_lists`, `place_list_items`, `user_badges`, `user_quests`
+`users`, `sessions`, `user_preferences`
 
-## Rank Progression
+Subsequent tasks add: `journeys`, `journey_waypoints`, `place_cache`, `user_discovered_places`, `journey_discovered_places`, `place_lists`, `place_list_items`, `user_badges`, `user_quests`, `place_visits`
+
+## Rank Progression (planned A6)
 
 | XP Range  | Rank         |
 |-----------|--------------|
@@ -98,36 +113,15 @@ Every package extends `tsconfig.base.json`. Run `pnpm run typecheck` from root f
 | 1500–2999 | Cartographer |
 | 3000+     | Legend       |
 
-## API Endpoints
+## Rebuild Task Status
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/auth/google` | No | Google OAuth → session token |
-| GET | `/api/me` | Yes | Current user profile |
-| GET/PUT | `/api/me/preferences` | Yes | Place type preferences |
-| GET | `/api/me/badges` | Yes | Badge collection |
-| GET | `/api/profile/stats` | Yes | Journey/XP/streak stats |
-| GET | `/api/quests` | Yes | Active + completed quests |
-| POST | `/api/journeys` | Yes | Start a journey |
-| GET | `/api/journeys` | Yes | Journey history |
-| GET/PATCH | `/api/journeys/:id` | Yes | Journey detail + add waypoints |
-| POST | `/api/journeys/:id/ping` | Yes | Discover nearby places (Google Places) |
-| GET | `/api/journeys/:id/discoveries` | Yes | Places found during journey |
-| GET | `/api/places/discover` | Yes | All discovered places (filterable) |
-| POST | `/api/places/:id/action` | Yes | dismiss/snooze/favorite/add_to_list |
-| GET/POST | `/api/lists` | Yes | Place lists |
-| GET/PUT/DELETE | `/api/lists/:id` | Yes | List management |
-| GET | `/api/lists/:id/places` | Yes | Places in a list |
-
-## Task Status
-
-- **Task #1** (Foundation — Auth, DB, Nav & Dev Mode): Complete
-- **Task #2** (Journey Tracking): Pending
-- **Task #3** (Place Management): Pending
-- **Task #4** (Gamification): Pending
-
-## Google OAuth Setup Note
-
-For the Google OAuth login to work on device, add the following authorized redirect URIs to your Google Cloud OAuth 2.0 client:
-- For Expo Go: `https://auth.expo.io/@your-username/heros-path`
-- For web: the Expo dev domain URL
+- **Task #7 (A1)** — Clean Slate & Core Foundation: ✅ Complete
+- **Task #8 (A2)** — Authentication (Email/Password + Replit Auth): Pending
+- **Task #9 (A3)** — Map & Journey Tracking: Pending
+- **Task #10 (A4)** — Place Discovery & Ping (Rich Data): Pending
+- **Task #11 (A5)** — Place Management & Lists: Pending
+- **Task #12 (A6)** — Gamification, Quests & Adventurer Rank: Pending
+- **Task #13 (A7)** — Past Journeys, Profile & Polish: Pending
+- **Task #14 (A8)** — Place Visit Tracking & Personal Ratings: Pending
+- **Task #15 (A9)** — List Export to KML / Google My Maps: Pending
+- **Task #16 (A10)** — Social: Friends, Shared & Collaborative Lists: Pending

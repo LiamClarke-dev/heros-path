@@ -2,29 +2,24 @@ const Colors = {
   background: "#0D0A0B",
   surface: "#1A1510",
   card: "#221C14",
-  border: "#3A2E20",
+  border: "#2E2418",
   borderLight: "#4A3C28",
 
   gold: "#D4A017",
-  goldDark: "#8B5E15",
-  goldLight: "#E8C547",
-  goldGlow: "rgba(212,160,23,0.25)",
+  goldDark: "#A07810",
+  goldGlow: "rgba(212,160,23,0.12)",
 
   parchment: "#F5E6C8",
   parchmentMuted: "#A08060",
-  parchmentDim: "#6B5040",
+  parchmentDim: "#6A5040",
 
-  accent: "#E8A030",
+  error: "#E53935",
+  info: "#29B6F6",
   success: "#4A9B5E",
-  successLight: "rgba(74,155,94,0.2)",
-  error: "#CF6679",
-  errorLight: "rgba(207,102,121,0.2)",
-  info: "#5B8CB8",
-  infoLight: "rgba(91,140,184,0.2)",
 
   tabBar: "#0E0B0C",
   tabBarActive: "#D4A017",
-  tabBarInactive: "#6B5040",
+  tabBarInactive: "#6A5040",
 
   mapDark: [
     { elementType: "geometry", stylers: [{ color: "#1A1510" }] },
@@ -96,14 +91,6 @@ const Colors = {
       stylers: [{ color: "#4A9B5E" }],
     },
   ],
-
-  light: {
-    text: "#F5E6C8",
-    background: "#0D0A0B",
-    tint: "#D4A017",
-    tabIconDefault: "#6B5040",
-    tabIconSelected: "#D4A017",
-  },
 };
 
 export default Colors;

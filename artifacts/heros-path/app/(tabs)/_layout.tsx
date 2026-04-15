@@ -1,37 +1,22 @@
 import { Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import React from "react";
-import { Platform, StyleSheet, View } from "react-native";
-import { BlurView } from "expo-blur";
-
-import Colors from "@/constants/colors";
+import Colors from "../../constants/colors";
 
 export default function TabLayout() {
-  const isIOS = Platform.OS === "ios";
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.tabBarActive,
-        tabBarInactiveTintColor: Colors.tabBarInactive,
         headerShown: false,
         tabBarStyle: {
-          position: "absolute",
-          backgroundColor: isIOS ? "transparent" : Colors.tabBar,
-          borderTopWidth: 1,
+          backgroundColor: Colors.tabBar,
           borderTopColor: Colors.border,
-          elevation: 0,
+          borderTopWidth: 1,
         },
-        tabBarBackground: () =>
-          isIOS ? (
-            <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
-          ) : (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.tabBar }]} />
-          ),
+        tabBarActiveTintColor: Colors.tabBarActive,
+        tabBarInactiveTintColor: Colors.tabBarInactive,
         tabBarLabelStyle: {
           fontFamily: "Inter_500Medium",
           fontSize: 11,
-          marginBottom: 2,
         },
       }}
     >
@@ -40,7 +25,7 @@ export default function TabLayout() {
         options={{
           title: "Journey",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="compass" size={size} color={color} />
+            <Feather name="map" color={color} size={size} />
           ),
         }}
       />
@@ -49,7 +34,7 @@ export default function TabLayout() {
         options={{
           title: "Discover",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="map-pin" size={size} color={color} />
+            <Feather name="compass" color={color} size={size} />
           ),
         }}
       />
@@ -58,7 +43,7 @@ export default function TabLayout() {
         options={{
           title: "Lists",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="bookmark" size={size} color={color} />
+            <Feather name="bookmark" color={color} size={size} />
           ),
         }}
       />
@@ -67,7 +52,7 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="shield" size={size} color={color} />
+            <Feather name="user" color={color} size={size} />
           ),
         }}
       />

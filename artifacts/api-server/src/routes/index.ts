@@ -1,22 +1,9 @@
-import { Router, type IRouter } from "express";
-import healthRouter from "./health";
-import authRouter from "./auth";
-import meRouter from "./me";
-import journeysRouter from "./journeys";
-import placesRouter from "./places";
-import listsRouter from "./lists";
-import questsRouter from "./quests";
-import profileRouter from "./profile";
+import { Router } from "express";
 
-const router: IRouter = Router();
+const router = Router();
 
-router.use(healthRouter);
-router.use(authRouter);
-router.use(meRouter);
-router.use(journeysRouter);
-router.use(placesRouter);
-router.use(listsRouter);
-router.use(questsRouter);
-router.use(profileRouter);
+router.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
 
 export default router;

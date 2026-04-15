@@ -225,7 +225,7 @@ importers:
         specifier: ^55.0.10
         version: 55.0.10(expo@54.0.33)
       expo-dev-client:
-        specifier: ^6.0.20
+        specifier: 6.0.20
         version: 6.0.20(expo@54.0.33)
       expo-secure-store:
         specifier: ^15.0.8

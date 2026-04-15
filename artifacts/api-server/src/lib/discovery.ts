@@ -176,12 +176,6 @@ export async function discoverPlacesAlongRoute(
       }
     }
 
-    const deduped = deduplicatePlaces(allPlaces);
-    const filtered =
-      minRating > 0
-        ? deduped.filter((p) => p.rating !== null && p.rating >= minRating)
-        : deduped;
-
     if (errorCount === queries.length) {
       await db
         .update(journeys)
@@ -193,8 +187,10 @@ export async function discoverPlacesAlongRoute(
       return { placesFound: 0, newUserDiscoveries: 0 };
     }
 
-    if (filtered.length === 0) {
-      logger.info("[discovery] All queries returned 0 results — trying nearby fallback");
+    const deduped = deduplicatePlaces(allPlaces);
+
+    if (deduped.length === 0) {
+      logger.info("[discovery] Route queries returned 0 raw results — trying nearby fallback");
 
       {
         const coords = decodePolyline(encodedPolyline);
@@ -241,6 +237,11 @@ export async function discoverPlacesAlongRoute(
       return { placesFound: 0, newUserDiscoveries: 0 };
     }
 
+    const filtered =
+      minRating > 0
+        ? deduped.filter((p) => p.rating !== null && p.rating >= minRating)
+        : deduped;
+
     const { newUserDiscoveries } = filtered.length > 0
       ? await upsertPlacesToDB(filtered, journeyId, userId, "route")
       : { newUserDiscoveries: 0 };
@@ -250,7 +251,7 @@ export async function discoverPlacesAlongRoute(
       .set({ discoveryStatus: "completed" })
       .where(eq(journeys.id, journeyId));
     logger.info(
-      `[discovery] Completed: ${filtered.length} places found, ${newUserDiscoveries} new to user, status → completed`
+      `[discovery] Completed: ${filtered.length} places found (${deduped.length} raw, minRating=${minRating}), ${newUserDiscoveries} new to user, status → completed`
     );
     return { placesFound: filtered.length, newUserDiscoveries };
   } catch (err) {

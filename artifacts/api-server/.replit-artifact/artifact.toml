@@ -20,4 +20,4 @@ run = [ "pnpm", "--filter", "@workspace/api-server", "run", "start" ]
 PORT = "8080"
 
 [services.production.health.startup]
-path = "/api/health"
+path = "/health"

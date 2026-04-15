@@ -29,6 +29,7 @@ const PLACE_TYPES = [
   { key: "movie_theater", label: "Cinema" },
   { key: "bakery", label: "Bakery" },
   { key: "hotel", label: "Hotel" },
+  { key: "pharmacy", label: "Pharmacy" },
 ];
 
 const RATING_OPTIONS = [

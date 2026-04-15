@@ -45,9 +45,7 @@ export default function LoginScreen() {
         );
       }
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Authentication failed";
-      setError(msg);
+      setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -58,8 +56,7 @@ export default function LoginScreen() {
     try {
       await loginWithReplit();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Replit auth failed";
-      setError(msg);
+      setError(err instanceof Error ? err.message : "Replit auth failed");
     }
   }
 
@@ -80,7 +77,7 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero section */}
+        {/* Hero */}
         <View style={styles.hero}>
           <View style={styles.iconRing}>
             <Text style={styles.iconEmoji}>🗺️</Text>
@@ -170,7 +167,7 @@ export default function LoginScreen() {
             activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={Colors.background} />
             ) : (
               <Text style={styles.primaryBtnText}>
                 {tab === "signin" ? "Sign In" : "Create Account"}
@@ -191,14 +188,13 @@ export default function LoginScreen() {
             activeOpacity={0.85}
           >
             {authLoading && !loading ? (
-              <ActivityIndicator color={Colors.gold} />
+              <ActivityIndicator color={Colors.amber} />
             ) : (
               <Text style={styles.replitBtnText}>⚡ Continue with Replit</Text>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Bottom tagline */}
         <Text style={styles.footerText}>
           {tab === "signin"
             ? "New adventurer? Switch to Create Account above."
@@ -227,9 +223,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   iconRing: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     backgroundColor: Colors.surface,
     borderWidth: 2,
     borderColor: Colors.borderLight,
@@ -238,8 +234,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     shadowColor: Colors.gold,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
     elevation: 8,
   },
   iconEmoji: {
@@ -280,7 +276,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gold,
     shadowColor: Colors.gold,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
@@ -290,7 +286,7 @@ const styles = StyleSheet.create({
     color: Colors.parchmentDim,
   },
   tabBtnTextActive: {
-    color: "#fff",
+    color: Colors.background,
     fontFamily: "Inter_600SemiBold",
   },
 
@@ -319,9 +315,9 @@ const styles = StyleSheet.create({
     color: Colors.parchment,
   },
   errorBox: {
-    backgroundColor: "rgba(239,68,68,0.12)",
+    backgroundColor: "rgba(217,96,96,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.3)",
+    borderColor: "rgba(217,96,96,0.3)",
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -339,7 +335,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     shadowColor: Colors.gold,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
     elevation: 6,
   },
@@ -349,7 +345,7 @@ const styles = StyleSheet.create({
   primaryBtnText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 16,
-    color: "#fff",
+    color: Colors.background,    // Dark forest on sage green — high contrast
     letterSpacing: 0.2,
   },
   dividerRow: {
@@ -388,7 +384,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.parchmentDim,
     textAlign: "center",
-    paddingTop: 4,
     lineHeight: 18,
   },
 });

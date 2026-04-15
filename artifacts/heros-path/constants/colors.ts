@@ -1,105 +1,102 @@
+// Hero's Path — "Hyrule Twilight" palette
+// Inspired by Breath of the Wild's organic naturalistic tones:
+//   sage greens, sky blues, warm parchment, deep forest darks.
+
 const Colors = {
-  // Core backgrounds
-  background: "#09080F",
-  surface: "#14101F",
-  card: "#1E1830",
-  border: "#2E2448",
-  borderLight: "#4A3C7A",
+  // ── Backgrounds ──────────────────────────────────────────────
+  background: "#0D1A10",    // Deep forest at dusk
+  surface:    "#152218",    // Forest floor
+  card:       "#1D2E1F",    // Mossy stone
+  border:     "#2C4030",    // Undergrowth edge
+  borderLight: "#3E5840",   // Sunlit leaf edge
 
-  // Primary — vivid violet
-  gold: "#8B5CF6",
-  goldDark: "#6D28D9",
-  goldGlow: "rgba(139,92,246,0.14)",
+  // ── Primary: Korok / Sage Green ──────────────────────────────
+  gold:       "#9FC184",    // Hyrule sage green  (from palette 2)
+  goldDark:   "#536F50",    // Deep forest shade
+  goldGlow:   "rgba(159,193,132,0.18)",
 
-  // Accent — warm amber (XP, badges, highlights)
-  amber: "#F59E0B",
-  amberDark: "#D97706",
-  amberGlow: "rgba(245,158,11,0.14)",
+  // ── Secondary: Hyrule Sky Blue ───────────────────────────────
+  amber:      "#97C8D9",    // BotW sky / lake water (palette 2)
+  amberDark:  "#316570",    // Deep lake teal
+  amberGlow:  "rgba(151,200,217,0.14)",
 
-  // Text
-  parchment: "#EDE9FE",
-  parchmentMuted: "#A89CC8",
-  parchmentDim: "#6B5C8A",
+  // ── Text: Ancient Parchment ──────────────────────────────────
+  parchment:     "#F9F4CE", // Warm cream — ancient stone (palette 2)
+  parchmentMuted: "#86A5A9", // Weathered blue-grey slate (palette 1)
+  parchmentDim:  "#4A6040", // Dim forest shadow text
 
-  // Status
-  error: "#EF4444",
-  info: "#38BDF8",
-  success: "#22C55E",
+  // ── Status ───────────────────────────────────────────────────
+  error:   "#D96060",       // Muted danger red
+  info:    "#97C8D9",       // Sky blue
+  success: "#9FC184",       // Sage green
 
-  // Tab bar
-  tabBar: "#0E0B18",
-  tabBarActive: "#8B5CF6",
-  tabBarInactive: "#4A3C6A",
+  // ── Tab Bar ──────────────────────────────────────────────────
+  tabBar:          "#0A1309", // Deepest forest floor
+  tabBarActive:    "#9FC184", // Sage green
+  tabBarInactive:  "#2C4030", // Dark undergrowth
 
+  // ── Map: Hyrule-style dark cartography ───────────────────────
   mapDark: [
-    { elementType: "geometry", stylers: [{ color: "#14101F" }] },
-    { elementType: "labels.text.stroke", stylers: [{ color: "#09080F" }] },
-    { elementType: "labels.text.fill", stylers: [{ color: "#A89CC8" }] },
-    {
-      featureType: "administrative.locality",
+    // Base land — forest floor
+    { elementType: "geometry",
+      stylers: [{ color: "#152218" }] },
+    { elementType: "labels.text.stroke",
+      stylers: [{ color: "#0D1A10" }] },
+    { elementType: "labels.text.fill",
+      stylers: [{ color: "#86A5A9" }] },
+
+    // Town / locality labels — sage green
+    { featureType: "administrative.locality",
       elementType: "labels.text.fill",
-      stylers: [{ color: "#8B5CF6" }],
-    },
-    {
-      featureType: "road",
+      stylers: [{ color: "#9FC184" }] },
+
+    // Roads — warm olive earth path
+    { featureType: "road",
       elementType: "geometry",
-      stylers: [{ color: "#221A38" }],
-    },
-    {
-      featureType: "road",
+      stylers: [{ color: "#243820" }] },
+    { featureType: "road",
       elementType: "geometry.stroke",
-      stylers: [{ color: "#14101F" }],
-    },
-    {
-      featureType: "road",
+      stylers: [{ color: "#152218" }] },
+    { featureType: "road",
       elementType: "labels.text.fill",
-      stylers: [{ color: "#A89CC8" }],
-    },
-    {
-      featureType: "road.highway",
+      stylers: [{ color: "#86A5A9" }] },
+
+    // Highways — lighter earthy trail
+    { featureType: "road.highway",
       elementType: "geometry",
-      stylers: [{ color: "#2E2448" }],
-    },
-    {
-      featureType: "road.highway",
+      stylers: [{ color: "#2E4828" }] },
+    { featureType: "road.highway",
       elementType: "geometry.stroke",
-      stylers: [{ color: "#14101F" }],
-    },
-    {
-      featureType: "road.highway",
+      stylers: [{ color: "#152218" }] },
+    { featureType: "road.highway",
       elementType: "labels.text.fill",
-      stylers: [{ color: "#8B5CF6" }],
-    },
-    {
-      featureType: "transit",
+      stylers: [{ color: "#9FC184" }] },
+
+    // Transit
+    { featureType: "transit",
       elementType: "geometry",
-      stylers: [{ color: "#14101F" }],
-    },
-    {
-      featureType: "water",
+      stylers: [{ color: "#152218" }] },
+
+    // Water — deep Hyrule lake
+    { featureType: "water",
       elementType: "geometry",
-      stylers: [{ color: "#060412" }],
-    },
-    {
-      featureType: "water",
+      stylers: [{ color: "#0A1E28" }] },
+    { featureType: "water",
       elementType: "labels.text.fill",
-      stylers: [{ color: "#38BDF8" }],
-    },
-    {
-      featureType: "poi",
+      stylers: [{ color: "#97C8D9" }] },
+
+    // POI
+    { featureType: "poi",
       elementType: "geometry",
-      stylers: [{ color: "#14101F" }],
-    },
-    {
-      featureType: "poi.park",
+      stylers: [{ color: "#152218" }] },
+
+    // Parks — lush Hyrule field
+    { featureType: "poi.park",
       elementType: "geometry",
-      stylers: [{ color: "#0D1F18" }],
-    },
-    {
-      featureType: "poi.park",
+      stylers: [{ color: "#182A18" }] },
+    { featureType: "poi.park",
       elementType: "labels.text.fill",
-      stylers: [{ color: "#22C55E" }],
-    },
+      stylers: [{ color: "#9FC184" }] },
   ],
 };
 

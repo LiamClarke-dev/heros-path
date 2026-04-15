@@ -6,10 +6,12 @@ import {
   date,
   numeric,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const users = pgTable("users", {
-  id: text("id").primaryKey(),
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   replitId: text("replit_id").unique(),
   passwordHash: text("password_hash"),
   email: text("email").unique(),
@@ -25,18 +27,18 @@ export const users = pgTable("users", {
 
 export const sessions = pgTable("sessions", {
   sid: text("sid").primaryKey(),
-  sess: text("sess").notNull(),
+  sess: jsonb("sess").notNull(),
   expire: timestamp("expire", { withTimezone: false }).notNull(),
 });
 
 export const userPreferences = pgTable(
   "user_preferences",
   {
-    id: text("id").primaryKey(),
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    placeTypes: text("place_types").array().notNull().default([]),
+    placeTypes: text("place_types").array().notNull().default(sql`'{}'`),
     minRating: numeric("min_rating", { precision: 2, scale: 1 })
       .notNull()
       .default("0"),

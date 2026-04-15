@@ -1,5 +1,5 @@
-import { createContext, useContext } from "react";
-import { Stack } from "expo-router";
+import { createContext, useContext, useEffect } from "react";
+import { Stack, Redirect } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -11,7 +11,6 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
-import { useEffect } from "react";
 import Colors from "../constants/colors";
 
 SplashScreen.preventAutoHideAsync();
@@ -33,13 +32,13 @@ export interface AuthUser {
   level: number;
 }
 
-interface AuthContextValue {
+export interface AuthContextValue {
   token: string | null;
   user: AuthUser | null;
   isLoading: boolean;
 }
 
-const AuthContext = createContext<AuthContextValue>({
+export const AuthContext = createContext<AuthContextValue>({
   token: null,
   user: null,
   isLoading: false,
@@ -47,6 +46,19 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function useAuth() {
   return useContext(AuthContext);
+}
+
+function RootNavigator() {
+  const { token, isLoading } = useAuth();
+
+  if (isLoading) return null;
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(tabs)" />
+    </Stack>
+  );
 }
 
 export default function RootLayout() {
@@ -70,10 +82,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthContext.Provider value={{ token: null, user: null, isLoading: false }}>
           <StatusBar style="light" backgroundColor={Colors.background} />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" />
-          </Stack>
+          <RootNavigator />
         </AuthContext.Provider>
       </SafeAreaProvider>
     </QueryClientProvider>

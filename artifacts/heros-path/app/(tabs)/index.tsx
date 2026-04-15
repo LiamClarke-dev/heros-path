@@ -66,6 +66,18 @@ function formatDistance(m: number): string {
   return `${Math.round(m)} m`;
 }
 
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function formatDuration(startedAt: string): string {
   const ms = Date.now() - new Date(startedAt).getTime();
   const min = Math.floor(ms / 60000);
@@ -96,6 +108,7 @@ export default function JourneyTab() {
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastCellCheckDistRef = useRef<{ lat: number; lng: number } | null>(null);
+  const hasAutocenteredRef = useRef(false);
 
   const loadHistory = useCallback(async () => {
     if (!token || IS_WEB) return;
@@ -104,7 +117,9 @@ export default function JourneyTab() {
         headers: { Authorization: `Bearer ${token}` },
       })) as { journeys: HistoricalJourney[] };
       setHistoricalJourneys(data.journeys);
-    } catch {}
+    } catch (err) {
+      console.warn("[JourneyMap] loadHistory failed", err);
+    }
   }, [token]);
 
   const loadExploredCells = useCallback(
@@ -118,7 +133,9 @@ export default function JourneyTab() {
         setExploredCells(data.explored);
         setUnexploredCells(data.unexplored);
         setNewTerritoryNearby(data.unexplored.length > 0);
-      } catch {}
+      } catch (err) {
+        console.warn("[JourneyMap] loadExploredCells failed", err);
+      }
     },
     [token]
   );
@@ -137,6 +154,20 @@ export default function JourneyTab() {
       }
     })();
   }, [token, loadHistory, loadExploredCells]);
+
+  useEffect(() => {
+    if (!currentLocation || hasAutocenteredRef.current || IS_WEB) return;
+    hasAutocenteredRef.current = true;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: currentLocation.lat,
+        longitude: currentLocation.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      },
+      500
+    );
+  }, [currentLocation]);
 
   useEffect(() => {
     return () => {
@@ -237,8 +268,7 @@ export default function JourneyTab() {
 
         if (
           !lastCellCheckDistRef.current ||
-          Math.abs(loc.lat - lastCellCheckDistRef.current.lat) > 0.0005 ||
-          Math.abs(loc.lng - lastCellCheckDistRef.current.lng) > 0.0005
+          haversineM(loc.lat, loc.lng, lastCellCheckDistRef.current.lat, lastCellCheckDistRef.current.lng) > 50
         ) {
           lastCellCheckDistRef.current = loc;
           loadExploredCells(loc.lat, loc.lng);

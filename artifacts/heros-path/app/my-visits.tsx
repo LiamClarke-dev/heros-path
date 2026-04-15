@@ -8,7 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../constants/colors";
@@ -41,7 +41,6 @@ function formatDate(iso: string) {
 }
 
 export default function MyVisitsScreen() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token } = useAuth();
 
@@ -157,7 +156,7 @@ export default function MyVisitsScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="arrow-left" size={22} color={Colors.parchment} />
@@ -211,7 +210,7 @@ export default function MyVisitsScreen() {
           fetchVisits(1, true);
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

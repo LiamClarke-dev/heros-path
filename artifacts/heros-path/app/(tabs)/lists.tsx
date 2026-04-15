@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../../constants/colors";
@@ -140,7 +140,7 @@ export default function ListsTab() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Lists</Text>
       </View>
@@ -189,7 +189,7 @@ export default function ListsTab() {
         onClose={() => setShowCreate(false)}
         onCreate={handleCreate}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

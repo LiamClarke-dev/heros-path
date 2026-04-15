@@ -9,7 +9,7 @@ import {
   Alert,
 } from "react-native";
 import { Stack } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../../constants/colors";
 import { useAuth } from "../../lib/auth";
@@ -41,7 +41,6 @@ const RATING_OPTIONS = [
 ];
 
 export default function PreferencesScreen() {
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -93,15 +92,15 @@ export default function PreferencesScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
+      <SafeAreaView style={[styles.container, styles.centered]} edges={['top', 'bottom']}>
         <Stack.Screen options={{ headerShown: false }} />
         <ActivityIndicator color={Colors.gold} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.header}>
@@ -176,7 +175,7 @@ export default function PreferencesScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

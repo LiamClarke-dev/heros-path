@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../constants/colors";
@@ -189,20 +189,20 @@ export default function JourneyDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
+      <SafeAreaView style={[styles.container, styles.centered]} edges={['top']}>
         <ActivityIndicator color={Colors.gold} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!journey) {
     return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
+      <SafeAreaView style={[styles.container, styles.centered]} edges={['top']}>
         <Text style={styles.errorText}>Journey not found.</Text>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtnFull}>
           <Text style={styles.backBtnText}>Go Back</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -212,7 +212,7 @@ export default function JourneyDetailScreen() {
   const polylineCoords = journey.waypoints.map((w) => ({ latitude: w.lat, longitude: w.lng }));
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -346,7 +346,7 @@ export default function JourneyDetailScreen() {
           </View>
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

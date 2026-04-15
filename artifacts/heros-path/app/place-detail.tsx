@@ -11,7 +11,7 @@ import {
   Share,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../constants/colors";
@@ -152,18 +152,18 @@ export default function PlaceDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <SafeAreaView style={styles.container} edges={['top']}>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.loadingCenter}>
           <ActivityIndicator color={Colors.gold} size="large" />
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (error || !place) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <SafeAreaView style={styles.container} edges={['top']}>
         <Stack.Screen options={{ headerShown: false }} />
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="arrow-left" size={22} color={Colors.parchment} />
@@ -175,7 +175,7 @@ export default function PlaceDetailScreen() {
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -187,7 +187,7 @@ export default function PlaceDetailScreen() {
   const displayVisits = allVisitsExpanded ? visits : visits.slice(0, 3);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <ScrollView
@@ -438,7 +438,7 @@ export default function PlaceDetailScreen() {
           });
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -10,7 +10,7 @@ import {
   Image,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth";
@@ -203,9 +203,9 @@ export default function ProfileTab() {
 
   if (loading || !stats) {
     return (
-      <View style={[styles.loader, { paddingTop: insets.top }]}>
+      <SafeAreaView style={styles.loader} edges={['top']}>
         <ActivityIndicator color={Colors.gold} />
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -217,11 +217,12 @@ export default function ProfileTab() {
   ];
 
   return (
+    <SafeAreaView style={styles.scrollView} edges={['top']}>
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={[
         styles.contentContainer,
-        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 },
+        { paddingTop: 16, paddingBottom: insets.bottom + 100 },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -369,6 +370,7 @@ export default function ProfileTab() {
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

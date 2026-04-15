@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../constants/colors";
@@ -110,7 +110,6 @@ function SkeletonCard() {
 }
 
 export default function PastJourneysScreen() {
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const router = useRouter();
   const [journeys, setJourneys] = useState<JourneySummary[]>([]);
@@ -144,7 +143,7 @@ export default function PastJourneysScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Feather name="arrow-left" size={22} color={Colors.parchment} />
@@ -187,7 +186,7 @@ export default function PastJourneysScreen() {
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

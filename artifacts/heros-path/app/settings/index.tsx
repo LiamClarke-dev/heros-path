@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../../constants/colors";
@@ -36,11 +36,10 @@ function SettingsItem({ icon, label, onPress, danger }: SettingsItemProps) {
 }
 
 export default function SettingsIndex() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.header}>
@@ -84,7 +83,7 @@ export default function SettingsIndex() {
       <View style={styles.footer}>
         <Text style={styles.versionText}>Hero's Path v{APP_VERSION}</Text>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

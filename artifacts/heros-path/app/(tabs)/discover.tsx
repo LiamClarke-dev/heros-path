@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../../constants/colors";
@@ -28,7 +28,6 @@ const FILTERS: { key: FilterType; label: string }[] = [
 ];
 
 export default function DiscoverTab() {
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const router = useRouter();
   const [filter, setFilter] = useState<FilterType>("all");
@@ -168,7 +167,7 @@ export default function DiscoverTab() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Discover</Text>
       </View>
@@ -246,7 +245,7 @@ export default function DiscoverTab() {
         onClose={() => setVisitPlaceId(null)}
         onSaved={handleVisitSaved}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

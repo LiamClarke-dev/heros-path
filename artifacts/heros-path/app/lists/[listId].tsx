@@ -22,7 +22,7 @@ import {
   makeRedirectUri,
   type AuthSessionResult,
 } from "expo-auth-session";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../../constants/colors";
@@ -70,7 +70,6 @@ function sanitizeFilename(name: string): string {
 }
 
 export default function ListDetailScreen() {
-  const insets = useSafeAreaInsets();
   const { listId } = useLocalSearchParams<{ listId: string }>();
   const router = useRouter();
   const { token, user } = useAuth();
@@ -396,7 +395,7 @@ export default function ListDetailScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -496,7 +495,7 @@ export default function ListDetailScreen() {
         token={token ?? ""}
         onClose={() => setShowSharing(false)}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

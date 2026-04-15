@@ -99,7 +99,8 @@ export async function snapRouteToRoads(coords: Coord[]): Promise<Coord[] | null>
     return null;
   }
 
-  const sample = coords.filter((_, i) => i % Math.ceil(coords.length / 100) === 0);
+  const step = Math.ceil(coords.length / 100);
+  const sample = coords.filter((_, i) => i % step === 0 || i === coords.length - 1);
   const path = sample.map((c) => `${c.lat},${c.lng}`).join("|");
 
   try {

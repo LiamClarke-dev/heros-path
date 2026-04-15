@@ -104,14 +104,7 @@ async function upsertPlacesToDB(
       target: [journeyDiscoveredPlaces.journeyId, journeyDiscoveredPlaces.googlePlaceId],
     });
 
-  const existing = await db
-    .select({ googlePlaceId: userDiscoveredPlaces.googlePlaceId })
-    .from(userDiscoveredPlaces)
-    .where(eq(userDiscoveredPlaces.userId, userId));
-  const existingSet = new Set(existing.map((r) => r.googlePlaceId));
-  const newUserDiscoveries = places.filter((p) => !existingSet.has(p.googlePlaceId)).length;
-
-  await db
+  const upsertResult = await db
     .insert(userDiscoveredPlaces)
     .values(
       places.map((p) => ({
@@ -129,8 +122,10 @@ async function upsertPlacesToDB(
         lastDiscoveredAt: new Date(),
         discoveryCount: sql`${userDiscoveredPlaces.discoveryCount} + 1`,
       },
-    });
+    })
+    .returning({ isInsert: sql<boolean>`(xmax = 0)` });
 
+  const newUserDiscoveries = upsertResult.filter((r) => r.isInsert).length;
   return { newUserDiscoveries };
 }
 

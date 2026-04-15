@@ -5,6 +5,7 @@ import {
   timestamp,
   numeric,
   uniqueIndex,
+  unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "./users";
@@ -29,20 +30,29 @@ export const placeCache = pgTable("place_cache", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-export const journeyDiscoveredPlaces = pgTable("journey_discovered_places", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  journeyId: text("journey_id")
-    .notNull()
-    .references(() => journeys.id, { onDelete: "cascade" }),
-  googlePlaceId: text("google_place_id")
-    .notNull()
-    .references(() => placeCache.googlePlaceId, { onDelete: "cascade" }),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  discoverySource: text("discovery_source").notNull(),
-  discoveredAt: timestamp("discovered_at", { withTimezone: true }).defaultNow(),
-});
+export const journeyDiscoveredPlaces = pgTable(
+  "journey_discovered_places",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    journeyId: text("journey_id")
+      .notNull()
+      .references(() => journeys.id, { onDelete: "cascade" }),
+    googlePlaceId: text("google_place_id")
+      .notNull()
+      .references(() => placeCache.googlePlaceId, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    discoverySource: text("discovery_source").notNull(),
+    discoveredAt: timestamp("discovered_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    unique("journey_discovered_places_journey_place_unique").on(
+      t.journeyId,
+      t.googlePlaceId
+    ),
+  ]
+);
 
 export const userDiscoveredPlaces = pgTable(
   "user_discovered_places",

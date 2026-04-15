@@ -133,15 +133,13 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       if (snapped) polylineEncoded = encodePolyline(snapped);
     }
 
-    const initialDiscoveryStatus = polylineEncoded ? "pending" : "failed";
-
     const [updated] = await db
       .update(journeys)
       .set({
         endedAt: new Date(),
         totalDistanceM: String(distM.toFixed(2)),
         polylineEncoded,
-        discoveryStatus: initialDiscoveryStatus,
+        discoveryStatus: "pending",
       })
       .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
       .returning();

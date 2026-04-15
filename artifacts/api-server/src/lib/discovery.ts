@@ -43,8 +43,8 @@ async function upsertPlacesToDB(
   journeyId: string,
   userId: string,
   source: "route" | "ping"
-): Promise<void> {
-  if (!places.length) return;
+): Promise<{ newUserDiscoveries: number }> {
+  if (!places.length) return { newUserDiscoveries: 0 };
 
   for (const place of places) {
     await db
@@ -100,9 +100,11 @@ async function upsertPlacesToDB(
         discoverySource: source,
       }))
     )
-    .onConflictDoNothing();
+    .onConflictDoNothing({
+      target: [journeyDiscoveredPlaces.journeyId, journeyDiscoveredPlaces.googlePlaceId],
+    });
 
-  await db
+  const inserted = await db
     .insert(userDiscoveredPlaces)
     .values(
       places.map((p) => ({
@@ -114,13 +116,12 @@ async function upsertPlacesToDB(
         discoveryCount: 1,
       }))
     )
-    .onConflictDoUpdate({
+    .onConflictDoNothing({
       target: [userDiscoveredPlaces.userId, userDiscoveredPlaces.googlePlaceId],
-      set: {
-        lastDiscoveredAt: new Date(),
-        discoveryCount: sql`${userDiscoveredPlaces.discoveryCount} + 1`,
-      },
-    });
+    })
+    .returning({ googlePlaceId: userDiscoveredPlaces.googlePlaceId });
+
+  return { newUserDiscoveries: inserted.length };
 }
 
 async function countNewPlaces(
@@ -140,7 +141,7 @@ export async function discoverPlacesAlongRoute(
   journeyId: string,
   userId: string,
   encodedPolyline: string
-): Promise<{ placesFound: number }> {
+): Promise<{ placesFound: number; newUserDiscoveries: number }> {
   logger.info(`[discovery] Starting route discovery for journey ${journeyId}`);
 
   await db
@@ -179,7 +180,7 @@ export async function discoverPlacesAlongRoute(
       logger.warn(
         `[discovery] Failed: all ${queries.length} API calls errored, status → failed`
       );
-      return { placesFound: 0 };
+      return { placesFound: 0, newUserDiscoveries: 0 };
     }
 
     if (filtered.length === 0) {
@@ -202,7 +203,7 @@ export async function discoverPlacesAlongRoute(
               .set({ discoveryStatus: "failed" })
               .where(eq(journeys.id, journeyId));
             logger.warn("[discovery] Nearby fallback API error, status → failed");
-            return { placesFound: 0 };
+            return { placesFound: 0, newUserDiscoveries: 0 };
           }
           logger.info(`[discovery] Nearby fallback: ${fallbackPlaces.length} result(s)`);
           const fallbackFiltered =
@@ -212,15 +213,17 @@ export async function discoverPlacesAlongRoute(
                 )
               : fallbackPlaces;
           if (fallbackFiltered.length > 0) {
-            await upsertPlacesToDB(fallbackFiltered, journeyId, userId, "route");
+            const { newUserDiscoveries } = await upsertPlacesToDB(
+              fallbackFiltered, journeyId, userId, "route"
+            );
             await db
               .update(journeys)
               .set({ discoveryStatus: "completed" })
               .where(eq(journeys.id, journeyId));
             logger.info(
-              `[discovery] Completed: ${fallbackFiltered.length} places found via fallback, status → completed`
+              `[discovery] Completed: ${fallbackFiltered.length} places via fallback, ${newUserDiscoveries} new to user, status → completed`
             );
-            return { placesFound: fallbackFiltered.length };
+            return { placesFound: fallbackFiltered.length, newUserDiscoveries };
           }
         }
       }
@@ -230,21 +233,21 @@ export async function discoverPlacesAlongRoute(
         .set({ discoveryStatus: "completed" })
         .where(eq(journeys.id, journeyId));
       logger.info("[discovery] Completed: 0 places found, status → completed");
-      return { placesFound: 0 };
+      return { placesFound: 0, newUserDiscoveries: 0 };
     }
 
-    if (filtered.length > 0) {
-      await upsertPlacesToDB(filtered, journeyId, userId, "route");
-    }
+    const { newUserDiscoveries } = filtered.length > 0
+      ? await upsertPlacesToDB(filtered, journeyId, userId, "route")
+      : { newUserDiscoveries: 0 };
 
     await db
       .update(journeys)
       .set({ discoveryStatus: "completed" })
       .where(eq(journeys.id, journeyId));
     logger.info(
-      `[discovery] Completed: ${filtered.length} places found, status → completed`
+      `[discovery] Completed: ${filtered.length} places found, ${newUserDiscoveries} new to user, status → completed`
     );
-    return { placesFound: filtered.length };
+    return { placesFound: filtered.length, newUserDiscoveries };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await db
@@ -252,7 +255,7 @@ export async function discoverPlacesAlongRoute(
       .set({ discoveryStatus: "failed" })
       .where(eq(journeys.id, journeyId));
     logger.error({ err }, `[discovery] Failed: ${msg}, status → failed`);
-    return { placesFound: 0 };
+    return { placesFound: 0, newUserDiscoveries: 0 };
   }
 }
 
@@ -322,29 +325,12 @@ export async function retryDiscovery(
     encodedPolyline = poly;
   }
 
-  const alreadyDiscovered = new Set(
-    (
-      await db
-        .select({ googlePlaceId: userDiscoveredPlaces.googlePlaceId })
-        .from(userDiscoveredPlaces)
-        .where(eq(userDiscoveredPlaces.userId, userId))
-    ).map((r) => r.googlePlaceId)
-  );
-
-  const { placesFound } = await discoverPlacesAlongRoute(
+  const { placesFound, newUserDiscoveries: newPlaces } = await discoverPlacesAlongRoute(
     journeyId,
     userId,
     encodedPolyline
   );
 
-  const journeyPlaces = await db
-    .select({ googlePlaceId: journeyDiscoveredPlaces.googlePlaceId })
-    .from(journeyDiscoveredPlaces)
-    .where(eq(journeyDiscoveredPlaces.journeyId, journeyId));
-
-  const newPlaces = journeyPlaces.filter(
-    (p) => !alreadyDiscovered.has(p.googlePlaceId)
-  ).length;
   const xpAwarded = newPlaces * XP_NEW_PLACE;
 
   if (xpAwarded > 0) {

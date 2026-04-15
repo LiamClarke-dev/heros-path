@@ -326,25 +326,6 @@ friendsRouter.delete("/:friendId", async (req: Request, res: Response) => {
         )
       );
 
-    const theirListIds = await tx
-      .select({ listId: listShares.listId })
-      .from(listShares)
-      .where(
-        and(
-          eq(listShares.sharedByUserId, friendId),
-          eq(listShares.sharedWithUserId, user.id)
-        )
-      );
-    const myListIds = await tx
-      .select({ listId: listShares.listId })
-      .from(listShares)
-      .where(
-        and(
-          eq(listShares.sharedByUserId, user.id),
-          eq(listShares.sharedWithUserId, friendId)
-        )
-      );
-
     await tx
       .delete(listShares)
       .where(
@@ -360,22 +341,20 @@ friendsRouter.delete("/:friendId", async (req: Request, res: Response) => {
         )
       );
 
-    for (const { listId } of [...theirListIds, ...myListIds]) {
-      await tx
-        .delete(listCollaborators)
-        .where(
-          or(
-            and(
-              eq(listCollaborators.listId, listId),
-              eq(listCollaborators.userId, user.id)
-            ),
-            and(
-              eq(listCollaborators.listId, listId),
-              eq(listCollaborators.userId, friendId)
-            )
+    await tx
+      .delete(listCollaborators)
+      .where(
+        or(
+          and(
+            sql`${listCollaborators.userId} = ${user.id}`,
+            sql`${listCollaborators.listId} IN (SELECT id FROM place_lists WHERE user_id = ${friendId})`
+          ),
+          and(
+            sql`${listCollaborators.userId} = ${friendId}`,
+            sql`${listCollaborators.listId} IN (SELECT id FROM place_lists WHERE user_id = ${user.id})`
           )
-        );
-    }
+        )
+      );
   });
 
   res.json({ ok: true });

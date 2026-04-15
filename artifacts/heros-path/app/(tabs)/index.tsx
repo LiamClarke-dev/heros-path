@@ -37,6 +37,7 @@ if (!IS_WEB) {
 }
 
 import { CharacterMarker } from "../../components/CharacterMarker";
+import PingResultsSheet, { type PlaceResult as PingPlace } from "../../components/PingResultsSheet";
 
 interface Waypoint {
   lat: number;
@@ -104,6 +105,10 @@ export default function JourneyTab() {
   const [unexploredCells, setUnexploredCells] = useState<ExploredCell[]>([]);
   const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
   const [elapsedDisplay, setElapsedDisplay] = useState("0:00");
+  const [pingLoading, setPingLoading] = useState(false);
+  const [pingSheetVisible, setPingSheetVisible] = useState(false);
+  const [pingPlaces, setPingPlaces] = useState<PingPlace[]>([]);
+  const [pingNewCount, setPingNewCount] = useState(0);
 
   const waypointBufferRef = useRef<Waypoint[]>([]);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
@@ -359,6 +364,28 @@ export default function JourneyTab() {
     }
   }
 
+  async function handlePing() {
+    if (!journeyId || !token || !currentLocation || pingLoading) return;
+    setPingLoading(true);
+    try {
+      const result = (await apiFetch(`/api/journeys/${journeyId}/ping`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          lat: currentLocation.lat,
+          lng: currentLocation.lng,
+        }),
+      })) as { places: PingPlace[]; newCount: number };
+      setPingPlaces(result.places ?? []);
+      setPingNewCount(result.newCount ?? 0);
+      setPingSheetVisible(true);
+    } catch (err) {
+      Alert.alert("Ping failed", "Could not discover places. Try again.");
+    } finally {
+      setPingLoading(false);
+    }
+  }
+
   if (IS_WEB) {
     return (
       <View style={styles.webFallback}>
@@ -543,10 +570,15 @@ export default function JourneyTab() {
           {journeyStatus === "active" && (
             <View style={styles.activeButtons}>
               <TouchableOpacity
-                style={styles.pingBtn}
-                onPress={() => Alert.alert("Ping", "Place discovery ping — coming in A4!")}
+                style={[styles.pingBtn, pingLoading && { opacity: 0.6 }]}
+                onPress={handlePing}
+                disabled={pingLoading}
               >
-                <Feather name="zap" size={16} color={Colors.gold} />
+                {pingLoading ? (
+                  <ActivityIndicator size="small" color={Colors.gold} />
+                ) : (
+                  <Feather name="zap" size={16} color={Colors.gold} />
+                )}
                 <Text style={styles.pingBtnText}>Ping</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -567,6 +599,13 @@ export default function JourneyTab() {
           )}
         </View>
       </LinearGradient>
+
+      <PingResultsSheet
+        visible={pingSheetVisible}
+        places={pingPlaces}
+        newCount={pingNewCount}
+        onClose={() => setPingSheetVisible(false)}
+      />
     </View>
   );
 }

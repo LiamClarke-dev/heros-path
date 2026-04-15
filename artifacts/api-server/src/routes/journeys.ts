@@ -10,13 +10,14 @@ import {
   snapRouteToRoads,
   type Coord,
 } from "../lib/geo.js";
+import {
+  discoverPlacesAlongRoute,
+  discoverNearbyForPing,
+  retryDiscovery,
+} from "../lib/discovery.js";
 import logger from "../logger.js";
 
 const router = Router();
-
-async function discoverPlacesAlongRoute(_journeyId: string, _coords: Coord[]) {
-  // Stub — implemented in A4 (Place Discovery & Ping)
-}
 
 router.post("/", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
@@ -51,7 +52,12 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
   }
 
   const status = body.status as "ended" | undefined;
-  const incomingWaypoints = (body.waypoints as Array<{ lat: unknown; lng: unknown; recordedAt: unknown }>) ?? [];
+  const incomingWaypoints =
+    (body.waypoints as Array<{
+      lat: unknown;
+      lng: unknown;
+      recordedAt: unknown;
+    }>) ?? [];
 
   const [existing] = await db
     .select()
@@ -63,25 +69,33 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
     return;
   }
 
-  if (existing.endedAt !== null && (status === "ended" || incomingWaypoints?.length)) {
+  if (
+    existing.endedAt !== null &&
+    (status === "ended" || incomingWaypoints?.length)
+  ) {
     res.status(409).json({ error: "Journey already ended" });
     return;
   }
 
   if (incomingWaypoints?.length) {
-    const validWaypoints = incomingWaypoints.filter((wp): wp is { lat: number; lng: number; recordedAt: string } => {
-      if (
-        typeof wp.lat !== "number" ||
-        typeof wp.lng !== "number" ||
-        typeof wp.recordedAt !== "string"
-      ) return false;
-      const ts = new Date(wp.recordedAt);
-      return (
-        wp.lat >= -90 && wp.lat <= 90 &&
-        wp.lng >= -180 && wp.lng <= 180 &&
-        !isNaN(ts.getTime())
-      );
-    });
+    const validWaypoints = incomingWaypoints.filter(
+      (wp): wp is { lat: number; lng: number; recordedAt: string } => {
+        if (
+          typeof wp.lat !== "number" ||
+          typeof wp.lng !== "number" ||
+          typeof wp.recordedAt !== "string"
+        )
+          return false;
+        const ts = new Date(wp.recordedAt);
+        return (
+          wp.lat >= -90 &&
+          wp.lat <= 90 &&
+          wp.lng >= -180 &&
+          wp.lng <= 180 &&
+          !isNaN(ts.getTime())
+        );
+      }
+    );
     if (validWaypoints.length > 0) {
       const rows = validWaypoints.map((wp) => ({
         id: crypto.randomUUID(),
@@ -125,20 +139,24 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
         endedAt: new Date(),
         totalDistanceM: String(distM.toFixed(2)),
         polylineEncoded,
+        discoveryStatus: "pending",
       })
       .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
       .returning();
 
-    setImmediate(() => {
-      discoverPlacesAlongRoute(journeyId, coords).catch((err) =>
-        logger.warn({ err }, "discoverPlacesAlongRoute failed")
-      );
-    });
+    const userId = user.id;
+    const poly = polylineEncoded ?? "";
+    if (poly) {
+      setImmediate(() => {
+        discoverPlacesAlongRoute(journeyId, userId, poly).catch((err) =>
+          logger.warn({ err }, "discoverPlacesAlongRoute background failed")
+        );
+      });
+    }
 
-    const placeCount = 0;
     res.json({
       ...updated,
-      placeCount,
+      placeCount: 0,
       totalDistanceM: distM,
     });
     return;
@@ -148,7 +166,10 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
   const record = fresh ?? existing;
   res.json({
     ...record,
-    totalDistanceM: record.totalDistanceM !== null ? parseFloat(String(record.totalDistanceM)) : null,
+    totalDistanceM:
+      record.totalDistanceM !== null
+        ? parseFloat(String(record.totalDistanceM))
+        : null,
     placeCount: 0,
   });
 });
@@ -183,7 +204,12 @@ router.get("/history", async (req: Request, res: Response) => {
               lng: parseFloat(String(wp.lng)),
             }));
         }
-        return { id: j.id, startedAt: j.startedAt, waypoints };
+        return {
+          id: j.id,
+          startedAt: j.startedAt,
+          waypoints,
+          discoveryStatus: j.discoveryStatus,
+        };
       })
   );
 
@@ -251,6 +277,92 @@ router.get("/explored-cells", async (req: Request, res: Response) => {
   }
 
   res.json({ explored, unexplored });
+});
+
+router.get("/:journeyId", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const journeyId = req.params.journeyId as string;
+
+  const [journey] = await db
+    .select()
+    .from(journeys)
+    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)));
+
+  if (!journey) {
+    res.status(404).json({ error: "Journey not found" });
+    return;
+  }
+
+  res.json({
+    ...journey,
+    totalDistanceM:
+      journey.totalDistanceM !== null
+        ? parseFloat(String(journey.totalDistanceM))
+        : null,
+  });
+});
+
+router.post("/:journeyId/ping", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const journeyId = req.params.journeyId as string;
+  const body = req.body as { lat?: unknown; lng?: unknown };
+
+  const lat = typeof body.lat === "number" ? body.lat : parseFloat(String(body.lat));
+  const lng = typeof body.lng === "number" ? body.lng : parseFloat(String(body.lng));
+
+  if (isNaN(lat) || isNaN(lng)) {
+    res.status(400).json({ error: "lat and lng are required" });
+    return;
+  }
+
+  const [journey] = await db
+    .select()
+    .from(journeys)
+    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)));
+
+  if (!journey) {
+    res.status(404).json({ error: "Journey not found" });
+    return;
+  }
+
+  if (journey.endedAt !== null) {
+    res.status(409).json({ error: "Journey already ended" });
+    return;
+  }
+
+  try {
+    const { places, newCount } = await discoverNearbyForPing(
+      journeyId,
+      user.id,
+      lat,
+      lng
+    );
+    res.json({ places, newCount });
+  } catch (err) {
+    logger.warn({ err }, "Ping discovery failed");
+    res.status(500).json({ error: "Discovery failed" });
+  }
+});
+
+router.post("/:journeyId/discover", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const journeyId = req.params.journeyId as string;
+
+  try {
+    const result = await retryDiscovery(journeyId, user.id);
+    res.json(result);
+  } catch (err) {
+    const status =
+      err !== null &&
+      typeof err === "object" &&
+      "status" in err &&
+      typeof (err as { status: unknown }).status === "number"
+        ? (err as { status: number }).status
+        : 500;
+    const message =
+      err instanceof Error ? err.message : "Discovery failed";
+    res.status(status).json({ error: message });
+  }
 });
 
 export default router;

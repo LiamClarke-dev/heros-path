@@ -116,9 +116,9 @@ Subsequent tasks add: `journeys`, `journey_waypoints`, `place_cache`, `user_disc
 ## Rebuild Task Status
 
 - **Task #7 (A1)** — Clean Slate & Core Foundation: ✅ Complete
-- **Task #8 (A2)** — Authentication (Email/Password + Replit Auth): Pending
-- **Task #9 (A3)** — Map & Journey Tracking: Pending
-- **Task #10 (A4)** — Place Discovery & Ping (Rich Data): Pending
+- **Task #8 (A2)** — Authentication (Email/Password + Replit Auth): ✅ Complete
+- **Task #9 (A3)** — Map & Journey Tracking: ✅ Complete
+- **Task #10 (A4)** — Place Discovery & Ping (Rich Data): ✅ Complete
 - **Task #11 (A5)** — Place Management & Lists: Pending
 - **Task #12 (A6)** — Gamification, Quests & Adventurer Rank: Pending
 - **Task #13 (A7)** — Past Journeys, Profile & Polish: Pending

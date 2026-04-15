@@ -18,6 +18,7 @@ export const journeys = pgTable("journeys", {
   totalDistanceM: numeric("total_distance_m", { precision: 10, scale: 2 }),
   polylineEncoded: text("polyline_encoded"),
   xpEarned: integer("xp_earned").notNull().default(0),
+  discoveryStatus: text("discovery_status").notNull().default("pending"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -31,13 +31,27 @@ router.post("/", async (req: Request, res: Response) => {
 router.patch("/:journeyId", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const journeyId = req.params.journeyId as string;
-  const {
-    status,
-    waypoints: incomingWaypoints,
-  } = req.body as {
-    status?: "ended";
-    waypoints?: Array<{ lat: number; lng: number; recordedAt: string }>;
+
+  const body = req.body as {
+    status?: unknown;
+    waypoints?: unknown;
   };
+
+  if (body.status !== undefined && body.status !== "ended") {
+    res.status(400).json({ error: "status must be 'ended' when provided" });
+    return;
+  }
+  if (body.waypoints !== undefined && !Array.isArray(body.waypoints)) {
+    res.status(400).json({ error: "waypoints must be an array when provided" });
+    return;
+  }
+  if (body.status === undefined && !Array.isArray(body.waypoints)) {
+    res.status(400).json({ error: "Provide status or waypoints" });
+    return;
+  }
+
+  const status = body.status as "ended" | undefined;
+  const incomingWaypoints = (body.waypoints as Array<{ lat: unknown; lng: unknown; recordedAt: unknown }>) ?? [];
 
   const [existing] = await db
     .select()
@@ -55,11 +69,14 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
   }
 
   if (incomingWaypoints?.length) {
-    const validWaypoints = incomingWaypoints.filter((wp) => {
+    const validWaypoints = incomingWaypoints.filter((wp): wp is { lat: number; lng: number; recordedAt: string } => {
+      if (
+        typeof wp.lat !== "number" ||
+        typeof wp.lng !== "number" ||
+        typeof wp.recordedAt !== "string"
+      ) return false;
       const ts = new Date(wp.recordedAt);
       return (
-        typeof wp.lat === "number" &&
-        typeof wp.lng === "number" &&
         wp.lat >= -90 && wp.lat <= 90 &&
         wp.lng >= -180 && wp.lng <= 180 &&
         !isNaN(ts.getTime())

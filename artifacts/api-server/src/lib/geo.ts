@@ -109,7 +109,13 @@ export async function snapRouteToRoads(coords: Coord[]): Promise<Coord[] | null>
     const res = await fetch(url);
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      logger.warn({ status: res.status, body: text }, "Roads API snap failed");
+      const hint =
+        res.status === 403
+          ? "Roads API not enabled — enable it in GCP Console > APIs & Services"
+          : res.status === 429
+            ? "Roads API quota exceeded — check GCP quotas for Roads API"
+            : "Check GCP credentials and API key restrictions";
+      logger.warn({ status: res.status, body: text, hint }, "Roads API snap failed");
       return null;
     }
     const data = (await res.json()) as {

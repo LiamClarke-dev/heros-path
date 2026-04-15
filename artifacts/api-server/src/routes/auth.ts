@@ -8,6 +8,7 @@ const router = Router();
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRES = "30d";
+const AUTH_COOKIE = "hp_auth";
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -74,7 +75,7 @@ router.post("/register", async (req: Request, res: Response) => {
     .returning();
 
   const token = signToken(user);
-  res.status(201).json(userResponse(user, token));
+  res.status(200).json(userResponse(user, token));
 });
 
 router.post("/login", async (req: Request, res: Response) => {
@@ -116,23 +117,29 @@ router.post("/replit/token-exchange", async (req: Request, res: Response) => {
     return;
   }
 
-  const clientId = process.env.REPL_ID;
+  const clientId = process.env.REPLIT_CLIENT_ID ?? process.env.REPL_ID;
+  const clientSecret = process.env.REPLIT_CLIENT_SECRET;
   if (!clientId) {
     res.status(503).json({ error: "Replit auth not configured on this server" });
     return;
   }
 
   try {
+    const params: Record<string, string> = {
+      grant_type: "authorization_code",
+      code,
+      code_verifier: codeVerifier,
+      client_id: clientId,
+      redirect_uri: redirectUri,
+    };
+    if (clientSecret) {
+      params.client_secret = clientSecret;
+    }
+
     const tokenRes = await fetch("https://replit.com/oidc/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        code_verifier: codeVerifier,
-        client_id: clientId,
-        redirect_uri: redirectUri,
-      }).toString(),
+      body: new URLSearchParams(params).toString(),
     });
 
     if (!tokenRes.ok) {
@@ -202,6 +209,7 @@ router.post("/replit/token-exchange", async (req: Request, res: Response) => {
 });
 
 router.post("/logout", (_req: Request, res: Response) => {
+  res.clearCookie(AUTH_COOKIE, { path: "/" });
   res.json({ ok: true });
 });
 

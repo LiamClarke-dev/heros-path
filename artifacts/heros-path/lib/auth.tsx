@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [request, response, promptAsync] = useAuthRequest(
     {
-      clientId: process.env.EXPO_PUBLIC_REPL_ID ?? "herospath",
+      clientId: process.env.EXPO_PUBLIC_REPLIT_CLIENT_ID ?? process.env.EXPO_PUBLIC_REPL_ID ?? "herospath",
       redirectUri,
       scopes: ["openid", "profile", "email"],
       usePKCE: true,

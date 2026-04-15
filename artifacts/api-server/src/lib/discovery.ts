@@ -298,6 +298,9 @@ export async function retryDiscovery(
     .where(and(eq(journeys.id, journeyId), eq(journeys.userId, userId)));
 
   if (!journey) throw Object.assign(new Error("Journey not found"), { status: 404 });
+  if (journey.endedAt === null) {
+    throw Object.assign(new Error("Journey is still active — end it before retrying discovery"), { status: 409 });
+  }
   if (journey.discoveryStatus === "completed") {
     throw Object.assign(new Error("Discovery already completed"), { status: 409 });
   }

@@ -56,6 +56,12 @@ router.get("/:googlePlaceId", async (req: Request, res: Response) => {
   const place = await fetchPlaceDetail(googlePlaceId);
   if (!place) {
     if (cached) {
+      const staleApiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+      const staleRef = cached.photoReference;
+      const stalePhotoUrl =
+        staleRef && staleRef.includes("/")
+          ? `https://places.googleapis.com/v1/${staleRef}/media?maxWidthPx=800&key=${staleApiKey}`
+          : null;
       res.json({
         googlePlaceId: cached.googlePlaceId,
         name: cached.name,
@@ -71,7 +77,7 @@ router.get("/:googlePlaceId", async (req: Request, res: Response) => {
         googleMapsUri: cached.googleMapsUri,
         phoneNumber: cached.phoneNumber,
         address: cached.address,
-        photoUrl: null,
+        photoUrl: stalePhotoUrl,
         openNow: null,
         openingHoursText: null,
       });

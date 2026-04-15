@@ -152,6 +152,13 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
           logger.warn({ err }, "discoverPlacesAlongRoute background failed")
         );
       });
+    } else {
+      setImmediate(() => {
+        db.update(journeys)
+          .set({ discoveryStatus: "completed" })
+          .where(eq(journeys.id, journeyId))
+          .catch((err) => logger.warn({ err }, "Short journey status finalization failed"));
+      });
     }
 
     res.json({

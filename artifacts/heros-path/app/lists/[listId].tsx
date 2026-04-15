@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ import Colors from "../../constants/colors";
 import { apiFetch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { VisitLogSheet } from "../../components/VisitLogSheet";
+import { SharingManagementSheet } from "../../components/SharingManagementSheet";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -71,6 +72,7 @@ export default function ListDetailScreen() {
   const [exporting, setExporting] = useState(false);
   const [logSheetPlace, setLogSheetPlace] = useState<{ id: string; name: string } | null>(null);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [showSharing, setShowSharing] = useState(false);
 
   const googleDiscovery = useAutoDiscovery("https://accounts.google.com");
 
@@ -388,6 +390,14 @@ export default function ListDetailScreen() {
         <Text style={styles.title} numberOfLines={1}>
           {list?.name ?? ""}
         </Text>
+        {!loading && (
+          <TouchableOpacity
+            style={styles.exportBtn}
+            onPress={() => setShowSharing(true)}
+          >
+            <Feather name="users" size={20} color={Colors.parchmentMuted} />
+          </TouchableOpacity>
+        )}
         {!loading && places.length > 0 && (
           <TouchableOpacity
             style={styles.exportBtn}
@@ -432,6 +442,14 @@ export default function ListDetailScreen() {
         token={token ?? ""}
         onClose={() => setLogSheetPlace(null)}
         onSaved={() => setLogSheetPlace(null)}
+      />
+
+      <SharingManagementSheet
+        visible={showSharing}
+        listId={listId ?? ""}
+        listName={list?.name ?? ""}
+        token={token ?? ""}
+        onClose={() => setShowSharing(false)}
       />
     </View>
   );

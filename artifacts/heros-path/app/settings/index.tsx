@@ -62,6 +62,11 @@ export default function SettingsIndex() {
             label="Discovery Preferences"
             onPress={() => router.push("/settings/preferences")}
           />
+          <SettingsItem
+            icon="shield"
+            label="Privacy"
+            onPress={() => router.push("/settings/privacy" as never)}
+          />
         </View>
       </View>
 

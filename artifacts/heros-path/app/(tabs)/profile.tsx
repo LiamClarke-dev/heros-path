@@ -281,6 +281,16 @@ export default function ProfileTab() {
 
       <TouchableOpacity
         style={styles.navCard}
+        onPress={() => router.push("/friends" as never)}
+        activeOpacity={0.8}
+      >
+        <Feather name="users" size={18} color={Colors.gold} />
+        <Text style={styles.navCardText}>Friends</Text>
+        <Feather name="chevron-right" size={16} color={Colors.parchmentDim} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.navCard}
         onPress={() => router.push("/settings")}
         activeOpacity={0.8}
       >

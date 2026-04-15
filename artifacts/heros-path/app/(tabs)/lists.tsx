@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
@@ -22,13 +22,22 @@ interface PlaceList {
   emoji: string | null;
   itemCount: number;
   createdAt: string;
+  isShared?: boolean;
+  canEdit?: boolean;
+  sharedBy?: { id: string; displayName: string } | null;
 }
+
+type Section = {
+  title: string;
+  data: PlaceList[];
+};
 
 export default function ListsTab() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const router = useRouter();
-  const [lists, setLists] = useState<PlaceList[]>([]);
+  const [myLists, setMyLists] = useState<PlaceList[]>([]);
+  const [sharedLists, setSharedLists] = useState<PlaceList[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -39,8 +48,17 @@ export default function ListsTab() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       try {
-        const data: { lists: PlaceList[] } = await apiFetch("/api/lists", { token });
-        setLists(data.lists);
+        const [myData, sharedData] = await Promise.all([
+          apiFetch("/api/lists", { token }),
+          apiFetch("/api/lists/shared-with-me", { token }).catch(() => ({ lists: [] })),
+        ]);
+        setMyLists((myData as { lists: PlaceList[] }).lists ?? []);
+        setSharedLists(
+          ((sharedData as { lists: PlaceList[] }).lists ?? []).map((l) => ({
+            ...l,
+            isShared: true,
+          }))
+        );
       } catch {
       } finally {
         setLoading(false);
@@ -63,31 +81,62 @@ export default function ListsTab() {
         token: token!,
         body: JSON.stringify({ name, emoji }),
       });
-      setLists((prev) => [...prev, data.list]);
+      setMyLists((prev) => [...prev, data.list]);
     },
     [token]
   );
 
-  const renderItem = useCallback(
-    ({ item }: { item: PlaceList }) => (
-      <TouchableOpacity
-        style={styles.listCard}
-        onPress={() => router.push(`/lists/${item.id}`)}
-        activeOpacity={0.75}
-      >
-        <View style={styles.listEmojiBg}>
-          <Text style={styles.listEmoji}>{item.emoji ?? "📍"}</Text>
-        </View>
-        <View style={styles.listInfo}>
-          <Text style={styles.listName}>{item.name}</Text>
+  const sections: Section[] = [];
+  if (myLists.length > 0 || !loading) {
+    sections.push({ title: "My Lists", data: myLists });
+  }
+  if (sharedLists.length > 0) {
+    sections.push({ title: "Shared with Me", data: sharedLists });
+  }
+
+  const renderItem = ({ item }: { item: PlaceList }) => (
+    <TouchableOpacity
+      style={styles.listCard}
+      onPress={() => router.push(`/lists/${item.id}`)}
+      activeOpacity={0.75}
+    >
+      <View style={styles.listEmojiBg}>
+        <Text style={styles.listEmoji}>{item.emoji ?? "📍"}</Text>
+      </View>
+      <View style={styles.listInfo}>
+        <Text style={styles.listName}>{item.name}</Text>
+        <View style={styles.listMeta}>
           <Text style={styles.listCount}>
             {item.itemCount} {item.itemCount === 1 ? "place" : "places"}
           </Text>
+          {item.isShared && item.sharedBy && (
+            <View style={styles.sharedChip}>
+              <Feather name="user" size={9} color={Colors.gold} />
+              <Text style={styles.sharedChipText}>{item.sharedBy.displayName}</Text>
+            </View>
+          )}
+          {item.isShared && item.canEdit && (
+            <View style={styles.editChip}>
+              <Feather name="edit-2" size={9} color={Colors.gold} />
+              <Text style={styles.editChipText}>Collaborative</Text>
+            </View>
+          )}
         </View>
-        <Feather name="chevron-right" size={18} color={Colors.parchmentDim} />
-      </TouchableOpacity>
-    ),
-    [router]
+      </View>
+      <Feather name="chevron-right" size={18} color={Colors.parchmentDim} />
+    </TouchableOpacity>
+  );
+
+  const renderSectionHeader = ({ section }: { section: Section }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>{section.title}</Text>
+      {section.title === "My Lists" && (
+        <Text style={styles.sectionCount}>{myLists.length}</Text>
+      )}
+      {section.title === "Shared with Me" && (
+        <Text style={styles.sectionCount}>{sharedLists.length}</Text>
+      )}
+    </View>
   );
 
   return (
@@ -101,11 +150,12 @@ export default function ListsTab() {
           <ActivityIndicator color={Colors.gold} />
         </View>
       ) : (
-        <FlatList
-          data={lists}
-          keyExtractor={(l) => l.id}
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          renderSectionHeader={renderSectionHeader}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -122,6 +172,7 @@ export default function ListsTab() {
               </Text>
             </View>
           }
+          stickySectionHeadersEnabled={false}
         />
       )}
 
@@ -157,9 +208,29 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: Colors.gold,
   },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  sectionHeaderText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    color: Colors.parchmentMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    flex: 1,
+  },
+  sectionCount: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.parchmentDim,
+  },
   list: {
     paddingHorizontal: 16,
-    paddingBottom: 100,
   },
   listCard: {
     flexDirection: "row",
@@ -185,17 +256,53 @@ const styles = StyleSheet.create({
   },
   listInfo: {
     flex: 1,
+    gap: 4,
   },
   listName: {
     fontFamily: "Inter_700Bold",
     fontSize: 16,
     color: Colors.parchment,
-    marginBottom: 2,
+  },
+  listMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
   },
   listCount: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
     color: Colors.parchmentMuted,
+  },
+  sharedChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: Colors.goldGlow,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  sharedChipText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: Colors.gold,
+  },
+  editChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: Colors.surface,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  editChipText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: Colors.gold,
   },
   center: {
     flex: 1,

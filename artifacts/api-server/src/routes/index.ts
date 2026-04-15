@@ -5,6 +5,7 @@ import placesRouter, { preferencesRouter } from "./places.js";
 import listsRouter from "./lists.js";
 import gamificationRouter from "./gamification.js";
 import { placeVisitsRouter, meVisitsRouter } from "./visits.js";
+import { friendsRouter, socialMeRouter } from "./social.js";
 import { requireAuth } from "../middlewares/auth.js";
 
 const router = Router();
@@ -18,7 +19,9 @@ router.use("/places", placeVisitsRouter);
 router.use("/places", placesRouter);
 router.use("/me", meVisitsRouter);
 router.use("/me", preferencesRouter);
+router.use("/me", socialMeRouter);
 router.use("/lists", listsRouter);
+router.use("/friends", friendsRouter);
 router.use("/", gamificationRouter);
 
 export default router;

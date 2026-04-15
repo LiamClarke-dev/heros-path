@@ -1,11 +1,14 @@
 import { Router, type Request, type Response } from "express";
 import {
   db,
+  users,
   placeLists,
   placeListItems,
   placeCache,
+  listShares,
+  listCollaborators,
 } from "@workspace/db";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, or } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import logger from "../logger.js";
 
@@ -86,11 +89,38 @@ router.get("/:listId", async (req: Request, res: Response) => {
   const [list] = await db
     .select()
     .from(placeLists)
-    .where(and(eq(placeLists.id, listId), eq(placeLists.userId, user.id)));
+    .where(eq(placeLists.id, listId));
 
   if (!list) {
     res.status(404).json({ error: "List not found" });
     return;
+  }
+
+  const isOwner = list.userId === user.id;
+
+  if (!isOwner) {
+    const [share] = await db
+      .select({ listId: listShares.listId })
+      .from(listShares)
+      .where(
+        and(
+          eq(listShares.listId, listId),
+          eq(listShares.sharedWithUserId, user.id)
+        )
+      );
+    const [collab] = await db
+      .select({ listId: listCollaborators.listId })
+      .from(listCollaborators)
+      .where(
+        and(
+          eq(listCollaborators.listId, listId),
+          eq(listCollaborators.userId, user.id)
+        )
+      );
+    if (!share && !collab) {
+      res.status(404).json({ error: "List not found" });
+      return;
+    }
   }
 
   const items = await db
@@ -125,6 +155,34 @@ router.get("/:listId", async (req: Request, res: Response) => {
   res.json({ list, places });
 });
 
+async function getListWithOwnerCheck(listId: string, userId: string) {
+  const [list] = await db
+    .select({ id: placeLists.id, name: placeLists.name, userId: placeLists.userId })
+    .from(placeLists)
+    .where(and(eq(placeLists.id, listId), eq(placeLists.userId, userId)));
+  return list ?? null;
+}
+
+async function canWriteList(listId: string, userId: string): Promise<boolean> {
+  const [list] = await db
+    .select({ id: placeLists.id })
+    .from(placeLists)
+    .where(and(eq(placeLists.id, listId), eq(placeLists.userId, userId)));
+  if (list) return true;
+
+  const [collab] = await db
+    .select({ role: listCollaborators.role })
+    .from(listCollaborators)
+    .where(
+      and(
+        eq(listCollaborators.listId, listId),
+        eq(listCollaborators.userId, userId),
+        eq(listCollaborators.role, "editor")
+      )
+    );
+  return !!collab;
+}
+
 router.post("/:listId/items", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const listId = req.params.listId as string;
@@ -135,12 +193,8 @@ router.post("/:listId/items", async (req: Request, res: Response) => {
     return;
   }
 
-  const [list] = await db
-    .select()
-    .from(placeLists)
-    .where(and(eq(placeLists.id, listId), eq(placeLists.userId, user.id)));
-
-  if (!list) {
+  const canWrite = await canWriteList(listId, user.id);
+  if (!canWrite) {
     res.status(404).json({ error: "List not found" });
     return;
   }
@@ -171,12 +225,8 @@ router.delete(
     const listId = req.params.listId as string;
     const googlePlaceId = req.params.googlePlaceId as string;
 
-    const [list] = await db
-      .select()
-      .from(placeLists)
-      .where(and(eq(placeLists.id, listId), eq(placeLists.userId, user.id)));
-
-    if (!list) {
+    const canWrite = await canWriteList(listId, user.id);
+    if (!canWrite) {
       res.status(404).json({ error: "List not found" });
       return;
     }
@@ -304,14 +354,6 @@ ${styles}
 ${placemarks}
   </Document>
 </kml>`;
-}
-
-async function getListWithOwnerCheck(listId: string, userId: string) {
-  const [list] = await db
-    .select()
-    .from(placeLists)
-    .where(and(eq(placeLists.id, listId), eq(placeLists.userId, userId)));
-  return list ?? null;
 }
 
 async function getListPlaces(listId: string): Promise<KmlPlace[]> {
@@ -471,5 +513,300 @@ router.post(
     }
   }
 );
+
+router.get("/shared-with-me", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+
+  const shares = await db
+    .select({
+      listId: listShares.listId,
+      canEdit: listShares.canEdit,
+      createdAt: listShares.createdAt,
+      sharedByUserId: listShares.sharedByUserId,
+    })
+    .from(listShares)
+    .where(eq(listShares.sharedWithUserId, user.id));
+
+  if (shares.length === 0) {
+    res.json({ lists: [] });
+    return;
+  }
+
+  const ownerIds = [...new Set(shares.map((s) => s.sharedByUserId))];
+  const ownerRows = await db
+    .select({ id: users.id, displayName: users.displayName })
+    .from(users)
+    .where(
+      sql`${users.id} = ANY(ARRAY[${sql.join(
+        ownerIds.map((id) => sql`${id}::text`),
+        sql`, `
+      )}])`
+    );
+  const ownerMap = Object.fromEntries(ownerRows.map((u) => [u.id, u]));
+
+  const listIds = shares.map((s) => s.listId);
+  const listRows = await db
+    .select({
+      id: placeLists.id,
+      name: placeLists.name,
+      emoji: placeLists.emoji,
+      createdAt: placeLists.createdAt,
+      itemCount: count(placeListItems.id),
+    })
+    .from(placeLists)
+    .leftJoin(placeListItems, eq(placeListItems.listId, placeLists.id))
+    .where(
+      sql`${placeLists.id} = ANY(ARRAY[${sql.join(
+        listIds.map((id) => sql`${id}::text`),
+        sql`, `
+      )}])`
+    )
+    .groupBy(placeLists.id);
+
+  const listMap = Object.fromEntries(listRows.map((l) => [l.id, l]));
+
+  const lists = shares.map((s) => ({
+    ...listMap[s.listId],
+    canEdit: s.canEdit,
+    sharedBy: ownerMap[s.sharedByUserId] ?? null,
+    sharedAt: s.createdAt,
+  }));
+
+  res.json({ lists });
+});
+
+router.post("/:listId/share", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const listId = req.params.listId as string;
+  const { friendId, canEdit = false } = req.body as {
+    friendId?: unknown;
+    canEdit?: unknown;
+  };
+
+  if (!friendId || typeof friendId !== "string") {
+    res.status(400).json({ error: "friendId is required" });
+    return;
+  }
+
+  const list = await getListWithOwnerCheck(listId, user.id);
+  if (!list) {
+    res.status(404).json({ error: "List not found" });
+    return;
+  }
+
+  await db
+    .insert(listShares)
+    .values({
+      id: crypto.randomUUID(),
+      listId,
+      sharedByUserId: user.id,
+      sharedWithUserId: friendId,
+      canEdit: Boolean(canEdit),
+    })
+    .onConflictDoUpdate({
+      target: [listShares.listId, listShares.sharedWithUserId],
+      set: { canEdit: Boolean(canEdit) },
+    });
+
+  if (canEdit) {
+    await db
+      .insert(listCollaborators)
+      .values({
+        id: crypto.randomUUID(),
+        listId,
+        userId: friendId,
+        role: "editor",
+      })
+      .onConflictDoNothing();
+  }
+
+  res.json({ ok: true });
+});
+
+router.delete(
+  "/:listId/share/:friendId",
+  async (req: Request, res: Response) => {
+    const { user } = req as AuthenticatedRequest;
+    const listId = req.params.listId as string;
+    const friendId = req.params.friendId as string;
+
+    const list = await getListWithOwnerCheck(listId, user.id);
+    if (!list) {
+      res.status(404).json({ error: "List not found" });
+      return;
+    }
+
+    await db
+      .delete(listShares)
+      .where(
+        and(
+          eq(listShares.listId, listId),
+          eq(listShares.sharedWithUserId, friendId)
+        )
+      );
+
+    await db
+      .delete(listCollaborators)
+      .where(
+        and(
+          eq(listCollaborators.listId, listId),
+          eq(listCollaborators.userId, friendId)
+        )
+      );
+
+    res.json({ ok: true });
+  }
+);
+
+router.get(
+  "/:listId/collaborators",
+  async (req: Request, res: Response) => {
+    const { user } = req as AuthenticatedRequest;
+    const listId = req.params.listId as string;
+
+    const list = await getListWithOwnerCheck(listId, user.id);
+    if (!list) {
+      res.status(404).json({ error: "List not found" });
+      return;
+    }
+
+    const rows = await db
+      .select({
+        userId: listCollaborators.userId,
+        role: listCollaborators.role,
+        addedAt: listCollaborators.addedAt,
+      })
+      .from(listCollaborators)
+      .where(eq(listCollaborators.listId, listId));
+
+    if (rows.length === 0) {
+      res.json({ collaborators: [] });
+      return;
+    }
+
+    const ids = rows.map((r) => r.userId);
+    const userRows = await db
+      .select({ id: users.id, displayName: users.displayName, profileImageUrl: users.profileImageUrl })
+      .from(users)
+      .where(
+        sql`${users.id} = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::text`), sql`, `)}])`
+      );
+    const userMap = Object.fromEntries(userRows.map((u) => [u.id, u]));
+
+    const collaborators = rows.map((r) => ({
+      ...userMap[r.userId],
+      role: r.role,
+      addedAt: r.addedAt,
+    }));
+
+    res.json({ collaborators });
+  }
+);
+
+router.post(
+  "/:listId/collaborators",
+  async (req: Request, res: Response) => {
+    const { user } = req as AuthenticatedRequest;
+    const listId = req.params.listId as string;
+    const { userId: targetUserId, role = "editor" } = req.body as {
+      userId?: unknown;
+      role?: unknown;
+    };
+
+    if (!targetUserId || typeof targetUserId !== "string") {
+      res.status(400).json({ error: "userId is required" });
+      return;
+    }
+
+    const list = await getListWithOwnerCheck(listId, user.id);
+    if (!list) {
+      res.status(404).json({ error: "List not found" });
+      return;
+    }
+
+    await db
+      .insert(listCollaborators)
+      .values({
+        id: crypto.randomUUID(),
+        listId,
+        userId: targetUserId,
+        role: typeof role === "string" ? role : "editor",
+      })
+      .onConflictDoUpdate({
+        target: [listCollaborators.listId, listCollaborators.userId],
+        set: { role: typeof role === "string" ? role : "editor" },
+      });
+
+    res.json({ ok: true });
+  }
+);
+
+router.delete(
+  "/:listId/collaborators/:userId",
+  async (req: Request, res: Response) => {
+    const { user } = req as AuthenticatedRequest;
+    const listId = req.params.listId as string;
+    const targetUserId = req.params.userId as string;
+
+    const list = await getListWithOwnerCheck(listId, user.id);
+    if (!list) {
+      res.status(404).json({ error: "List not found" });
+      return;
+    }
+
+    await db
+      .delete(listCollaborators)
+      .where(
+        and(
+          eq(listCollaborators.listId, listId),
+          eq(listCollaborators.userId, targetUserId)
+        )
+      );
+
+    res.json({ ok: true });
+  }
+);
+
+router.get("/:listId/shares", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const listId = req.params.listId as string;
+
+  const list = await getListWithOwnerCheck(listId, user.id);
+  if (!list) {
+    res.status(404).json({ error: "List not found" });
+    return;
+  }
+
+  const shares = await db
+    .select({
+      sharedWithUserId: listShares.sharedWithUserId,
+      canEdit: listShares.canEdit,
+      createdAt: listShares.createdAt,
+    })
+    .from(listShares)
+    .where(eq(listShares.listId, listId));
+
+  if (shares.length === 0) {
+    res.json({ shares: [] });
+    return;
+  }
+
+  const ids = shares.map((s) => s.sharedWithUserId);
+  const userRows = await db
+    .select({ id: users.id, displayName: users.displayName, profileImageUrl: users.profileImageUrl })
+    .from(users)
+    .where(
+      sql`${users.id} = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::text`), sql`, `)}])`
+    );
+  const userMap = Object.fromEntries(userRows.map((u) => [u.id, u]));
+
+  const result = shares.map((s) => ({
+    ...userMap[s.sharedWithUserId],
+    canEdit: s.canEdit,
+    sharedAt: s.createdAt,
+  }));
+
+  res.json({ shares: result });
+});
 
 export default router;

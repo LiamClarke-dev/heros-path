@@ -10,8 +10,8 @@ import {
   Alert,
   ActionSheetIOS,
   Platform,
-  Clipboard,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { File as FSFile, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -155,11 +155,11 @@ export default function ListDetailScreen() {
     }
   }, [token, listId, list, places.length]);
 
-  const copyMapsLink = useCallback(() => {
+  const copyMapsLink = useCallback(async () => {
     if (!list) return;
     const searchQuery = encodeURIComponent(list.name);
     const url = `https://www.google.com/maps/search/${searchQuery}`;
-    Clipboard.setString(url);
+    await Clipboard.setStringAsync(url);
     Alert.alert("Link Copied", "Google Maps search link copied to clipboard.");
   }, [list]);
 

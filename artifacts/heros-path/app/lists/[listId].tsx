@@ -35,7 +35,9 @@ WebBrowser.maybeCompleteAuthSession();
 
 const API_BASE =
   (process.env.EXPO_PUBLIC_API_BASE_URL as string | undefined) ??
-  "http://localhost:8080";
+  (process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+    : "http://localhost:8080");
 
 interface ListPlace {
   googlePlaceId: string;

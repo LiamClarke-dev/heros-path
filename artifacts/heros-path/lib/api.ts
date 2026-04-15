@@ -1,5 +1,8 @@
 const API_BASE =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+  process.env.EXPO_PUBLIC_API_BASE_URL ??
+  (process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+    : "http://localhost:8080");
 
 export async function apiFetch(
   path: string,

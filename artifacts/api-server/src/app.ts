@@ -39,4 +39,10 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api", apiRoutes);
 
+app.get("/favicon.ico", (_req, res) => res.status(204).end());
+
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
 export default app;

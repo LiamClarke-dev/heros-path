@@ -18,10 +18,6 @@ localPort = 24451
 [services.development]
 run = "pnpm --filter @workspace/heros-path run dev"
 
-[services.production]
-build = [ "pnpm", "--filter", "@workspace/heros-path", "run", "build" ]
-run = [ "pnpm", "--filter", "@workspace/heros-path", "run", "serve" ]
-
 [services.env]
 PORT = "24451"
 BASE_PATH = "/"

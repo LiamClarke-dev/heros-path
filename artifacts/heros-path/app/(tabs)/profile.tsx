@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Animated,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -39,19 +40,24 @@ interface BadgeItem {
   earnedAt: string | null;
 }
 
-function InitialsAvatar({ name, size = 64 }: { name: string; size?: number }) {
+function Avatar({ name, imageUrl, size = 64 }: { name: string; imageUrl?: string | null; size?: number }) {
   const initials = name
     .split(" ")
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? "")
     .join("");
+  const containerStyle = [styles.avatar, { width: size, height: size, borderRadius: size / 2 }];
+  if (imageUrl) {
+    return (
+      <Image
+        source={{ uri: imageUrl }}
+        style={[...containerStyle, styles.avatarImage]}
+        resizeMode="cover"
+      />
+    );
+  }
   return (
-    <View
-      style={[
-        styles.avatar,
-        { width: size, height: size, borderRadius: size / 2 },
-      ]}
-    >
+    <View style={containerStyle}>
       <Text style={[styles.avatarText, { fontSize: size * 0.38 }]}>
         {initials || "A"}
       </Text>
@@ -144,7 +150,7 @@ export default function ProfileTab() {
       <Text style={styles.screenTitle}>Profile</Text>
 
       <View style={styles.heroCard}>
-        <InitialsAvatar name={stats.displayName} size={72} />
+        <Avatar name={stats.displayName} imageUrl={stats.profileImageUrl} size={72} />
         <View style={styles.heroInfo}>
           <Text style={styles.heroName}>{stats.displayName}</Text>
           {stats.email ? (
@@ -273,6 +279,9 @@ const styles = StyleSheet.create({
   avatarText: {
     fontFamily: "Inter_700Bold",
     color: Colors.gold,
+  },
+  avatarImage: {
+    backgroundColor: Colors.border,
   },
   heroInfo: {
     flex: 1,

@@ -91,6 +91,7 @@ function decodePayload(token: string): AuthUser | null {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const payload = JSON.parse(base64urlDecode(parts[1]));
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
     return {
       id: payload.id,
       email: payload.email ?? null,

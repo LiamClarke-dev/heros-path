@@ -120,7 +120,7 @@ router.post("/replit/token-exchange", async (req: Request, res: Response) => {
   const clientId = process.env.REPLIT_CLIENT_ID ?? process.env.REPL_ID;
   const clientSecret = process.env.REPLIT_CLIENT_SECRET;
   if (!clientId) {
-    res.status(503).json({ error: "Replit auth not configured on this server" });
+    res.status(503).json({ error: "Replit auth not configured: REPLIT_CLIENT_ID (or REPL_ID) missing" });
     return;
   }
 
@@ -132,9 +132,7 @@ router.post("/replit/token-exchange", async (req: Request, res: Response) => {
       client_id: clientId,
       redirect_uri: redirectUri,
     };
-    if (clientSecret) {
-      params.client_secret = clientSecret;
-    }
+    if (clientSecret) params.client_secret = clientSecret;
 
     const tokenRes = await fetch("https://replit.com/oidc/token", {
       method: "POST",

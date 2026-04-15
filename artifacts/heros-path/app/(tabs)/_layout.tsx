@@ -1,6 +1,6 @@
 import { Redirect, Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { useAuth } from "../_layout";
+import { useAuth } from "../../lib/auth";
 import Colors from "../../constants/colors";
 
 export default function TabLayout() {

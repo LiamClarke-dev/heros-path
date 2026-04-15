@@ -30,6 +30,7 @@ timeoutMs = 20000
 [userenv.shared]
 EXPO_PUBLIC_GOOGLE_CLIENT_ID = "155152959717-9ja420d454urufbqmu8bh1aq9tu1epu7.apps.googleusercontent.com"
 EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = "155152959717-a20bfhbkjp05k4kd3cahvasvbneimn7q.apps.googleusercontent.com"
+JWT_SECRET = "2c9a59ebe9b666a77d15edb9cf0c3b2a5c7e989f723436e84d20649fe8f7b859"
 
 [nix]
 channel = "stable-25_05"

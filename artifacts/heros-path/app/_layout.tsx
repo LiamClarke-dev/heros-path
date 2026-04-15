@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect } from "react";
-import { Stack, Redirect } from "expo-router";
+import { useContext, useEffect } from "react";
+import { Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -11,6 +11,7 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
+import { AuthProvider, AuthContext } from "../lib/auth";
 import Colors from "../constants/colors";
 
 SplashScreen.preventAutoHideAsync();
@@ -24,35 +25,13 @@ const queryClient = new QueryClient({
   },
 });
 
-export interface AuthUser {
-  id: string;
-  email?: string | null;
-  displayName: string;
-  xp: number;
-  level: number;
-}
-
-export interface AuthContextValue {
-  token: string | null;
-  user: AuthUser | null;
-  isLoading: boolean;
-}
-
-export const AuthContext = createContext<AuthContextValue>({
-  token: null,
-  user: null,
-  isLoading: false,
-});
-
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export { AuthContext };
+export { useAuth } from "../lib/auth";
+export type { AuthUser } from "../lib/auth";
 
 function RootNavigator() {
-  const { token, isLoading } = useAuth();
-
+  const { isLoading } = useContext(AuthContext);
   if (isLoading) return null;
-
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
@@ -80,10 +59,10 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <AuthContext.Provider value={{ token: null, user: null, isLoading: false }}>
+        <AuthProvider>
           <StatusBar style="light" backgroundColor={Colors.background} />
           <RootNavigator />
-        </AuthContext.Provider>
+        </AuthProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
   );

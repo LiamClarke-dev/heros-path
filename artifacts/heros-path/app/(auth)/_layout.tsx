@@ -1,5 +1,5 @@
 import { Redirect, Stack } from "expo-router";
-import { useAuth } from "../_layout";
+import { useAuth } from "../../lib/auth";
 import Colors from "../../constants/colors";
 
 export default function AuthLayout() {

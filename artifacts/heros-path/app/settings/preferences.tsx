@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import Colors from "../../constants/colors";
@@ -41,6 +41,7 @@ const RATING_OPTIONS = [
 ];
 
 export default function PreferencesScreen() {
+  const router = useRouter();
   const { token } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -49,7 +50,7 @@ export default function PreferencesScreen() {
   const [minRating, setMinRating] = useState(0);
 
   const loadPrefs = useCallback(async () => {
-    if (!token) return;
+    if (!token) { setLoading(false); return; }
     try {
       const data = (await apiFetch("/api/me/preferences", {
         headers: { Authorization: `Bearer ${token}` },
@@ -104,7 +105,16 @@ export default function PreferencesScreen() {
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.header}>
-        <Text style={styles.title}>Discovery Preferences</Text>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Feather name="arrow-left" size={22} color={Colors.parchment} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Discovery Preferences</Text>
+        </View>
         <Text style={styles.subtitle}>
           Choose what types of places to find on your journeys.{"\n"}Leave all unchecked to discover everything.
         </Text>
@@ -195,11 +205,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 6,
+  },
+  backBtn: {
+    padding: 4,
+  },
   title: {
     fontFamily: "Inter_700Bold",
     fontSize: 22,
     color: Colors.parchment,
-    marginBottom: 6,
+    flex: 1,
   },
   subtitle: {
     fontFamily: "Inter_400Regular",

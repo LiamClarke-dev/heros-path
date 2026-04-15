@@ -39,6 +39,11 @@ const API_BASE =
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
     : "http://localhost:8080");
 
+const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID as string | undefined;
+const GOOGLE_IOS_REDIRECT = IOS_GOOGLE_CLIENT_ID
+  ? `com.googleusercontent.apps.${IOS_GOOGLE_CLIENT_ID.split(".")[0]}:/oauth2redirect/google`
+  : undefined;
+
 interface ListPlace {
   googlePlaceId: string;
   name: string;
@@ -79,18 +84,26 @@ export default function ListDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [logSheetPlace, setLogSheetPlace] = useState<{ id: string; name: string } | null>(null);
-  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [webGoogleClientId, setWebGoogleClientId] = useState<string | null>(null);
   const [showSharing, setShowSharing] = useState(false);
 
   const isOwner = !!(list?.userId && user?.id && list.userId === user.id);
 
   const googleDiscovery = useAutoDiscovery("https://accounts.google.com");
 
-  const redirectUri = makeRedirectUri({ scheme: "herospath" });
+  const effectiveGoogleClientId =
+    Platform.OS === "ios" ? (IOS_GOOGLE_CLIENT_ID ?? null) : webGoogleClientId;
+
+  const redirectUri = makeRedirectUri(
+    Platform.OS === "ios" && GOOGLE_IOS_REDIRECT
+      ? { native: GOOGLE_IOS_REDIRECT }
+      : { scheme: "herospath" }
+  );
+
   const [, , googlePromptAsync] = useAuthRequest(
     {
-      clientId: googleClientId ?? "__placeholder__",
-      scopes: googleClientId
+      clientId: effectiveGoogleClientId ?? "__placeholder__",
+      scopes: effectiveGoogleClientId
         ? [
             "profile",
             "email",
@@ -103,10 +116,11 @@ export default function ListDetailScreen() {
   );
 
   useEffect(() => {
+    if (Platform.OS === "ios") return;
     fetch(`${API_BASE}/api/auth/google/config`)
       .then((r) => r.json())
       .then((d: { clientId: string | null }) => {
-        if (d.clientId) setGoogleClientId(d.clientId);
+        if (d.clientId) setWebGoogleClientId(d.clientId);
       })
       .catch(() => {});
   }, []);
@@ -222,7 +236,7 @@ export default function ListDetailScreen() {
 
   const createGoogleMyMap = useCallback(async () => {
     if (!token || !listId || !list) return;
-    if (!googleClientId) {
+    if (!effectiveGoogleClientId) {
       Alert.alert(
         "Google Not Connected",
         "Google Drive integration is not configured. Use 'Download KML file' to export manually."
@@ -283,7 +297,7 @@ export default function ListDetailScreen() {
     } finally {
       setExporting(false);
     }
-  }, [token, listId, list, googleClientId, googlePromptAsync]);
+  }, [token, listId, list, effectiveGoogleClientId, googlePromptAsync]);
 
   const openExportSheet = useCallback(() => {
     if (places.length === 0) {
@@ -291,11 +305,11 @@ export default function ListDetailScreen() {
       return;
     }
 
-    const infoMsg = googleClientId
+    const infoMsg = effectiveGoogleClientId
       ? "Download a KML file, create a Google My Maps document directly, or copy a search link."
       : "Import the KML file into Google My Maps:\nmaps.google.com → ☰ → Your places → Maps → Create Map → Import";
 
-    const hasGoogle = !!googleClientId;
+    const hasGoogle = !!effectiveGoogleClientId;
 
     if (Platform.OS === "ios") {
       const options: string[] = [
@@ -327,7 +341,7 @@ export default function ListDetailScreen() {
       ];
       Alert.alert(`Export "${list?.name ?? "List"}"`, infoMsg, buttons);
     }
-  }, [places.length, list, exportKml, copyMapsLink, createGoogleMyMap, googleClientId]);
+  }, [places.length, list, exportKml, copyMapsLink, createGoogleMyMap, effectiveGoogleClientId]);
 
   const renderItem = useCallback(
     ({ item }: { item: ListPlace }) => {

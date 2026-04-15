@@ -803,6 +803,12 @@ router.post(
       return;
     }
 
+    const validRoles = ["editor", "viewer"] as const;
+    const resolvedRole: "editor" | "viewer" =
+      typeof role === "string" && (validRoles as readonly string[]).includes(role)
+        ? (role as "editor" | "viewer")
+        : "editor";
+
     const list = await getListWithOwnerCheck(listId, user.id);
     if (!list) {
       res.status(404).json({ error: "List not found" });
@@ -821,11 +827,11 @@ router.post(
         id: crypto.randomUUID(),
         listId,
         userId: targetUserId,
-        role: typeof role === "string" ? role : "editor",
+        role: resolvedRole,
       })
       .onConflictDoUpdate({
         target: [listCollaborators.listId, listCollaborators.userId],
-        set: { role: typeof role === "string" ? role : "editor" },
+        set: { role: resolvedRole },
       });
 
     res.json({ ok: true });

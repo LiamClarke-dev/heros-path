@@ -216,6 +216,10 @@ friendsRouter.post("/join/:code", async (req: Request, res: Response) => {
     res.status(404).json({ error: "Invalid code" });
     return;
   }
+  if (invite.expiresAt < new Date()) {
+    res.status(400).json({ error: "Code expired" });
+    return;
+  }
   if (invite.userId === user.id) {
     res.status(400).json({ error: "Cannot add yourself" });
     return;
@@ -237,7 +241,7 @@ friendsRouter.post("/join/:code", async (req: Request, res: Response) => {
         .returning({ id: friendInviteCodes.id, userId: friendInviteCodes.userId });
 
       if (!claimed) {
-        throw new Error("CODE_INVALID");
+        throw new Error("CODE_ALREADY_USED");
       }
 
       const [lo, hi] = sortPair(invite.userId, user.id);
@@ -273,8 +277,8 @@ friendsRouter.post("/join/:code", async (req: Request, res: Response) => {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
-    if (msg === "CODE_INVALID") {
-      res.status(400).json({ error: "Code expired or already used" });
+    if (msg === "CODE_ALREADY_USED") {
+      res.status(400).json({ error: "Code already used" });
     } else if (msg === "ALREADY_FRIENDS") {
       res.status(400).json({ error: "Already friends" });
     } else if (msg === "BLOCKED") {

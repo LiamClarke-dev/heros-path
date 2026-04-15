@@ -434,6 +434,28 @@ export default function ListDetailScreen() {
         )}
       </View>
 
+      {!loading && isOwner && collaborators.length > 0 && (
+        <View style={styles.collabRow}>
+          <Feather name="users" size={13} color={Colors.parchmentMuted} />
+          <Text style={styles.collabRowLabel}>Collaborative ·</Text>
+          {collaborators.slice(0, 5).map((c, i) => {
+            const initials = c.displayName
+              .split(" ")
+              .slice(0, 2)
+              .map((w) => w[0]?.toUpperCase() ?? "")
+              .join("");
+            return (
+              <View key={c.id} style={[styles.collabAvatar, { marginLeft: i === 0 ? 0 : -8 }]}>
+                <Text style={styles.collabAvatarText}>{initials || "?"}</Text>
+              </View>
+            );
+          })}
+          {collaborators.length > 5 && (
+            <Text style={styles.collabMore}>+{collaborators.length - 5}</Text>
+          )}
+        </View>
+      )}
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={Colors.gold} />
@@ -525,6 +547,43 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.background,
     lineHeight: 14,
+  },
+  collabRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
+    backgroundColor: Colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  collabRowLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    marginRight: 2,
+  },
+  collabAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  collabAvatarText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    color: Colors.gold,
+  },
+  collabMore: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    marginLeft: 4,
   },
   list: {
     paddingHorizontal: 16,

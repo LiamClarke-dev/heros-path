@@ -13,17 +13,19 @@ import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import type RNMapView from "react-native-maps";
+import type { MapViewProps, MapMarkerProps, MapPolylineProps, MapCircleProps, Provider } from "react-native-maps";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import Colors from "../../constants/colors";
 
 const IS_WEB = Platform.OS === "web";
 
-let MapView: React.ComponentType<any> | null = null;
-let Marker: React.ComponentType<any> | null = null;
-let Polyline: React.ComponentType<any> | null = null;
-let Circle: React.ComponentType<any> | null = null;
-let PROVIDER_GOOGLE: string | null = null;
+let MapView: React.ComponentClass<MapViewProps> | null = null;
+let Marker: React.ComponentType<MapMarkerProps> | null = null;
+let Polyline: React.ComponentType<MapPolylineProps> | null = null;
+let Circle: React.ComponentType<MapCircleProps> | null = null;
+let PROVIDER_GOOGLE: Provider | null = null;
 
 if (!IS_WEB) {
   const Maps = require("react-native-maps");
@@ -89,7 +91,7 @@ export default function JourneyTab() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const router = useRouter();
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<RNMapView | null>(null);
 
   const [journeyStatus, setJourneyStatus] = useState<JourneyStatus>("idle");
   const [journeyId, setJourneyId] = useState<string | null>(null);
@@ -291,9 +293,8 @@ export default function JourneyTab() {
 
     setJourneyStatus("ending");
 
-    // Stop all tracking sources first — eliminates waypoint race
-    locationSubscriptionRef.current?.remove();
-    locationSubscriptionRef.current = null;
+    // Stop display timer and automatic flush; keep location watcher running
+    // so any waypoints collected during the PATCH continue buffering for retry
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
@@ -313,6 +314,10 @@ export default function JourneyTab() {
         body: JSON.stringify({ status: "ended", waypoints: remainingWaypoints }),
       })) as { totalDistanceM: number; placeCount: number };
 
+      // Success — now stop location tracking
+      locationSubscriptionRef.current?.remove();
+      locationSubscriptionRef.current = null;
+
       const dist = formatDistance(result.totalDistanceM ?? 0);
       const elapsed = startedAtSnapshot ? formatDuration(startedAtSnapshot) : "—";
       setJourneyId(null);
@@ -325,7 +330,7 @@ export default function JourneyTab() {
       Alert.alert("Journey Complete!", `Distance: ${dist}\nTime: ${elapsed}`);
     } catch (err) {
       console.warn("[JourneyMap] endJourney PATCH failed", err);
-      // Restore buffer and restart flush interval so waypoints can be retried
+      // Restore buffer; location watcher is still running for continued capture
       waypointBufferRef.current.unshift(...remainingWaypoints);
       flushIntervalRef.current = setInterval(() => flushWaypoints(jId), 10000);
       if (startedAtSnapshot) {
@@ -336,7 +341,7 @@ export default function JourneyTab() {
       setJourneyStatus("active");
       Alert.alert(
         "Save failed",
-        "Could not end your journey. Waypoints are preserved — try ending again."
+        "Could not end your journey. Tracking is still active — try ending again."
       );
     }
   }
@@ -362,7 +367,7 @@ export default function JourneyTab() {
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFillObject}
-          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+          provider={Platform.OS === "android" && PROVIDER_GOOGLE ? PROVIDER_GOOGLE : undefined}
           customMapStyle={Colors.mapDark}
           showsUserLocation={false}
           showsMyLocationButton={false}

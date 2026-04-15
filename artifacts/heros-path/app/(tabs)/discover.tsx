@@ -9,7 +9,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import Colors from "../../constants/colors";
 import { apiFetch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -28,6 +28,7 @@ const FILTERS: { key: FilterType; label: string }[] = [
 export default function DiscoverTab() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
+  const router = useRouter();
   const [filter, setFilter] = useState<FilterType>("all");
   const [places, setPlaces] = useState<DiscoveredPlace[]>([]);
   const [loading, setLoading] = useState(false);
@@ -124,13 +125,14 @@ export default function DiscoverTab() {
     ({ item }: { item: DiscoveredPlace }) => (
       <PlaceCard
         place={item}
+        onPress={(id) => router.push(`/place-detail?googlePlaceId=${id}`)}
         onFavorite={handleFavorite}
         onDismiss={handleDismiss}
         onSnooze={handleSnooze}
         onAddToList={(id) => setAddToListId(id)}
       />
     ),
-    [handleFavorite, handleDismiss, handleSnooze]
+    [router, handleFavorite, handleDismiss, handleSnooze]
   );
 
   return (

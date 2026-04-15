@@ -18,9 +18,10 @@ const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 function makePhotoUrl(ref: string | null | undefined, width = 400): string | null {
   if (!ref) return null;
   const key = process.env.GOOGLE_MAPS_API_KEY ?? "";
-  return ref.includes("/")
-    ? `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=${width}&key=${key}`
-    : null;
+  if (ref.includes("/")) {
+    return `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=${width}&key=${key}`;
+  }
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${width}&photoreference=${ref}&key=${key}`;
 }
 
 router.get("/discovered", async (req: Request, res: Response) => {
@@ -30,9 +31,31 @@ router.get("/discovered", async (req: Request, res: Response) => {
   const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10)));
   const offset = (page - 1) * limit;
 
-  const now = new Date();
+  const notDismissed = or(
+    isNull(userPlaceStates.isDismissed),
+    eq(userPlaceStates.isDismissed, false)
+  );
 
-  const rows = await db
+  const notActivelySnoozed = or(
+    isNull(userPlaceStates.isSnoozed),
+    eq(userPlaceStates.isSnoozed, false),
+    isNull(userPlaceStates.snoozeUntil),
+    sql`${userPlaceStates.snoozeUntil} <= now()`
+  );
+
+  const activelySnoozed = and(
+    eq(userPlaceStates.isSnoozed, true),
+    sql`${userPlaceStates.snoozeUntil} > now()`
+  );
+
+  const filterWhere =
+    filter === "favorites"
+      ? and(notDismissed, notActivelySnoozed, eq(userPlaceStates.isFavorited, true))
+      : filter === "snoozed"
+      ? and(notDismissed, activelySnoozed)
+      : and(notDismissed, notActivelySnoozed);
+
+  const baseJoin = db
     .select({
       googlePlaceId: placeCache.googlePlaceId,
       name: placeCache.name,
@@ -52,49 +75,34 @@ router.get("/discovered", async (req: Request, res: Response) => {
       snoozeUntil: userPlaceStates.snoozeUntil,
     })
     .from(userDiscoveredPlaces)
-    .innerJoin(
-      placeCache,
-      eq(userDiscoveredPlaces.googlePlaceId, placeCache.googlePlaceId)
-    )
+    .innerJoin(placeCache, eq(userDiscoveredPlaces.googlePlaceId, placeCache.googlePlaceId))
     .leftJoin(
       userPlaceStates,
       and(
         eq(userPlaceStates.userId, user.id),
         eq(userPlaceStates.googlePlaceId, placeCache.googlePlaceId)
       )
-    )
-    .where(
-      and(
-        eq(userDiscoveredPlaces.userId, user.id),
-        or(
-          isNull(userPlaceStates.isDismissed),
-          eq(userPlaceStates.isDismissed, false)
-        ),
-        filter === "favorites"
-          ? eq(userPlaceStates.isFavorited, true)
-          : filter === "snoozed"
-          ? and(
-              eq(userPlaceStates.isSnoozed, true),
-              gt(userPlaceStates.snoozeUntil!, now)
-            )
-          : or(
-              isNull(userPlaceStates.isSnoozed),
-              eq(userPlaceStates.isSnoozed, false),
-              and(
-                eq(userPlaceStates.isSnoozed, true),
-                or(isNull(userPlaceStates.snoozeUntil), sql`${userPlaceStates.snoozeUntil} <= ${now}`)
-              )
-            )
-      )
-    )
-    .orderBy(sql`${userDiscoveredPlaces.lastDiscoveredAt} DESC`)
-    .limit(limit)
-    .offset(offset);
+    );
 
-  const countRow = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(userDiscoveredPlaces)
-    .where(eq(userDiscoveredPlaces.userId, user.id));
+  const [rows, countRow] = await Promise.all([
+    baseJoin
+      .where(and(eq(userDiscoveredPlaces.userId, user.id), filterWhere))
+      .orderBy(sql`${userDiscoveredPlaces.lastDiscoveredAt} DESC`)
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(userDiscoveredPlaces)
+      .innerJoin(placeCache, eq(userDiscoveredPlaces.googlePlaceId, placeCache.googlePlaceId))
+      .leftJoin(
+        userPlaceStates,
+        and(
+          eq(userPlaceStates.userId, user.id),
+          eq(userPlaceStates.googlePlaceId, placeCache.googlePlaceId)
+        )
+      )
+      .where(and(eq(userDiscoveredPlaces.userId, user.id), filterWhere)),
+  ]);
 
   const total = countRow[0]?.total ?? 0;
 
@@ -154,18 +162,29 @@ router.post("/:googlePlaceId/state", async (req: Request, res: Response) => {
     case "unsnooze":    updates.isSnoozed = false; updates.snoozeUntil = null; break;
   }
 
-  await db
-    .insert(userPlaceStates)
-    .values({
-      id: crypto.randomUUID(),
-      userId: user.id,
-      googlePlaceId,
-      ...updates,
-    })
-    .onConflictDoUpdate({
-      target: [userPlaceStates.userId, userPlaceStates.googlePlaceId],
-      set: updates,
-    });
+  try {
+    await db
+      .insert(userPlaceStates)
+      .values({
+        id: crypto.randomUUID(),
+        userId: user.id,
+        googlePlaceId,
+        ...updates,
+      })
+      .onConflictDoUpdate({
+        target: [userPlaceStates.userId, userPlaceStates.googlePlaceId],
+        set: updates,
+      });
+  } catch (err) {
+    const pgCode =
+      (err as { code?: string }).code ??
+      (err as { cause?: { code?: string } }).cause?.code;
+    if (pgCode === "23503") {
+      res.status(404).json({ error: "Place not found in cache" });
+      return;
+    }
+    throw err;
+  }
 
   res.json({ ok: true });
 });
@@ -217,12 +236,6 @@ router.get("/:googlePlaceId", async (req: Request, res: Response) => {
   const place = await fetchPlaceDetail(googlePlaceId);
   if (!place) {
     if (cached) {
-      const staleApiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
-      const staleRef = cached.photoReference;
-      const stalePhotoUrl =
-        staleRef && staleRef.includes("/")
-          ? `https://places.googleapis.com/v1/${staleRef}/media?maxWidthPx=800&key=${staleApiKey}`
-          : null;
       res.json({
         googlePlaceId: cached.googlePlaceId,
         name: cached.name,
@@ -238,7 +251,7 @@ router.get("/:googlePlaceId", async (req: Request, res: Response) => {
         googleMapsUri: cached.googleMapsUri,
         phoneNumber: cached.phoneNumber,
         address: cached.address,
-        photoUrl: stalePhotoUrl,
+        photoUrl: makePhotoUrl(cached.photoReference, 800),
         openNow: null,
         openingHoursText: null,
       });

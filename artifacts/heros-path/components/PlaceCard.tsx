@@ -33,6 +33,7 @@ export interface DiscoveredPlace {
 
 interface Props {
   place: DiscoveredPlace;
+  onPress: (id: string) => void;
   onFavorite: (id: string, current: boolean) => void;
   onDismiss: (id: string) => void;
   onSnooze: (id: string, duration: "1day" | "1week" | "1month") => void;
@@ -49,7 +50,7 @@ function RatingStars({ rating }: { rating: number | null }) {
       {Array.from({ length: full }).map((_, i) => (
         <Feather key={`f${i}`} name="star" size={12} color={Colors.gold} />
       ))}
-      {half && <Feather name="star" size={12} color={Colors.gold} />}
+      {half && <Feather key="h" name="star" size={12} color={Colors.gold} />}
       {Array.from({ length: empty }).map((_, i) => (
         <Feather key={`e${i}`} name="star" size={12} color={Colors.parchmentDim} />
       ))}
@@ -58,16 +59,16 @@ function RatingStars({ rating }: { rating: number | null }) {
   );
 }
 
-export function PlaceCard({ place, onFavorite, onDismiss, onSnooze, onAddToList }: Props) {
+export function PlaceCard({ place, onPress, onFavorite, onDismiss, onSnooze, onAddToList }: Props) {
   const opacity = useRef(new Animated.Value(1)).current;
-  const height = useRef(new Animated.Value(1)).current;
+  const maxHeight = useRef(new Animated.Value(200)).current;
 
   const handleDismiss = useCallback(() => {
     Animated.parallel([
       Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver: true }),
-      Animated.timing(height, { toValue: 0, duration: 300, useNativeDriver: false }),
+      Animated.timing(maxHeight, { toValue: 0, duration: 300, useNativeDriver: false }),
     ]).start(() => onDismiss(place.googlePlaceId));
-  }, [opacity, height, onDismiss, place.googlePlaceId]);
+  }, [opacity, maxHeight, onDismiss, place.googlePlaceId]);
 
   const handleSnooze = useCallback(() => {
     const options = ["Snooze 1 Day", "Snooze 1 Week", "Snooze 1 Month", "Cancel"] as const;
@@ -99,8 +100,12 @@ export function PlaceCard({ place, onFavorite, onDismiss, onSnooze, onAddToList 
     : place.types[0]?.replace(/_/g, " ") ?? "";
 
   return (
-    <Animated.View style={[styles.wrapper, { opacity, maxHeight: height.interpolate({ inputRange: [0, 1], outputRange: [0, 400] }) }]}>
-      <View style={styles.card}>
+    <Animated.View style={[styles.wrapper, { opacity, maxHeight }]}>
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.85}
+        onPress={() => onPress(place.googlePlaceId)}
+      >
         {place.photoUrl ? (
           <Image source={{ uri: place.photoUrl }} style={styles.photo} resizeMode="cover" />
         ) : (
@@ -128,6 +133,8 @@ export function PlaceCard({ place, onFavorite, onDismiss, onSnooze, onAddToList 
           {place.address ? (
             <Text style={styles.address} numberOfLines={1}>{place.address}</Text>
           ) : null}
+
+          <View style={styles.spacer} />
 
           <View style={styles.actions}>
             <TouchableOpacity
@@ -157,7 +164,7 @@ export function PlaceCard({ place, onFavorite, onDismiss, onSnooze, onAddToList 
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -236,12 +243,14 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 11,
     color: Colors.parchmentDim,
-    marginBottom: 6,
+    marginBottom: 4,
+  },
+  spacer: {
+    flex: 1,
   },
   actions: {
     flexDirection: "row",
     gap: 4,
-    marginTop: "auto" as any,
   },
   actionBtn: {
     padding: 6,

@@ -11,12 +11,13 @@ import logger from "../logger.js";
 
 const router = Router();
 
-function photoUrl(ref: string | null | undefined): string | null {
+function photoUrl(ref: string | null | undefined, width = 400): string | null {
   if (!ref) return null;
   const key = process.env.GOOGLE_MAPS_API_KEY ?? "";
-  return ref.includes("/")
-    ? `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=400&key=${key}`
-    : null;
+  if (ref.includes("/")) {
+    return `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=${width}&key=${key}`;
+  }
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${width}&photoreference=${ref}&key=${key}`;
 }
 
 router.get("/", async (req: Request, res: Response) => {

@@ -220,50 +220,71 @@ friendsRouter.post("/join/:code", async (req: Request, res: Response) => {
     res.status(400).json({ error: "Cannot add yourself" });
     return;
   }
-  if (invite.usedAt !== null) {
-    res.status(400).json({ error: "Code already used" });
-    return;
-  }
-  if (invite.expiresAt < new Date()) {
-    res.status(400).json({ error: "Code expired" });
-    return;
-  }
 
-  const already = await areFriends(user.id, invite.userId);
-  if (already) {
-    res.status(400).json({ error: "Already friends" });
-    return;
-  }
+  let friendUserId: string;
+  try {
+    friendUserId = await db.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(friendInviteCodes)
+        .set({ usedBy: user.id, usedAt: new Date() })
+        .where(
+          and(
+            eq(friendInviteCodes.id, invite.id),
+            sql`${friendInviteCodes.usedAt} IS NULL`,
+            sql`${friendInviteCodes.expiresAt} > now()`
+          )
+        )
+        .returning({ id: friendInviteCodes.id, userId: friendInviteCodes.userId });
 
-  const [lo, hi] = sortPair(invite.userId, user.id);
-  const existingRow = await db
-    .select()
-    .from(friendships)
-    .where(
-      and(eq(friendships.requesterId, lo), eq(friendships.addresseeId, hi))
-    );
+      if (!claimed) {
+        throw new Error("CODE_INVALID");
+      }
 
-  if (existingRow.length > 0) {
-    await db
-      .update(friendships)
-      .set({ status: "accepted", updatedAt: new Date() })
-      .where(
-        and(eq(friendships.requesterId, lo), eq(friendships.addresseeId, hi))
-      );
-  } else {
-    await db.insert(friendships).values({
-      id: crypto.randomUUID(),
-      requesterId: lo,
-      addresseeId: hi,
-      status: "accepted",
-      updatedAt: new Date(),
+      const [lo, hi] = sortPair(invite.userId, user.id);
+
+      const existing = await tx
+        .select({ status: friendships.status })
+        .from(friendships)
+        .where(and(eq(friendships.requesterId, lo), eq(friendships.addresseeId, hi)));
+
+      if (existing.length > 0 && existing[0].status === "accepted") {
+        throw new Error("ALREADY_FRIENDS");
+      }
+      if (existing.length > 0 && existing[0].status === "blocked") {
+        throw new Error("BLOCKED");
+      }
+
+      if (existing.length > 0) {
+        await tx
+          .update(friendships)
+          .set({ status: "accepted", updatedAt: new Date() })
+          .where(and(eq(friendships.requesterId, lo), eq(friendships.addresseeId, hi)));
+      } else {
+        await tx.insert(friendships).values({
+          id: crypto.randomUUID(),
+          requesterId: lo,
+          addresseeId: hi,
+          status: "accepted",
+          updatedAt: new Date(),
+        });
+      }
+
+      return invite.userId;
     });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg === "CODE_INVALID") {
+      res.status(400).json({ error: "Code expired or already used" });
+    } else if (msg === "ALREADY_FRIENDS") {
+      res.status(400).json({ error: "Already friends" });
+    } else if (msg === "BLOCKED") {
+      res.status(403).json({ error: "Cannot connect with this user" });
+    } else {
+      logger.error({ err }, "join code error");
+      res.status(500).json({ error: "Internal error" });
+    }
+    return;
   }
-
-  await db
-    .update(friendInviteCodes)
-    .set({ usedBy: user.id, usedAt: new Date() })
-    .where(eq(friendInviteCodes.id, invite.id));
 
   const [friend] = await db
     .select({
@@ -272,7 +293,7 @@ friendsRouter.post("/join/:code", async (req: Request, res: Response) => {
       profileImageUrl: users.profileImageUrl,
     })
     .from(users)
-    .where(eq(users.id, invite.userId));
+    .where(eq(users.id, friendUserId));
 
   res.json({ friend });
 });
@@ -365,29 +386,54 @@ friendsRouter.post("/:friendId/block", async (req: Request, res: Response) => {
   const friendId = String(req.params.friendId);
   const [lo, hi] = sortPair(user.id, friendId);
 
-  const existing = await db
-    .select()
-    .from(friendships)
-    .where(
-      and(eq(friendships.requesterId, lo), eq(friendships.addresseeId, hi))
-    );
+  await db.transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(friendships)
+      .where(and(eq(friendships.requesterId, lo), eq(friendships.addresseeId, hi)));
 
-  if (existing.length > 0) {
-    await db
-      .update(friendships)
-      .set({ status: "blocked", updatedAt: new Date() })
+    if (existing.length > 0) {
+      await tx
+        .update(friendships)
+        .set({ status: "blocked", updatedAt: new Date() })
+        .where(and(eq(friendships.requesterId, lo), eq(friendships.addresseeId, hi)));
+    } else {
+      await tx.insert(friendships).values({
+        id: crypto.randomUUID(),
+        requesterId: lo,
+        addresseeId: hi,
+        status: "blocked",
+        updatedAt: new Date(),
+      });
+    }
+
+    await tx
+      .delete(explorationSharing)
       .where(
-        and(eq(friendships.requesterId, lo), eq(friendships.addresseeId, hi))
+        or(
+          and(eq(explorationSharing.userId, user.id), eq(explorationSharing.friendId, friendId)),
+          and(eq(explorationSharing.userId, friendId), eq(explorationSharing.friendId, user.id))
+        )
       );
-  } else {
-    await db.insert(friendships).values({
-      id: crypto.randomUUID(),
-      requesterId: user.id < friendId ? user.id : friendId,
-      addresseeId: user.id < friendId ? friendId : user.id,
-      status: "blocked",
-      updatedAt: new Date(),
-    });
-  }
+
+    await tx
+      .delete(listShares)
+      .where(
+        or(
+          and(eq(listShares.sharedByUserId, user.id), eq(listShares.sharedWithUserId, friendId)),
+          and(eq(listShares.sharedByUserId, friendId), eq(listShares.sharedWithUserId, user.id))
+        )
+      );
+
+    await tx
+      .delete(listCollaborators)
+      .where(
+        or(
+          and(sql`${listCollaborators.userId} = ${user.id}`, sql`${listCollaborators.listId} IN (SELECT id FROM place_lists WHERE user_id = ${friendId})`),
+          and(sql`${listCollaborators.userId} = ${friendId}`, sql`${listCollaborators.listId} IN (SELECT id FROM place_lists WHERE user_id = ${user.id})`)
+        )
+      );
+  });
 
   res.json({ ok: true });
 });

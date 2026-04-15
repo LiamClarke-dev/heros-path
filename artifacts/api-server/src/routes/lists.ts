@@ -7,10 +7,27 @@ import {
   placeCache,
   listShares,
   listCollaborators,
+  friendships,
 } from "@workspace/db";
 import { eq, and, count, sql, or } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import logger from "../logger.js";
+
+async function areAcceptedFriends(userA: string, userB: string): Promise<boolean> {
+  const lo = userA < userB ? userA : userB;
+  const hi = userA < userB ? userB : userA;
+  const [row] = await db
+    .select({ id: friendships.id })
+    .from(friendships)
+    .where(
+      and(
+        eq(friendships.requesterId, lo),
+        eq(friendships.addresseeId, hi),
+        eq(friendships.status, "accepted")
+      )
+    );
+  return !!row;
+}
 
 const router = Router();
 
@@ -80,6 +97,67 @@ router.delete("/:listId", async (req: Request, res: Response) => {
   }
 
   res.json({ ok: true });
+});
+
+router.get("/shared-with-me", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+
+  const shares = await db
+    .select({
+      listId: listShares.listId,
+      canEdit: listShares.canEdit,
+      createdAt: listShares.createdAt,
+      sharedByUserId: listShares.sharedByUserId,
+    })
+    .from(listShares)
+    .where(eq(listShares.sharedWithUserId, user.id));
+
+  if (shares.length === 0) {
+    res.json({ lists: [] });
+    return;
+  }
+
+  const ownerIds = [...new Set(shares.map((s) => s.sharedByUserId))];
+  const ownerRows = await db
+    .select({ id: users.id, displayName: users.displayName })
+    .from(users)
+    .where(
+      sql`${users.id} = ANY(ARRAY[${sql.join(
+        ownerIds.map((id) => sql`${id}::text`),
+        sql`, `
+      )}])`
+    );
+  const ownerMap = Object.fromEntries(ownerRows.map((u) => [u.id, u]));
+
+  const listIds = shares.map((s) => s.listId);
+  const listRows = await db
+    .select({
+      id: placeLists.id,
+      name: placeLists.name,
+      emoji: placeLists.emoji,
+      createdAt: placeLists.createdAt,
+      itemCount: count(placeListItems.id),
+    })
+    .from(placeLists)
+    .leftJoin(placeListItems, eq(placeListItems.listId, placeLists.id))
+    .where(
+      sql`${placeLists.id} = ANY(ARRAY[${sql.join(
+        listIds.map((id) => sql`${id}::text`),
+        sql`, `
+      )}])`
+    )
+    .groupBy(placeLists.id);
+
+  const listMap = Object.fromEntries(listRows.map((l) => [l.id, l]));
+
+  const lists = shares.map((s) => ({
+    ...listMap[s.listId],
+    canEdit: s.canEdit,
+    sharedBy: ownerMap[s.sharedByUserId] ?? null,
+    sharedAt: s.createdAt,
+  }));
+
+  res.json({ lists });
 });
 
 router.get("/:listId", async (req: Request, res: Response) => {
@@ -514,67 +592,6 @@ router.post(
   }
 );
 
-router.get("/shared-with-me", async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
-
-  const shares = await db
-    .select({
-      listId: listShares.listId,
-      canEdit: listShares.canEdit,
-      createdAt: listShares.createdAt,
-      sharedByUserId: listShares.sharedByUserId,
-    })
-    .from(listShares)
-    .where(eq(listShares.sharedWithUserId, user.id));
-
-  if (shares.length === 0) {
-    res.json({ lists: [] });
-    return;
-  }
-
-  const ownerIds = [...new Set(shares.map((s) => s.sharedByUserId))];
-  const ownerRows = await db
-    .select({ id: users.id, displayName: users.displayName })
-    .from(users)
-    .where(
-      sql`${users.id} = ANY(ARRAY[${sql.join(
-        ownerIds.map((id) => sql`${id}::text`),
-        sql`, `
-      )}])`
-    );
-  const ownerMap = Object.fromEntries(ownerRows.map((u) => [u.id, u]));
-
-  const listIds = shares.map((s) => s.listId);
-  const listRows = await db
-    .select({
-      id: placeLists.id,
-      name: placeLists.name,
-      emoji: placeLists.emoji,
-      createdAt: placeLists.createdAt,
-      itemCount: count(placeListItems.id),
-    })
-    .from(placeLists)
-    .leftJoin(placeListItems, eq(placeListItems.listId, placeLists.id))
-    .where(
-      sql`${placeLists.id} = ANY(ARRAY[${sql.join(
-        listIds.map((id) => sql`${id}::text`),
-        sql`, `
-      )}])`
-    )
-    .groupBy(placeLists.id);
-
-  const listMap = Object.fromEntries(listRows.map((l) => [l.id, l]));
-
-  const lists = shares.map((s) => ({
-    ...listMap[s.listId],
-    canEdit: s.canEdit,
-    sharedBy: ownerMap[s.sharedByUserId] ?? null,
-    sharedAt: s.createdAt,
-  }));
-
-  res.json({ lists });
-});
-
 router.post("/:listId/share", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const listId = req.params.listId as string;
@@ -591,6 +608,12 @@ router.post("/:listId/share", async (req: Request, res: Response) => {
   const list = await getListWithOwnerCheck(listId, user.id);
   if (!list) {
     res.status(404).json({ error: "List not found" });
+    return;
+  }
+
+  const isFriend = await areAcceptedFriends(user.id, friendId);
+  if (!isFriend) {
+    res.status(403).json({ error: "Not friends with this user" });
     return;
   }
 

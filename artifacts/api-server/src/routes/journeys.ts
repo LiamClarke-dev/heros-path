@@ -123,7 +123,12 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
   }
 
   const [fresh] = await db.select().from(journeys).where(eq(journeys.id, journeyId));
-  res.json({ ...(fresh ?? existing), placeCount: 0 });
+  const record = fresh ?? existing;
+  res.json({
+    ...record,
+    totalDistanceM: record.totalDistanceM !== null ? parseFloat(String(record.totalDistanceM)) : null,
+    placeCount: 0,
+  });
 });
 
 router.get("/history", async (req: Request, res: Response) => {
@@ -174,6 +179,7 @@ router.get("/explored-cells", async (req: Request, res: Response) => {
     return;
   }
 
+  const clampedRadius = Math.min(Math.max(radius, 0.001), 0.05);
   const CELL = 0.0005;
 
   const allWaypoints = await db
@@ -183,10 +189,10 @@ router.get("/explored-cells", async (req: Request, res: Response) => {
     .where(
       and(
         eq(journeys.userId, user.id),
-        gte(journeyWaypoints.lat, String(lat - radius * 2)),
-        lte(journeyWaypoints.lat, String(lat + radius * 2)),
-        gte(journeyWaypoints.lng, String(lng - radius * 2)),
-        lte(journeyWaypoints.lng, String(lng + radius * 2))
+        gte(journeyWaypoints.lat, String(lat - clampedRadius * 2)),
+        lte(journeyWaypoints.lat, String(lat + clampedRadius * 2)),
+        gte(journeyWaypoints.lng, String(lng - clampedRadius * 2)),
+        lte(journeyWaypoints.lng, String(lng + clampedRadius * 2))
       )
     );
 
@@ -201,13 +207,13 @@ router.get("/explored-cells", async (req: Request, res: Response) => {
   for (const key of exploredSet) {
     const [cLat, cLng] = key.split(",").map(Number);
     const dist = haversineDistance(lat, lng, cLat, cLng);
-    if (dist <= radius * 111000) {
+    if (dist <= clampedRadius * 111000) {
       explored.push({ lat: cLat, lng: cLng });
     }
   }
 
   const unexplored: Array<{ lat: number; lng: number }> = [];
-  const steps = Math.ceil(radius / CELL);
+  const steps = Math.ceil(clampedRadius / CELL);
   for (let i = -steps; i <= steps; i++) {
     for (let j = -steps; j <= steps; j++) {
       const cLat = Math.floor(lat / CELL) * CELL + i * CELL;
@@ -215,7 +221,7 @@ router.get("/explored-cells", async (req: Request, res: Response) => {
       const key = `${cLat.toFixed(4)},${cLng.toFixed(4)}`;
       if (!exploredSet.has(key)) {
         const dist = haversineDistance(lat, lng, cLat, cLng);
-        if (dist <= radius * 111000) {
+        if (dist <= clampedRadius * 111000) {
           unexplored.push({ lat: cLat, lng: cLng });
         }
       }

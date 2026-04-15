@@ -50,19 +50,31 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
   }
 
   if (incomingWaypoints?.length) {
-    const rows = incomingWaypoints.map((wp) => ({
-      id: crypto.randomUUID(),
-      journeyId,
-      lat: String(wp.lat),
-      lng: String(wp.lng),
-      recordedAt: new Date(wp.recordedAt),
-    }));
-    await db
-      .insert(journeyWaypoints)
-      .values(rows)
-      .onConflictDoNothing({
-        target: [journeyWaypoints.journeyId, journeyWaypoints.recordedAt],
-      });
+    const validWaypoints = incomingWaypoints.filter((wp) => {
+      const ts = new Date(wp.recordedAt);
+      return (
+        typeof wp.lat === "number" &&
+        typeof wp.lng === "number" &&
+        wp.lat >= -90 && wp.lat <= 90 &&
+        wp.lng >= -180 && wp.lng <= 180 &&
+        !isNaN(ts.getTime())
+      );
+    });
+    if (validWaypoints.length > 0) {
+      const rows = validWaypoints.map((wp) => ({
+        id: crypto.randomUUID(),
+        journeyId,
+        lat: String(wp.lat),
+        lng: String(wp.lng),
+        recordedAt: new Date(wp.recordedAt),
+      }));
+      await db
+        .insert(journeyWaypoints)
+        .values(rows)
+        .onConflictDoNothing({
+          target: [journeyWaypoints.journeyId, journeyWaypoints.recordedAt],
+        });
+    }
   }
 
   if (status === "ended") {
@@ -110,7 +122,8 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
     return;
   }
 
-  res.json({ ...existing, placeCount: 0 });
+  const [fresh] = await db.select().from(journeys).where(eq(journeys.id, journeyId));
+  res.json({ ...(fresh ?? existing), placeCount: 0 });
 });
 
 router.get("/history", async (req: Request, res: Response) => {

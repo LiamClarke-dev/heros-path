@@ -250,8 +250,17 @@ export default function ListDetailScreen() {
           { text: "Done", style: "cancel" },
         ]
       );
-    } catch {
-      Alert.alert("Export Failed", "Something went wrong. Please try again.");
+    } catch (err) {
+      const backendErr =
+        err instanceof Error
+          ? (err as unknown as { body?: { error?: string } }).body?.error
+          : undefined;
+      Alert.alert(
+        "Export Failed",
+        typeof backendErr === "string"
+          ? backendErr
+          : "Something went wrong. Please try again."
+      );
     } finally {
       setExporting(false);
     }

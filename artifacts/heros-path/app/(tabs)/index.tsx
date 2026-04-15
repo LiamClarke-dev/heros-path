@@ -124,7 +124,7 @@ export default function JourneyTab() {
   );
 
   useEffect(() => {
-    if (IS_WEB) return;
+    if (IS_WEB || !token) return;
     (async () => {
       const last = await Location.getLastKnownPositionAsync();
       if (last) {
@@ -136,7 +136,7 @@ export default function JourneyTab() {
         await loadHistory();
       }
     })();
-  }, []);
+  }, [token, loadHistory, loadExploredCells]);
 
   useEffect(() => {
     return () => {
@@ -256,30 +256,34 @@ export default function JourneyTab() {
 
   async function endJourney() {
     if (!journeyId || !token || journeyStatus !== "active") return;
+    const jId = journeyId;
+    const startedAtSnapshot = journeyStartedAt;
+
     setJourneyStatus("ending");
 
-    locationSubscriptionRef.current?.remove();
-    locationSubscriptionRef.current = null;
-    if (flushIntervalRef.current) {
-      clearInterval(flushIntervalRef.current);
-      flushIntervalRef.current = null;
-    }
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
+    if (flushIntervalRef.current) {
+      clearInterval(flushIntervalRef.current);
+      flushIntervalRef.current = null;
+    }
 
-    await flushWaypoints(journeyId);
+    await flushWaypoints(jId);
 
     try {
-      const result = (await apiFetch(`/api/journeys/${journeyId}`, {
+      const result = (await apiFetch(`/api/journeys/${jId}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: "ended" }),
       })) as { totalDistanceM: number; placeCount: number };
 
+      locationSubscriptionRef.current?.remove();
+      locationSubscriptionRef.current = null;
+
       const dist = formatDistance(result.totalDistanceM ?? 0);
-      const elapsed = journeyStartedAt ? formatDuration(journeyStartedAt) : "—";
+      const elapsed = startedAtSnapshot ? formatDuration(startedAtSnapshot) : "—";
       setJourneyId(null);
       setJourneyStartedAt(null);
       setCurrentHeading(null);
@@ -289,10 +293,16 @@ export default function JourneyTab() {
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
       Alert.alert("Journey Complete!", `Distance: ${dist}\nTime: ${elapsed}`);
     } catch {
+      flushIntervalRef.current = setInterval(() => flushWaypoints(jId), 10000);
+      if (startedAtSnapshot) {
+        timerIntervalRef.current = setInterval(() => {
+          setElapsedDisplay(formatDuration(startedAtSnapshot));
+        }, 1000);
+      }
       setJourneyStatus("active");
       Alert.alert(
         "Save failed",
-        "Could not save your journey. Your tracking is still active — try ending again."
+        "Could not save your journey. Tracking is still running — try ending again."
       );
     }
   }

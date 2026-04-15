@@ -110,7 +110,7 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
     return;
   }
 
-  res.json(existing);
+  res.json({ ...existing, placeCount: 0 });
 });
 
 router.get("/history", async (req: Request, res: Response) => {

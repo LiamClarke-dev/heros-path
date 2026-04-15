@@ -8,7 +8,12 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  ActionSheetIOS,
+  Platform,
+  Clipboard,
 } from "react-native";
+import { File as FSFile, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -16,6 +21,10 @@ import Colors from "../../constants/colors";
 import { apiFetch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { VisitLogSheet } from "../../components/VisitLogSheet";
+
+const API_BASE =
+  (process.env.EXPO_PUBLIC_API_BASE_URL as string | undefined) ??
+  "http://localhost:8080";
 
 interface ListPlace {
   googlePlaceId: string;
@@ -36,6 +45,10 @@ interface PlaceList {
   emoji: string | null;
 }
 
+function sanitizeFilename(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_\-. ]/g, "_").trim() || "list";
+}
+
 export default function ListDetailScreen() {
   const insets = useSafeAreaInsets();
   const { listId } = useLocalSearchParams<{ listId: string }>();
@@ -45,6 +58,7 @@ export default function ListDetailScreen() {
   const [list, setList] = useState<PlaceList | null>(null);
   const [places, setPlaces] = useState<ListPlace[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [logSheetPlace, setLogSheetPlace] = useState<{ id: string; name: string } | null>(null);
 
   const fetchDetail = useCallback(async () => {
@@ -99,6 +113,93 @@ export default function ListDetailScreen() {
     [listId, token, fetchDetail]
   );
 
+  const exportKml = useCallback(async () => {
+    if (!token || !listId || !list) return;
+    if (places.length === 0) {
+      Alert.alert("Empty List", "Add some places to this list before exporting.");
+      return;
+    }
+    setExporting(true);
+    try {
+      const filename = sanitizeFilename(list.name) + ".kml";
+      const downloadUrl = `${API_BASE}/api/lists/${listId}/export/kml`;
+      const destination = new FSFile(Paths.cache, filename);
+
+      const downloadedFile = await FSFile.downloadFileAsync(
+        downloadUrl,
+        destination,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          idempotent: true,
+        }
+      );
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        Alert.alert(
+          "Export Complete",
+          `File saved.\n\nSharing is not available on this device.`
+        );
+        return;
+      }
+
+      await Sharing.shareAsync(downloadedFile.uri, {
+        mimeType: "application/vnd.google-earth.kml+xml",
+        dialogTitle: `Export "${list.name}" to Google My Maps`,
+        UTI: "com.google.earth.kml",
+      });
+    } catch {
+      Alert.alert("Export Failed", "Something went wrong while exporting. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }, [token, listId, list, places.length]);
+
+  const copyMapsLink = useCallback(() => {
+    if (!list) return;
+    const searchQuery = encodeURIComponent(list.name);
+    const url = `https://www.google.com/maps/search/${searchQuery}`;
+    Clipboard.setString(url);
+    Alert.alert("Link Copied", "Google Maps search link copied to clipboard.");
+  }, [list]);
+
+  const openExportSheet = useCallback(() => {
+    if (places.length === 0) {
+      Alert.alert("Empty List", "Add some places to this list before exporting.");
+      return;
+    }
+
+    const infoMsg =
+      "Import the KML file into Google My Maps:\nmaps.google.com → ☰ → Your places → Maps → Create Map → Import";
+
+    const options = ["Download KML file", "Copy Maps link", "Cancel"] as const;
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [...options],
+          cancelButtonIndex: 2,
+          title: `Export "${list?.name ?? "List"}"`,
+          message: infoMsg,
+        },
+        (idx) => {
+          if (idx === 0) exportKml();
+          else if (idx === 1) copyMapsLink();
+        }
+      );
+    } else {
+      Alert.alert(
+        `Export "${list?.name ?? "List"}"`,
+        infoMsg,
+        [
+          { text: "Download KML file", onPress: exportKml },
+          { text: "Copy Maps link", onPress: copyMapsLink },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
+    }
+  }, [places.length, list, exportKml, copyMapsLink]);
+
   const renderItem = useCallback(
     ({ item }: { item: ListPlace }) => {
       const typeLabel = item.primaryType
@@ -109,7 +210,9 @@ export default function ListDetailScreen() {
         <TouchableOpacity
           style={styles.card}
           activeOpacity={0.9}
-          onPress={() => router.push(`/place-detail?googlePlaceId=${item.googlePlaceId}`)}
+          onPress={() =>
+            router.push(`/place-detail?googlePlaceId=${item.googlePlaceId}`)
+          }
         >
           {item.photoUrl ? (
             <Image
@@ -143,7 +246,9 @@ export default function ListDetailScreen() {
           <View style={styles.actionCol}>
             <TouchableOpacity
               style={styles.visitedBtn}
-              onPress={() => setLogSheetPlace({ id: item.googlePlaceId, name: item.name })}
+              onPress={() =>
+                setLogSheetPlace({ id: item.googlePlaceId, name: item.name })
+              }
             >
               <Feather name="check-circle" size={18} color={Colors.gold} />
             </TouchableOpacity>
@@ -173,6 +278,19 @@ export default function ListDetailScreen() {
         <Text style={styles.title} numberOfLines={1}>
           {list?.name ?? ""}
         </Text>
+        {!loading && places.length > 0 && (
+          <TouchableOpacity
+            style={styles.exportBtn}
+            onPress={openExportSheet}
+            disabled={exporting}
+          >
+            {exporting ? (
+              <ActivityIndicator size="small" color={Colors.gold} />
+            ) : (
+              <Feather name="share" size={20} color={Colors.gold} />
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
@@ -187,6 +305,7 @@ export default function ListDetailScreen() {
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <View style={styles.empty}>
+              <Feather name="map-pin" size={32} color={Colors.parchmentDim} style={{ marginBottom: 12 }} />
               <Text style={styles.emptyTitle}>No places yet</Text>
               <Text style={styles.emptySubtitle}>
                 Add places from the Discover tab.
@@ -233,6 +352,11 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 20,
     color: Colors.parchment,
+  },
+  exportBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.goldGlow,
   },
   list: {
     paddingHorizontal: 16,

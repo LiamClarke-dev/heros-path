@@ -37,6 +37,16 @@ const storage = {
   },
 };
 
+function base64urlDecode(str: string): string {
+  const padded = str.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = padded.length % 4;
+  const padded2 = pad ? padded + "=".repeat(4 - pad) : padded;
+  if (typeof atob === "function") {
+    return atob(padded2);
+  }
+  return Buffer.from(padded2, "base64").toString("utf8");
+}
+
 export interface AuthUser {
   id: string;
   email: string | null;
@@ -50,6 +60,7 @@ export interface AuthContextValue {
   token: string | null;
   user: AuthUser | null;
   isLoading: boolean;
+  error: string | null;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   registerWithEmail: (
     email: string,
@@ -64,6 +75,7 @@ export const AuthContext = createContext<AuthContextValue>({
   token: null,
   user: null,
   isLoading: true,
+  error: null,
   loginWithEmail: async () => {},
   registerWithEmail: async () => {},
   loginWithReplit: async () => {},
@@ -78,7 +90,7 @@ function decodePayload(token: string): AuthUser | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1]));
+    const payload = JSON.parse(base64urlDecode(parts[1]));
     return {
       id: payload.id,
       email: payload.email ?? null,
@@ -95,11 +107,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const discovery = useAutoDiscovery(REPLIT_ISSUER);
   const redirectUri = makeRedirectUri({ scheme: "herospath" });
 
-  const [request, response, promptAsync] = useAuthRequest(
+  const [request, , promptAsync] = useAuthRequest(
     {
       clientId:
         process.env.EXPO_PUBLIC_REPLIT_CLIENT_ID ??
@@ -133,44 +146,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  useEffect(() => {
-    if (
-      !response ||
-      response.type !== "success" ||
-      pendingExchangeRef.current ||
-      !request
-    ) {
-      return;
-    }
-    pendingExchangeRef.current = true;
-
-    const code = response.params.code;
-    const codeVerifier = request.codeVerifier;
-
-    (async () => {
-      try {
-        const data = (await apiFetch("/api/auth/replit/token-exchange", {
-          method: "POST",
-          body: JSON.stringify({ code, codeVerifier, redirectUri }),
-        })) as { token: string; user: AuthUser };
-
-        await persistToken(data.token, data.user);
-      } catch (err) {
-        console.warn("Replit token exchange failed:", err);
-      } finally {
-        pendingExchangeRef.current = false;
-      }
-    })();
-  }, [response]);
-
   async function persistToken(newToken: string, newUser: AuthUser) {
     await storage.set(TOKEN_KEY, newToken);
     setToken(newToken);
     setUser(newUser);
+    setError(null);
   }
 
   const loginWithEmail = useCallback(
     async (email: string, password: string) => {
+      setError(null);
       const data = (await apiFetch("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
@@ -182,6 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const registerWithEmail = useCallback(
     async (email: string, password: string, displayName?: string) => {
+      setError(null);
       const data = (await apiFetch("/api/auth/register", {
         method: "POST",
         body: JSON.stringify({ email, password, displayName }),
@@ -193,16 +179,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithReplit = useCallback(async () => {
     if (!request) {
-      console.warn("Replit auth request not ready");
+      setError("Replit auth not ready — try again in a moment");
       return;
     }
-    await promptAsync();
-  }, [request, promptAsync]);
+    if (pendingExchangeRef.current) return;
+
+    setError(null);
+    setIsLoading(true);
+    try {
+      const result = await promptAsync();
+      if (result.type !== "success") {
+        if (result.type !== "dismiss" && result.type !== "cancel") {
+          setError("Replit login was not completed");
+        }
+        return;
+      }
+
+      pendingExchangeRef.current = true;
+      const code = result.params.code;
+      const codeVerifier = request.codeVerifier;
+
+      const data = (await apiFetch("/api/auth/replit/token-exchange", {
+        method: "POST",
+        body: JSON.stringify({ code, codeVerifier, redirectUri }),
+      })) as { token: string; user: AuthUser };
+
+      await persistToken(data.token, data.user);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Replit login failed";
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+      pendingExchangeRef.current = false;
+    }
+  }, [request, promptAsync, redirectUri]);
 
   const logout = useCallback(async () => {
     await storage.remove(TOKEN_KEY);
     setToken(null);
     setUser(null);
+    setError(null);
     try {
       await apiFetch("/api/auth/logout", { method: "POST" });
     } catch {}
@@ -214,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         user,
         isLoading,
+        error,
         loginWithEmail,
         registerWithEmail,
         loginWithReplit,

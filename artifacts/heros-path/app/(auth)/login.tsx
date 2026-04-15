@@ -18,7 +18,7 @@ type Tab = "signin" | "register";
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { loginWithEmail, registerWithEmail, loginWithReplit } = useAuth();
+  const { loginWithEmail, registerWithEmail, loginWithReplit, isLoading: authLoading, error: authError } = useAuth();
 
   const [tab, setTab] = useState<Tab>("signin");
   const [email, setEmail] = useState("");
@@ -55,14 +55,11 @@ export default function LoginScreen() {
 
   async function handleReplit() {
     setError(null);
-    setLoading(true);
     try {
       await loginWithReplit();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Replit auth failed";
       setError(msg);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -152,7 +149,9 @@ export default function LoginScreen() {
             editable={!loading}
           />
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {(error || authError) ? (
+            <Text style={styles.errorText}>{error ?? authError}</Text>
+          ) : null}
 
           <TouchableOpacity
             style={[styles.primaryBtn, loading && styles.btnDisabled]}
@@ -175,11 +174,15 @@ export default function LoginScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.replitBtn, loading && styles.btnDisabled]}
+            style={[styles.replitBtn, (loading || authLoading) && styles.btnDisabled]}
             onPress={handleReplit}
-            disabled={loading}
+            disabled={loading || authLoading}
           >
-            <Text style={styles.replitBtnText}>⚡ Continue with Replit</Text>
+            {authLoading && !loading ? (
+              <ActivityIndicator color={Colors.gold} />
+            ) : (
+              <Text style={styles.replitBtnText}>⚡ Continue with Replit</Text>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>

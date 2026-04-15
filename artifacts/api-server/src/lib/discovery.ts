@@ -104,7 +104,14 @@ async function upsertPlacesToDB(
       target: [journeyDiscoveredPlaces.journeyId, journeyDiscoveredPlaces.googlePlaceId],
     });
 
-  const inserted = await db
+  const existing = await db
+    .select({ googlePlaceId: userDiscoveredPlaces.googlePlaceId })
+    .from(userDiscoveredPlaces)
+    .where(eq(userDiscoveredPlaces.userId, userId));
+  const existingSet = new Set(existing.map((r) => r.googlePlaceId));
+  const newUserDiscoveries = places.filter((p) => !existingSet.has(p.googlePlaceId)).length;
+
+  await db
     .insert(userDiscoveredPlaces)
     .values(
       places.map((p) => ({
@@ -116,12 +123,15 @@ async function upsertPlacesToDB(
         discoveryCount: 1,
       }))
     )
-    .onConflictDoNothing({
+    .onConflictDoUpdate({
       target: [userDiscoveredPlaces.userId, userDiscoveredPlaces.googlePlaceId],
-    })
-    .returning({ googlePlaceId: userDiscoveredPlaces.googlePlaceId });
+      set: {
+        lastDiscoveredAt: new Date(),
+        discoveryCount: sql`${userDiscoveredPlaces.discoveryCount} + 1`,
+      },
+    });
 
-  return { newUserDiscoveries: inserted.length };
+  return { newUserDiscoveries };
 }
 
 async function countNewPlaces(
@@ -186,13 +196,8 @@ export async function discoverPlacesAlongRoute(
     if (filtered.length === 0) {
       logger.info("[discovery] All queries returned 0 results — trying nearby fallback");
 
-      const [journey] = await db
-        .select()
-        .from(journeys)
-        .where(eq(journeys.id, journeyId));
-
-      if (journey?.polylineEncoded) {
-        const coords = decodePolyline(journey.polylineEncoded);
+      {
+        const coords = decodePolyline(encodedPolyline);
         const endCoord = coords[coords.length - 1];
         if (endCoord) {
           const { places: fallbackPlaces, apiError: fallbackError } =
@@ -264,22 +269,22 @@ export async function discoverNearbyForPing(
   userId: string,
   lat: number,
   lng: number
-): Promise<{ places: PlaceResult[]; newCount: number }> {
+): Promise<{ places: PlaceResult[]; newCount: number; apiError: boolean }> {
   const { minRating } = await getUserPreferences(userId);
 
   const { places, apiError } = await searchNearby(lat, lng, 200);
-  if (apiError) return { places: [], newCount: 0 };
+  if (apiError) return { places: [], newCount: 0, apiError: true };
 
   const filtered =
     minRating > 0
       ? places.filter((p) => p.rating !== null && p.rating >= minRating)
       : places;
 
-  if (!filtered.length) return { places: filtered, newCount: 0 };
+  if (!filtered.length) return { places: filtered, newCount: 0, apiError: false };
 
   const newCount = await countNewPlaces(filtered, userId);
   await upsertPlacesToDB(filtered, journeyId, userId, "ping");
-  return { places: filtered, newCount };
+  return { places: filtered, newCount, apiError: false };
 }
 
 export async function retryDiscovery(

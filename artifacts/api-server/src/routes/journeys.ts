@@ -331,12 +331,16 @@ router.post("/:journeyId/ping", async (req: Request, res: Response) => {
   }
 
   try {
-    const { places, newCount } = await discoverNearbyForPing(
+    const { places, newCount, apiError } = await discoverNearbyForPing(
       journeyId,
       user.id,
       lat,
       lng
     );
+    if (apiError) {
+      res.status(503).json({ error: "Places API unavailable — try again shortly" });
+      return;
+    }
     res.json({ places, newCount });
   } catch (err) {
     logger.warn({ err }, "Ping discovery failed");

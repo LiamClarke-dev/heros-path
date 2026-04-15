@@ -171,7 +171,18 @@ export async function discoverPlacesAlongRoute(
         ? deduped.filter((p) => p.rating !== null && p.rating >= minRating)
         : deduped;
 
-    if (filtered.length === 0 && errorCount < queries.length) {
+    if (errorCount === queries.length) {
+      await db
+        .update(journeys)
+        .set({ discoveryStatus: "failed" })
+        .where(eq(journeys.id, journeyId));
+      logger.warn(
+        `[discovery] Failed: all ${queries.length} API calls errored, status → failed`
+      );
+      return { placesFound: 0 };
+    }
+
+    if (filtered.length === 0) {
       logger.info("[discovery] All queries returned 0 results — trying nearby fallback");
 
       const [journey] = await db
@@ -185,25 +196,31 @@ export async function discoverPlacesAlongRoute(
         if (endCoord) {
           const { places: fallbackPlaces, apiError: fallbackError } =
             await searchNearby(endCoord.lat, endCoord.lng, 500);
-          if (!fallbackError) {
-            logger.info(`[discovery] Nearby fallback: ${fallbackPlaces.length} result(s)`);
-            const fallbackFiltered =
-              minRating > 0
-                ? fallbackPlaces.filter(
-                    (p) => p.rating !== null && p.rating >= minRating
-                  )
-                : fallbackPlaces;
-            if (fallbackFiltered.length > 0) {
-              await upsertPlacesToDB(fallbackFiltered, journeyId, userId, "route");
-              await db
-                .update(journeys)
-                .set({ discoveryStatus: "completed" })
-                .where(eq(journeys.id, journeyId));
-              logger.info(
-                `[discovery] Completed: ${fallbackFiltered.length} places found, status → completed`
-              );
-              return { placesFound: fallbackFiltered.length };
-            }
+          if (fallbackError) {
+            await db
+              .update(journeys)
+              .set({ discoveryStatus: "failed" })
+              .where(eq(journeys.id, journeyId));
+            logger.warn("[discovery] Nearby fallback API error, status → failed");
+            return { placesFound: 0 };
+          }
+          logger.info(`[discovery] Nearby fallback: ${fallbackPlaces.length} result(s)`);
+          const fallbackFiltered =
+            minRating > 0
+              ? fallbackPlaces.filter(
+                  (p) => p.rating !== null && p.rating >= minRating
+                )
+              : fallbackPlaces;
+          if (fallbackFiltered.length > 0) {
+            await upsertPlacesToDB(fallbackFiltered, journeyId, userId, "route");
+            await db
+              .update(journeys)
+              .set({ discoveryStatus: "completed" })
+              .where(eq(journeys.id, journeyId));
+            logger.info(
+              `[discovery] Completed: ${fallbackFiltered.length} places found via fallback, status → completed`
+            );
+            return { placesFound: fallbackFiltered.length };
           }
         }
       }
@@ -213,17 +230,6 @@ export async function discoverPlacesAlongRoute(
         .set({ discoveryStatus: "completed" })
         .where(eq(journeys.id, journeyId));
       logger.info("[discovery] Completed: 0 places found, status → completed");
-      return { placesFound: 0 };
-    }
-
-    if (errorCount === queries.length && filtered.length === 0) {
-      await db
-        .update(journeys)
-        .set({ discoveryStatus: "failed" })
-        .where(eq(journeys.id, journeyId));
-      logger.warn(
-        `[discovery] Failed: all ${queries.length} API calls errored, status → failed`
-      );
       return { placesFound: 0 };
     }
 
@@ -316,11 +322,14 @@ export async function retryDiscovery(
     encodedPolyline = poly;
   }
 
-  const countBefore = await db
-    .select({ id: userDiscoveredPlaces.id })
-    .from(userDiscoveredPlaces)
-    .where(eq(userDiscoveredPlaces.userId, userId))
-    .then((r) => r.length);
+  const alreadyDiscovered = new Set(
+    (
+      await db
+        .select({ googlePlaceId: userDiscoveredPlaces.googlePlaceId })
+        .from(userDiscoveredPlaces)
+        .where(eq(userDiscoveredPlaces.userId, userId))
+    ).map((r) => r.googlePlaceId)
+  );
 
   const { placesFound } = await discoverPlacesAlongRoute(
     journeyId,
@@ -328,13 +337,14 @@ export async function retryDiscovery(
     encodedPolyline
   );
 
-  const countAfter = await db
-    .select({ id: userDiscoveredPlaces.id })
-    .from(userDiscoveredPlaces)
-    .where(eq(userDiscoveredPlaces.userId, userId))
-    .then((r) => r.length);
+  const journeyPlaces = await db
+    .select({ googlePlaceId: journeyDiscoveredPlaces.googlePlaceId })
+    .from(journeyDiscoveredPlaces)
+    .where(eq(journeyDiscoveredPlaces.journeyId, journeyId));
 
-  const newPlaces = Math.max(0, countAfter - countBefore);
+  const newPlaces = journeyPlaces.filter(
+    (p) => !alreadyDiscovered.has(p.googlePlaceId)
+  ).length;
   const xpAwarded = newPlaces * XP_NEW_PLACE;
 
   if (xpAwarded > 0) {

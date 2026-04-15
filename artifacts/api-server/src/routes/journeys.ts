@@ -133,20 +133,22 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       if (snapped) polylineEncoded = encodePolyline(snapped);
     }
 
+    const initialDiscoveryStatus = polylineEncoded ? "pending" : "failed";
+
     const [updated] = await db
       .update(journeys)
       .set({
         endedAt: new Date(),
         totalDistanceM: String(distM.toFixed(2)),
         polylineEncoded,
-        discoveryStatus: "pending",
+        discoveryStatus: initialDiscoveryStatus,
       })
       .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
       .returning();
 
     const userId = user.id;
-    const poly = polylineEncoded ?? "";
-    if (poly) {
+    if (polylineEncoded) {
+      const poly = polylineEncoded;
       setImmediate(() => {
         discoverPlacesAlongRoute(journeyId, userId, poly).catch((err) =>
           logger.warn({ err }, "discoverPlacesAlongRoute background failed")

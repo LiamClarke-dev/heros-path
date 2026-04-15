@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db, placeCache, userPreferences } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
-import { fetchPlaceDetail } from "../lib/placesApi.js";
+import { fetchPlaceDetail, fetchOpeningHours } from "../lib/placesApi.js";
 import logger from "../logger.js";
 
 const router = Router();
@@ -29,6 +29,8 @@ router.get("/:googlePlaceId", async (req: Request, res: Response) => {
         ? `https://places.googleapis.com/v1/${photoRef}/media?maxWidthPx=800&key=${apiKey}`
         : null;
 
+    const hours = await fetchOpeningHours(googlePlaceId);
+
     res.json({
       googlePlaceId: cached.googlePlaceId,
       name: cached.name,
@@ -45,8 +47,8 @@ router.get("/:googlePlaceId", async (req: Request, res: Response) => {
       phoneNumber: cached.phoneNumber,
       address: cached.address,
       photoUrl,
-      openNow: null,
-      openingHoursText: null,
+      openNow: hours.openNow,
+      openingHoursText: hours.openingHoursText,
     });
     return;
   }

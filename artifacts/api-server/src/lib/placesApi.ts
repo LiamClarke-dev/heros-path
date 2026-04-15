@@ -18,7 +18,9 @@ export const PLACES_FIELD_MASK = [
   "places.currentOpeningHours",
 ].join(",");
 
-export const PLACES_DETAIL_FIELD_MASK = PLACES_FIELD_MASK.replace("places.", "");
+export const PLACES_DETAIL_FIELD_MASK = PLACES_FIELD_MASK.replace(/places\./g, "");
+
+const OPENING_HOURS_FIELD_MASK = "currentOpeningHours";
 
 interface RawPlace {
   id: string;
@@ -204,6 +206,34 @@ export async function searchNearby(
   } catch (err) {
     logger.warn({ err }, "[discovery] Nearby search threw");
     return { places: [], apiError: true };
+  }
+}
+
+export async function fetchOpeningHours(
+  googlePlaceId: string
+): Promise<{ openNow: boolean | null; openingHoursText: string[] | null }> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return { openNow: null, openingHoursText: null };
+  try {
+    const res = await fetch(
+      `https://places.googleapis.com/v1/places/${googlePlaceId}`,
+      {
+        headers: {
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": OPENING_HOURS_FIELD_MASK,
+        },
+      }
+    );
+    if (!res.ok) return { openNow: null, openingHoursText: null };
+    const raw = (await res.json()) as {
+      currentOpeningHours?: { openNow?: boolean; weekdayDescriptions?: string[] };
+    };
+    return {
+      openNow: raw.currentOpeningHours?.openNow ?? null,
+      openingHoursText: raw.currentOpeningHours?.weekdayDescriptions ?? null,
+    };
+  } catch {
+    return { openNow: null, openingHoursText: null };
   }
 }
 

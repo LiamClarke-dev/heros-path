@@ -207,6 +207,7 @@ export default function JourneyTab() {
   }
 
   async function flushWaypoints(jId: string) {
+    if (flushInFlightRef.current) return;
     const buffer = waypointBufferRef.current.splice(0);
     if (!buffer.length || !token) return;
     let promise!: Promise<void>;
@@ -304,10 +305,7 @@ export default function JourneyTab() {
 
     setJourneyStatus("ending");
 
-    // Await any in-flight flush so its waypoints land (or return to buffer) before we end
-    await flushInFlightRef.current;
-
-    // Stop all tracking sources before drain — makes the buffer capture atomic
+    // Stop all tracking sources first — no new waypoints or interval flushes can start
     locationSubscriptionRef.current?.remove();
     locationSubscriptionRef.current = null;
     if (timerIntervalRef.current) {
@@ -318,6 +316,9 @@ export default function JourneyTab() {
       clearInterval(flushIntervalRef.current);
       flushIntervalRef.current = null;
     }
+
+    // Await any in-flight flush so its waypoints land (or return to buffer) before we end
+    await flushInFlightRef.current;
 
     // Definitive drain — no new waypoints can arrive after watcher is stopped
     const remainingWaypoints = waypointBufferRef.current.splice(0);

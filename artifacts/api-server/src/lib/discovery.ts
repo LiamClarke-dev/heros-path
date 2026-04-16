@@ -2,12 +2,52 @@ import { db, journeys, journeyWaypoints, placeCache, journeyDiscoveredPlaces, us
 import { eq, and, asc, sql } from "drizzle-orm";
 import logger from "../logger.js";
 import { searchAlongRoute, searchNearby, type PlaceResult } from "./placesApi.js";
-import { decodePolyline, encodePolyline, snapRouteToRoads, type Coord } from "./geo.js";
+import { decodePolyline, encodePolyline, snapRouteToRoads, haversineDistance, type Coord } from "./geo.js";
 
 // TODO: route segment caching — cache which route segments have already been searched
 // using a geospatial grid. Before calling the Places API for a point along a new route,
 // check if that grid cell has been searched in the last 30 days. If yes, use cached results.
 // This requires a `places_search_cache` table keyed by grid cell + timestamp.
+
+/**
+ * Maximum distance (metres) a place returned by searchAlongRoute may sit
+ * from the nearest point on the walked polyline before it gets dropped.
+ * Google's searchAlongRouteParameters is a ranking bias, not a hard
+ * geographic filter, so we enforce the constraint ourselves.
+ */
+const ROUTE_MAX_DISTANCE_M = 80;
+
+/**
+ * Shortest distance (metres) from point P to the line segment A→B.
+ * Projects P onto the segment using degree-space maths then applies
+ * haversine for the final measurement — accurate enough for segments < 1 km.
+ */
+function pointToSegmentDistanceM(
+  pLat: number, pLng: number,
+  aLat: number, aLng: number,
+  bLat: number, bLng: number,
+): number {
+  const dx = bLng - aLng;
+  const dy = bLat - aLat;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return haversineDistance(pLat, pLng, aLat, aLng);
+  const t = Math.max(0, Math.min(1, ((pLng - aLng) * dx + (pLat - aLat) * dy) / lenSq));
+  return haversineDistance(pLat, pLng, aLat + t * dy, aLng + t * dx);
+}
+
+/**
+ * Minimum distance (metres) from a lat/lng point to any segment of a polyline.
+ */
+function minDistToPolylineM(lat: number, lng: number, polyline: Coord[]): number {
+  if (polyline.length === 0) return Infinity;
+  if (polyline.length === 1) return haversineDistance(lat, lng, polyline[0].lat, polyline[0].lng);
+  let minDist = Infinity;
+  for (let i = 1; i < polyline.length; i++) {
+    const d = pointToSegmentDistanceM(lat, lng, polyline[i - 1].lat, polyline[i - 1].lng, polyline[i].lat, polyline[i].lng);
+    if (d < minDist) minDist = d;
+  }
+  return minDist;
+}
 
 const DEFAULT_ROUTE_QUERIES = [
   "restaurant",
@@ -193,13 +233,20 @@ export async function discoverPlacesAlongRoute(
     const allPlaces: PlaceResult[] = [];
     let errorCount = 0;
 
+    const routeCoords = decodePolyline(encodedPolyline);
+
     for (const query of queries) {
       const { places, apiError } = await searchAlongRoute(encodedPolyline, query);
       if (apiError) {
         errorCount++;
       } else {
-        logger.info(`[discovery] Route search "${query}": ${places.length} raw result(s)`);
-        allPlaces.push(...places);
+        const withinRoute = places.filter(
+          (p) => minDistToPolylineM(p.lat, p.lng, routeCoords) <= ROUTE_MAX_DISTANCE_M
+        );
+        logger.info(
+          `[discovery] Route search "${query}": ${places.length} raw → ${withinRoute.length} within ${ROUTE_MAX_DISTANCE_M}m of route`
+        );
+        allPlaces.push(...withinRoute);
       }
     }
 

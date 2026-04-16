@@ -2,3 +2,4 @@ attached_assets/ScreenRecording_04-16-2026_19-07-53_1_1776334163539.mp4 filter=l
 artifacts/mockup-sandbox/src/components/mockups/zone-visual/data/tokyo.geojson filter=lfs diff=lfs merge=lfs -text
 artifacts/mockup-sandbox/src/components/mockups/zone-visual/data/tokyo.geojson.bak filter=lfs diff=lfs merge=lfs -text
 artifacts/mockup-sandbox/src/components/mockups/zone-visual/data/SAL_2021_AUST_GDA94_SHP.zip filter=lfs diff=lfs merge=lfs -text
+artifacts/mockup-sandbox/src/components/mockups/zone-visual/data/SAL_2021_AUST_GDA94_SHP/SAL_2021_AUST_GDA94.shp filter=lfs diff=lfs merge=lfs -text

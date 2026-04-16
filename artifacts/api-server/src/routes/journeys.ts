@@ -662,6 +662,7 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
     .select({
       googlePlaceId: journeyDiscoveredPlaces.googlePlaceId,
       discoveredAt: journeyDiscoveredPlaces.discoveredAt,
+      discoverySource: journeyDiscoveredPlaces.discoverySource,
       name: placeCache.name,
       lat: placeCache.lat,
       lng: placeCache.lng,
@@ -693,6 +694,7 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
     photoUrl: makePhotoUrl(p.photoReference, 400),
     address: p.address,
     discoveredAt: p.discoveredAt,
+    discoverySource: p.discoverySource,
     isFavorited: p.isFavorited ?? false,
     isDismissed: p.isDismissed ?? false,
   }));

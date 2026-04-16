@@ -46,6 +46,7 @@ interface JourneyPlace {
   primaryType: string | null;
   photoUrl: string | null;
   address: string | null;
+  discoverySource: string | null;
 }
 
 interface XpBreakdown {
@@ -106,15 +107,23 @@ function formatType(type: string | null): string {
 }
 
 function PlaceThumbnail({ place }: { place: JourneyPlace }) {
+  const isPinged = place.discoverySource === "ping";
   return (
     <View style={styles.placeThumb}>
-      {place.photoUrl ? (
-        <Image source={{ uri: place.photoUrl }} style={styles.placePhoto} resizeMode="cover" />
-      ) : (
-        <View style={[styles.placePhoto, styles.placePhotoPlaceholder]}>
-          <Feather name="compass" size={22} color={Colors.parchmentDim} />
-        </View>
-      )}
+      <View style={styles.placePhotoWrapper}>
+        {place.photoUrl ? (
+          <Image source={{ uri: place.photoUrl }} style={styles.placePhoto} resizeMode="cover" />
+        ) : (
+          <View style={[styles.placePhoto, styles.placePhotoPlaceholder]}>
+            <Feather name="compass" size={22} color={Colors.parchmentDim} />
+          </View>
+        )}
+        {isPinged && (
+          <View style={styles.pingBadge}>
+            <Text style={styles.pingBadgeText}>📍 Pinged</Text>
+          </View>
+        )}
+      </View>
       <View style={styles.placeThumbInfo}>
         <Text style={styles.placeName} numberOfLines={2}>{place.name}</Text>
         <Text style={styles.placeType}>{formatType(place.primaryType)}</Text>
@@ -732,6 +741,23 @@ const styles = StyleSheet.create({
   placePhotoPlaceholder: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  placePhotoWrapper: {
+    position: "relative",
+  },
+  pingBadge: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    backgroundColor: "rgba(13,26,16,0.82)",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  pingBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: Colors.amber,
   },
   placeThumbInfo: {
     padding: 10,

@@ -851,6 +851,37 @@ export default function JourneyTab() {
   }, [waypoints, waypointBreakIndices]);
 
 
+  const historicalPolylineData = useMemo(() =>
+    historicalJourneys.map((j, idx) => ({
+      key: j.id,
+      color: HISTORY_COLORS[Math.min(idx, HISTORY_COLORS.length - 1)],
+      coords: (j.snappedRoute ?? j.waypoints).map((w) => ({
+        latitude: w.lat,
+        longitude: w.lng,
+      })),
+    })),
+    [historicalJourneys]
+  );
+
+  const activeSegmentGlow = useMemo(() =>
+    activePolylineSegments
+      .map((seg, si) => (seg.length >= 2 ? { key: `seg-${si}-glow`, coords: seg } : null))
+      .filter(Boolean) as { key: string; coords: { latitude: number; longitude: number }[] }[],
+    [activePolylineSegments]
+  );
+
+  const activeSegmentLine = useMemo(() =>
+    activePolylineSegments
+      .map((seg, si) => (seg.length >= 2 ? { key: `seg-${si}-line`, coords: seg } : null))
+      .filter(Boolean) as { key: string; coords: { latitude: number; longitude: number }[] }[],
+    [activePolylineSegments]
+  );
+
+  const characterCoord = useMemo(
+    () => currentLocation ? { latitude: currentLocation.lat, longitude: currentLocation.lng } : null,
+    [currentLocation]
+  );
+
   const clusteredPins = useMemo((): ClusterItem[] => {
     if (mapPins.length === 0) return [];
     const latSpan = viewport ? viewport.neLat - viewport.swLat : 0.05;
@@ -972,49 +1003,40 @@ export default function JourneyTab() {
 
             return elements;
           })}
-          {historicalJourneys.map((j, idx) => {
-            const color = HISTORY_COLORS[Math.min(idx, HISTORY_COLORS.length - 1)];
-            const coords = (j.snappedRoute ?? j.waypoints).map((w) => ({
-              latitude: w.lat,
-              longitude: w.lng,
-            }));
-            return Polyline ? (
-              <Polyline
-                key={j.id}
-                coordinates={coords}
-                strokeColor={color}
-                strokeWidth={3}
-              />
-            ) : null;
-          })}
+          {Polyline && historicalPolylineData.map((p) => (
+            <Polyline
+              key={p.key}
+              coordinates={p.coords}
+              strokeColor={p.color}
+              strokeWidth={3}
+            />
+          ))}
 
-          {journeyStatus === "active" && activePolylineSegments.some(s => s.length >= 2) && Polyline && (
+          {journeyStatus === "active" && activeSegmentGlow.length > 0 && Polyline && (
             <>
-              {activePolylineSegments.map((seg, si) => seg.length >= 2 ? (
+              {activeSegmentGlow.map((s) => (
                 <Polyline
-                  key={`seg-${si}-glow`}
-                  coordinates={seg}
+                  key={s.key}
+                  coordinates={s.coords}
                   strokeColor="rgba(106,221,147,0.35)"
                   strokeWidth={10}
                 />
-              ) : null)}
-              {activePolylineSegments.map((seg, si) => seg.length >= 2 ? (
+              ))}
+              {activeSegmentLine.map((s) => (
                 <Polyline
-                  key={`seg-${si}-line`}
-                  coordinates={seg}
+                  key={s.key}
+                  coordinates={s.coords}
                   strokeColor="#6add93"
                   strokeWidth={4}
                 />
-              ) : null)}
+              ))}
             </>
           )}
 
-          {currentLocation && Marker && (
+          {characterCoord && Marker && (
             <Marker
-              coordinate={{
-                latitude: currentLocation.lat,
-                longitude: currentLocation.lng,
-              }}
+              key="character-marker"
+              coordinate={characterCoord}
               anchor={{ x: 0.5, y: 1.0 }}
               tracksViewChanges={false}
               flat={false}

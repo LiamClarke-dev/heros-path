@@ -1,0 +1,24 @@
+# Backend API server — not needed for mobile build
+artifacts/api-server/
+
+# Design mockup sandbox (contains 137 MB shapefile) — not needed for mobile build
+artifacts/mockup-sandbox/
+
+# Development screenshots, screen recordings and design assets
+attached_assets/
+
+# Replit internal config/cache
+.cache/
+.local/
+
+# Build outputs and dependencies (reinstalled during EAS build)
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Raw geodata files
+*.shp
+*.dbf
+*.prj
+*.shx
+*.cpg

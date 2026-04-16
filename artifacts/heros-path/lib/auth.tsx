@@ -111,7 +111,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const discovery = useAutoDiscovery(REPLIT_ISSUER);
-  const redirectUri = makeRedirectUri({ scheme: "herospath" });
+  // On native, use Expo auth proxy (HTTPS) so Replit's OIDC accepts the redirect URI.
+  // On web, use the default origin-based URI.
+  const redirectUri = makeRedirectUri(
+    Platform.OS === "web" ? {} : { useProxy: true }
+  );
 
   const [request, , promptAsync] = useAuthRequest(
     {

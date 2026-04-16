@@ -271,7 +271,7 @@ export async function discoverPlacesAlongRoute(
         const endCoord = coords[coords.length - 1];
         if (endCoord) {
           const { places: fallbackPlaces, apiError: fallbackError } =
-            await searchNearby(endCoord.lat, endCoord.lng, 500);
+            await searchNearby(endCoord.lat, endCoord.lng, 500, placeTypes.length > 0 ? placeTypes : undefined);
           if (fallbackError) {
             await db
               .update(journeys)
@@ -364,9 +364,10 @@ export async function discoverNearbyForPing(
 
   logger.info({ journeyId, userId, lat, lng }, "[ping] Calling searchNearby (radius=60m)");
 
-  const { minRating } = await getUserPreferences(userId);
+  const { placeTypes, minRating } = await getUserPreferences(userId);
+  const resolvedPlaceTypes = placeTypes.length > 0 ? placeTypes : undefined;
 
-  const { places, apiError } = await searchNearby(lat, lng, 60);
+  const { places, apiError } = await searchNearby(lat, lng, 60, resolvedPlaceTypes);
   if (apiError) {
     logger.warn({ journeyId, lat, lng }, "[ping] searchNearby returned apiError — Google Places API call failed");
     return { places: [], newCount: 0, apiError: true, apiKeyMissing: false };

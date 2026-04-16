@@ -24,7 +24,7 @@ import { CreateListSheet } from "../../components/CreateListSheet";
 import { VisitLogSheet, type VisitRecord } from "../../components/VisitLogSheet";
 
 type FilterType = "all" | "favorites" | "snoozed";
-type TypeCategory = "all" | "food" | "parks" | "culture" | "shopping";
+type TypeCategory = "all" | "food" | "parks" | "culture" | "shopping" | "fitness";
 
 interface Journey {
   id: string;
@@ -44,6 +44,7 @@ const TYPE_FILTERS: { key: TypeCategory; label: string }[] = [
   { key: "parks", label: "🌿 Parks" },
   { key: "culture", label: "🏛 Culture" },
   { key: "shopping", label: "🛍 Shopping" },
+  { key: "fitness", label: "💪 Fitness" },
 ];
 
 function formatJourneyLabel(journey: Journey): string {

@@ -22,6 +22,7 @@ const TYPE_CATEGORY_MAP: Record<string, string[]> = {
   parks: ["park", "national_park", "state_park", "hiking_area", "nature_reserve", "campground", "picnic_ground", "dog_park", "botanical_garden", "garden", "playground"],
   culture: ["museum", "tourist_attraction", "library", "movie_theater", "art_gallery", "performing_arts_theater", "cultural_center", "historical_landmark", "monument", "aquarium", "zoo", "amusement_park", "concert_hall", "opera_house"],
   shopping: ["shopping_mall", "store", "clothing_store", "supermarket", "department_store", "convenience_store", "book_store", "electronics_store", "furniture_store", "home_goods_store", "jewelry_store", "shoe_store", "sporting_goods_store", "market", "gift_shop", "toy_store"],
+  fitness: ["gym", "fitness_center", "health", "sports_activity_location", "sports_club", "swimming_pool", "yoga_studio", "cycling_studio", "pilates_studio", "rock_climbing_gym"],
 };
 
 function makePhotoUrl(ref: string | null | undefined, width = 400): string | null {

@@ -305,6 +305,85 @@ router.get("/shared-with/:friendId", async (req: Request, res: Response) => {
   res.json({ lists });
 });
 
+router.get("/map-pins", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const raw = req.query.listIds as string | undefined;
+
+  if (!raw || !raw.trim()) {
+    res.json({ pins: [] });
+    return;
+  }
+
+  const listIds = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (listIds.length === 0) {
+    res.json({ pins: [] });
+    return;
+  }
+
+  if (listIds.length > 50) {
+    res.status(400).json({ error: "Too many listIds (max 50)" });
+    return;
+  }
+
+  const ownedRows = await db
+    .select({ id: placeLists.id })
+    .from(placeLists)
+    .where(
+      and(
+        eq(placeLists.userId, user.id),
+        sql`${placeLists.id} = ANY(ARRAY[${sql.join(
+          listIds.map((id) => sql`${id}::text`),
+          sql`, `
+        )}])`
+      )
+    );
+
+  const ownedSet = new Set(ownedRows.map((r) => r.id));
+  const safeIds = listIds.filter((id) => ownedSet.has(id));
+
+  if (safeIds.length === 0) {
+    res.json({ pins: [] });
+    return;
+  }
+
+  const items = await db
+    .select({
+      googlePlaceId: placeCache.googlePlaceId,
+      name: placeCache.name,
+      lat: placeCache.lat,
+      lng: placeCache.lng,
+      rating: placeCache.rating,
+      primaryType: placeCache.primaryType,
+      address: placeCache.address,
+      listId: placeListItems.listId,
+    })
+    .from(placeListItems)
+    .innerJoin(placeCache, eq(placeListItems.googlePlaceId, placeCache.googlePlaceId))
+    .where(
+      sql`${placeListItems.listId} = ANY(ARRAY[${sql.join(
+        safeIds.map((id) => sql`${id}::text`),
+        sql`, `
+      )}])`
+    );
+
+  const pins = items.map((p) => ({
+    googlePlaceId: p.googlePlaceId,
+    name: p.name,
+    lat: parseFloat(String(p.lat)),
+    lng: parseFloat(String(p.lng)),
+    rating: p.rating !== null ? parseFloat(String(p.rating)) : null,
+    primaryType: p.primaryType,
+    address: p.address,
+    listId: p.listId,
+  }));
+
+  res.json({ pins });
+});
+
 router.get("/:listId", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const listId = req.params.listId as string;

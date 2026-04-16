@@ -54,6 +54,9 @@ if (!IS_WEB) {
 import { CharacterMarker } from "../../components/CharacterMarker";
 import PingResultsSheet, { type PlaceResult as PingPlace } from "../../components/PingResultsSheet";
 import QuestProgressBar from "../../components/QuestProgressBar";
+import { EmojiPin } from "../../components/EmojiPin";
+import ListFilterSheet, { type ListInfo } from "../../components/ListFilterSheet";
+import { MapPinCallout, type MapPinPlace } from "../../components/MapPinCallout";
 
 interface Waypoint {
   lat: number;
@@ -105,6 +108,10 @@ interface GamificationResult {
   completedQuests: Array<{ key: string; title: string; xpReward: number }>;
   newStreak: number;
 }
+
+type ClusterItem =
+  | { kind: "pin"; pin: MapPinPlace }
+  | { kind: "cluster"; lat: number; lng: number; count: number; pins: MapPinPlace[] };
 
 const HISTORY_COLORS = [
   "rgba(212,160,23,0.45)",
@@ -161,6 +168,13 @@ export default function JourneyTab() {
   const [pingSheetVisible, setPingSheetVisible] = useState(false);
   const [pingPlaces, setPingPlaces] = useState<PingPlace[]>([]);
   const [pingNewCount, setPingNewCount] = useState(0);
+
+  // List filter / map pin overlay
+  const [userLists, setUserLists] = useState<ListInfo[]>([]);
+  const [activeListIds, setActiveListIds] = useState<Set<string>>(new Set());
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [mapPins, setMapPins] = useState<MapPinPlace[]>([]);
+  const [selectedPin, setSelectedPin] = useState<MapPinPlace | null>(null);
 
   // Gamification
   const [quests, setQuests] = useState<QuestItem[]>([]);
@@ -223,6 +237,54 @@ export default function JourneyTab() {
     }
   }, [token]);
 
+  const loadUserLists = useCallback(async () => {
+    if (!token || IS_WEB) return;
+    try {
+      const data = (await apiFetch("/api/lists", {
+        headers: { Authorization: `Bearer ${token}` },
+      })) as { lists: ListInfo[] };
+      setUserLists(data.lists ?? []);
+    } catch (err) {
+      console.warn("[JourneyMap] loadUserLists failed", err);
+    }
+  }, [token]);
+
+  const loadMapPins = useCallback(
+    async (ids: Set<string>) => {
+      if (!token || IS_WEB || ids.size === 0) {
+        setMapPins([]);
+        return;
+      }
+      try {
+        const idsParam = [...ids].join(",");
+        const data = (await apiFetch(`/api/lists/map-pins?listIds=${encodeURIComponent(idsParam)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })) as { pins: MapPinPlace[] };
+        setMapPins(data.pins ?? []);
+      } catch (err) {
+        console.warn("[JourneyMap] loadMapPins failed", err);
+      }
+    },
+    [token]
+  );
+
+  const handleToggleList = useCallback(
+    (id: string) => {
+      setActiveListIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        loadMapPins(next);
+        return next;
+      });
+      setSelectedPin(null);
+    },
+    [loadMapPins]
+  );
+
   const loadExploredCells = useCallback(
     async (lat: number, lng: number) => {
       if (!token || IS_WEB) return;
@@ -262,8 +324,9 @@ export default function JourneyTab() {
         await loadHistory();
       }
       loadQuests();
+      loadUserLists();
     })();
-  }, [token, loadHistory, loadExploredCells, loadQuests]);
+  }, [token, loadHistory, loadExploredCells, loadQuests, loadUserLists]);
 
   useEffect(() => {
     if (!currentLocation || hasAutocenteredRef.current || IS_WEB) return;
@@ -704,6 +767,42 @@ export default function JourneyTab() {
     return raw.length >= 3 ? rdpSimplify(raw, 0.00005) : raw;
   }, [waypoints]);
 
+
+  const clusteredPins = useMemo((): ClusterItem[] => {
+    if (mapPins.length === 0) return [];
+    const latSpan = viewport ? viewport.neLat - viewport.swLat : 0.05;
+    const clusterRadiusDeg = latSpan * 0.08;
+    const used = new Set<number>();
+    const result: ClusterItem[] = [];
+    for (let i = 0; i < mapPins.length; i++) {
+      if (used.has(i)) continue;
+      const group: MapPinPlace[] = [mapPins[i]];
+      for (let j = i + 1; j < mapPins.length; j++) {
+        if (used.has(j)) continue;
+        const dLat = Math.abs(mapPins[i].lat - mapPins[j].lat);
+        const dLng = Math.abs(mapPins[i].lng - mapPins[j].lng);
+        if (dLat <= clusterRadiusDeg && dLng <= clusterRadiusDeg) {
+          group.push(mapPins[j]);
+          used.add(j);
+        }
+      }
+      used.add(i);
+      if (group.length === 1) {
+        result.push({ kind: "pin", pin: group[0] });
+      } else {
+        const avgLat = group.reduce((s, p) => s + p.lat, 0) / group.length;
+        const avgLng = group.reduce((s, p) => s + p.lng, 0) / group.length;
+        result.push({ kind: "cluster", lat: avgLat, lng: avgLng, count: group.length, pins: group });
+      }
+    }
+    return result;
+  }, [mapPins, viewport]);
+
+  const listMap = useMemo(
+    () => Object.fromEntries(userLists.map((l) => [l.id, l])),
+    [userLists]
+  );
+
   return (
     <View style={styles.container}>
       {MapView && (
@@ -835,8 +934,69 @@ export default function JourneyTab() {
               />
             </Marker>
           )}
+
+          {Marker && clusteredPins.map((item, idx) => {
+            if (item.kind === "cluster") {
+              return (
+                <Marker
+                  key={`cluster-${idx}`}
+                  coordinate={{ latitude: item.lat, longitude: item.lng }}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                  onPress={() => {
+                    const latDelta = viewport ? (viewport.neLat - viewport.swLat) / 2.5 : 0.004;
+                    const lngDelta = viewport ? (viewport.neLng - viewport.swLng) / 2.5 : 0.004;
+                    mapRef.current?.animateToRegion(
+                      {
+                        latitude: item.lat,
+                        longitude: item.lng,
+                        latitudeDelta: Math.max(latDelta, 0.001),
+                        longitudeDelta: Math.max(lngDelta, 0.001),
+                      },
+                      400
+                    );
+                    setSelectedPin(null);
+                  }}
+                >
+                  <View style={styles.clusterBubble}>
+                    <Text style={styles.clusterCount}>{item.count}</Text>
+                  </View>
+                </Marker>
+              );
+            }
+            const list = listMap[item.pin.listId];
+            if (!list) return null;
+            const isSelected = selectedPin?.googlePlaceId === item.pin.googlePlaceId;
+            return (
+              <Marker
+                key={`pin-${item.pin.googlePlaceId}`}
+                coordinate={{ latitude: item.pin.lat, longitude: item.pin.lng }}
+                anchor={{ x: 0.5, y: 1.0 }}
+                tracksViewChanges={isSelected}
+                onPress={() => setSelectedPin(isSelected ? null : item.pin)}
+              >
+                <EmojiPin emoji={list.emoji} color={list.color} size="md" />
+              </Marker>
+            );
+          })}
         </MapView>
       )}
+
+      {selectedPin && (() => {
+        const list = listMap[selectedPin.listId];
+        if (!list) return null;
+        return (
+          <View style={styles.calloutWrapper} pointerEvents="box-none">
+            <MapPinCallout
+              place={selectedPin}
+              listEmoji={list.emoji}
+              listName={list.name}
+              listColor={list.color}
+              onClose={() => setSelectedPin(null)}
+            />
+          </View>
+        );
+      })()}
 
       <LinearGradient
         colors={["rgba(13,10,11,0.92)", "rgba(13,10,11,0.4)", "transparent"]}
@@ -877,6 +1037,17 @@ export default function JourneyTab() {
       >
         <TouchableOpacity style={styles.iconBtn} onPress={handleLocateMe}>
           <Feather name="crosshair" size={20} color={Colors.parchment} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.iconBtn, activeListIds.size > 0 && styles.iconBtnActive]}
+          onPress={() => setFilterSheetVisible(true)}
+        >
+          <Feather name="layers" size={20} color={activeListIds.size > 0 ? Colors.gold : Colors.parchment} />
+          {activeListIds.size > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeListIds.size}</Text>
+            </View>
+          )}
         </TouchableOpacity>
         {journeyStatus === "idle" && (
           <TouchableOpacity
@@ -1005,6 +1176,14 @@ export default function JourneyTab() {
         onClose={() => setPingSheetVisible(false)}
       />
 
+      <ListFilterSheet
+        visible={filterSheetVisible}
+        lists={userLists}
+        activeListIds={activeListIds}
+        onToggle={handleToggleList}
+        onClose={() => setFilterSheetVisible(false)}
+      />
+
       {celebrationVisible && celebrationData && (
         <Animated.View
           style={[styles.celebrationOverlay, { opacity: celebrationOpacity }]}
@@ -1107,6 +1286,55 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  iconBtnActive: {
+    borderColor: Colors.gold,
+    backgroundColor: "rgba(159,193,132,0.15)",
+  },
+  filterBadge: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  filterBadgeText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    color: Colors.background,
+  },
+  calloutWrapper: {
+    position: "absolute",
+    bottom: 160,
+    left: 16,
+    right: 16,
+    alignItems: "center",
+    zIndex: 30,
+  },
+  clusterBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.background,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  clusterCount: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: Colors.background,
   },
   permissionBanner: {
     position: "absolute",

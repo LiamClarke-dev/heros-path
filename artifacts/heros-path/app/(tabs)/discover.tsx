@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: Colors.surface,
     borderWidth: 1,
@@ -514,6 +514,8 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 13,
     color: Colors.parchmentMuted,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   chipTextActive: {
     color: Colors.gold,

@@ -407,8 +407,15 @@ export default function JourneyDetailScreen() {
               {Polyline && polylineCoords.length > 1 && (
                 <Polyline
                   coordinates={polylineCoords}
-                  strokeColor={Colors.gold}
-                  strokeWidth={3}
+                  strokeColor="rgba(106,221,147,0.35)"
+                  strokeWidth={10}
+                />
+              )}
+              {Polyline && polylineCoords.length > 1 && (
+                <Polyline
+                  coordinates={polylineCoords}
+                  strokeColor="#6add93"
+                  strokeWidth={4}
                 />
               )}
               {Marker &&

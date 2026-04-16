@@ -33,7 +33,8 @@ export const placeLists = pgTable("place_lists", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  emoji: text("emoji"),
+  emoji: text("emoji").notNull().default("📍"),
+  color: text("color").notNull().default("#C9A84C"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 

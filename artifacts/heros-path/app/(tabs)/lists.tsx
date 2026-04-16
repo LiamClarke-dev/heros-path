@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
+  ActionSheetIOS,
+  Platform,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -15,11 +18,13 @@ import Colors from "../../constants/colors";
 import { apiFetch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { CreateListSheet } from "../../components/CreateListSheet";
+import { EditListSheet, type ListToEdit } from "../../components/EditListSheet";
 
 interface PlaceList {
   id: string;
   name: string;
   emoji: string | null;
+  color: string | null;
   itemCount: number;
   createdAt: string;
   isShared?: boolean;
@@ -41,6 +46,7 @@ export default function ListsTab() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<ListToEdit | null>(null);
 
   const fetchLists = useCallback(
     async (isRefresh = false) => {
@@ -75,15 +81,99 @@ export default function ListsTab() {
   );
 
   const handleCreate = useCallback(
-    async (name: string, emoji: string) => {
+    async (name: string, emoji: string, color: string) => {
       const data: { list: PlaceList } = await apiFetch("/api/lists", {
         method: "POST",
         token: token!,
-        body: JSON.stringify({ name, emoji }),
+        body: JSON.stringify({ name, emoji, color }),
       });
       setMyLists((prev) => [...prev, data.list]);
     },
     [token]
+  );
+
+  const handleEdit = useCallback(
+    async (listId: string, name: string, emoji: string, color: string) => {
+      const data: { list: PlaceList } = await apiFetch(`/api/lists/${listId}`, {
+        method: "PATCH",
+        token: token!,
+        body: JSON.stringify({ name, emoji, color }),
+      });
+      setMyLists((prev) =>
+        prev.map((l) => (l.id === listId ? { ...l, ...data.list } : l))
+      );
+    },
+    [token]
+  );
+
+  const handleDelete = useCallback(
+    (item: PlaceList) => {
+      const doDelete = async () => {
+        setMyLists((prev) => prev.filter((l) => l.id !== item.id));
+        try {
+          await apiFetch(`/api/lists/${item.id}`, {
+            method: "DELETE",
+            token: token!,
+          });
+        } catch {
+          fetchLists();
+        }
+      };
+
+      if (Platform.OS === "web") {
+        if (window.confirm(`Delete "${item.name}"? This cannot be undone.`)) {
+          doDelete();
+        }
+      } else {
+        Alert.alert(
+          "Delete List",
+          `Delete "${item.name}"? This cannot be undone.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: doDelete },
+          ]
+        );
+      }
+    },
+    [token, fetchLists]
+  );
+
+  const openListActions = useCallback(
+    (item: PlaceList) => {
+      if (item.isShared) return;
+
+      const editItem: ListToEdit = {
+        id: item.id,
+        name: item.name,
+        emoji: item.emoji ?? "📍",
+        color: item.color ?? "#C9A84C",
+      };
+
+      if (Platform.OS === "ios") {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ["Edit", "Delete", "Cancel"],
+            destructiveButtonIndex: 1,
+            cancelButtonIndex: 2,
+          },
+          (idx) => {
+            if (idx === 0) setEditTarget(editItem);
+            else if (idx === 1) handleDelete(item);
+          }
+        );
+      } else {
+        Alert.alert(item.name, undefined, [
+          { text: "Edit", onPress: () => setEditTarget(editItem) },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => handleDelete(item),
+          },
+          { text: "Cancel", style: "cancel" },
+        ]);
+      }
+    },
+    [handleDelete]
   );
 
   const sections: Section[] = [];
@@ -98,9 +188,11 @@ export default function ListsTab() {
     <TouchableOpacity
       style={styles.listCard}
       onPress={() => router.push(`/lists/${item.id}`)}
+      onLongPress={() => openListActions(item)}
+      delayLongPress={400}
       activeOpacity={0.75}
     >
-      <View style={styles.listEmojiBg}>
+      <View style={[styles.listEmojiBg, item.color ? { backgroundColor: item.color + "33" } : {}]}>
         <Text style={styles.listEmoji}>{item.emoji ?? "📍"}</Text>
       </View>
       <View style={styles.listInfo}>
@@ -123,7 +215,17 @@ export default function ListsTab() {
           )}
         </View>
       </View>
-      <Feather name="chevron-right" size={18} color={Colors.parchmentDim} />
+      {!item.isShared ? (
+        <TouchableOpacity
+          style={styles.moreBtn}
+          onPress={() => openListActions(item)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Feather name="more-vertical" size={18} color={Colors.parchmentDim} />
+        </TouchableOpacity>
+      ) : (
+        <Feather name="chevron-right" size={18} color={Colors.parchmentDim} />
+      )}
     </TouchableOpacity>
   );
 
@@ -188,6 +290,13 @@ export default function ListsTab() {
         visible={showCreate}
         onClose={() => setShowCreate(false)}
         onCreate={handleCreate}
+      />
+
+      <EditListSheet
+        visible={editTarget !== null}
+        list={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSave={handleEdit}
       />
     </SafeAreaView>
   );
@@ -303,6 +412,9 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 10,
     color: Colors.gold,
+  },
+  moreBtn: {
+    padding: 4,
   },
   center: {
     flex: 1,

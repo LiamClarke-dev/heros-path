@@ -179,11 +179,11 @@ export default function DiscoverTab() {
   );
 
   const handleCreateList = useCallback(
-    async (name: string, emoji: string) => {
+    async (name: string, emoji: string, color: string) => {
       const result = await apiFetch("/api/lists", {
         method: "POST",
         token: token!,
-        body: JSON.stringify({ name, emoji }),
+        body: JSON.stringify({ name, emoji, color }),
       }) as { list: { id: string } };
 
       if (pendingPlaceForNewList && result?.list?.id) {

@@ -50,6 +50,7 @@ router.get("/", async (req: Request, res: Response) => {
         id: placeLists.id,
         name: placeLists.name,
         emoji: placeLists.emoji,
+        color: placeLists.color,
         createdAt: placeLists.createdAt,
         itemCount: sql<number>`count(${placeListItems.id})::int`,
       })
@@ -84,10 +85,15 @@ router.get("/", async (req: Request, res: Response) => {
 
 router.post("/", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
-  const { name, emoji } = req.body as { name?: unknown; emoji?: unknown };
+  const { name, emoji, color } = req.body as { name?: unknown; emoji?: unknown; color?: unknown };
 
   if (!name || typeof name !== "string" || !name.trim()) {
     res.status(400).json({ error: "name is required" });
+    return;
+  }
+
+  if (!color || typeof color !== "string" || !color.trim()) {
+    res.status(400).json({ error: "color is required" });
     return;
   }
 
@@ -97,11 +103,73 @@ router.post("/", async (req: Request, res: Response) => {
       id: crypto.randomUUID(),
       userId: user.id,
       name: name.trim(),
-      emoji: typeof emoji === "string" ? emoji : null,
+      emoji: typeof emoji === "string" && emoji.trim() ? emoji.trim() : "📍",
+      color: color.trim(),
     })
     .returning();
 
   res.status(201).json({ list: { ...list, itemCount: 0 } });
+});
+
+router.patch("/:listId", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const listId = req.params.listId as string;
+  const { name, emoji, color } = req.body as { name?: unknown; emoji?: unknown; color?: unknown };
+
+  const updateData: { name?: string; emoji?: string; color?: string } = {};
+
+  if (name !== undefined) {
+    if (typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name must be a non-empty string" });
+      return;
+    }
+    updateData.name = name.trim();
+  }
+
+  if (emoji !== undefined) {
+    if (typeof emoji !== "string" || !emoji.trim()) {
+      res.status(400).json({ error: "emoji must be a non-empty string" });
+      return;
+    }
+    updateData.emoji = emoji.trim();
+  }
+
+  if (color !== undefined) {
+    if (typeof color !== "string" || !color.trim()) {
+      res.status(400).json({ error: "color must be a non-empty string" });
+      return;
+    }
+    updateData.color = color.trim();
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    res.status(400).json({ error: "at least one field (name, emoji, color) is required" });
+    return;
+  }
+
+  const existing = await db
+    .select({ userId: placeLists.userId })
+    .from(placeLists)
+    .where(eq(placeLists.id, listId))
+    .limit(1);
+
+  if (!existing[0]) {
+    res.status(404).json({ error: "List not found" });
+    return;
+  }
+
+  if (existing[0].userId !== user.id) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(placeLists)
+    .set(updateData)
+    .where(eq(placeLists.id, listId))
+    .returning();
+
+  res.json({ list: updated });
 });
 
 router.delete("/:listId", async (req: Request, res: Response) => {
@@ -157,6 +225,7 @@ router.get("/shared-with-me", async (req: Request, res: Response) => {
       id: placeLists.id,
       name: placeLists.name,
       emoji: placeLists.emoji,
+      color: placeLists.color,
       createdAt: placeLists.createdAt,
       itemCount: count(placeListItems.id),
     })
@@ -211,6 +280,7 @@ router.get("/shared-with/:friendId", async (req: Request, res: Response) => {
       id: placeLists.id,
       name: placeLists.name,
       emoji: placeLists.emoji,
+      color: placeLists.color,
       createdAt: placeLists.createdAt,
       itemCount: count(placeListItems.id),
     })

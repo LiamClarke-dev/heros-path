@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,60 +11,59 @@ import {
   ScrollView,
 } from "react-native";
 import Colors from "../constants/colors";
+import { LIST_COLORS } from "./CreateListSheet";
 
 const EMOJIS = ["📍", "⭐", "🍕", "☕", "🎭", "🌿", "🏛️", "🛍️", "🏖️", "🎵", "🏋️", "🌙"];
 
-export const LIST_COLORS = [
-  "#C9A84C",
-  "#4C8DC9",
-  "#7BC94C",
-  "#C94C4C",
-  "#C97C4C",
-  "#9B4CC9",
-  "#4CC9B0",
-  "#C94C9B",
-  "#6B7280",
-  "#C9C44C",
-];
+export interface ListToEdit {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+}
 
 interface Props {
   visible: boolean;
+  list: ListToEdit | null;
   onClose: () => void;
-  onCreate: (name: string, emoji: string, color: string) => Promise<void>;
+  onSave: (listId: string, name: string, emoji: string, color: string) => Promise<void>;
 }
 
-export function CreateListSheet({ visible, onClose, onCreate }: Props) {
+export function EditListSheet({ visible, list, onClose, onSave }: Props) {
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("📍");
-  const [color, setColor] = useState<string | null>(null);
+  const [color, setColor] = useState(LIST_COLORS[0]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canCreate = name.trim().length > 0 && color !== null;
+  useEffect(() => {
+    if (list) {
+      setName(list.name);
+      setEmoji(list.emoji || "📍");
+      setColor(list.color || LIST_COLORS[0]);
+      setError(null);
+    }
+  }, [list]);
 
-  const handleCreate = useCallback(async () => {
+  const canSave = name.trim().length > 0 && color.length > 0;
+
+  const handleSave = useCallback(async () => {
+    if (!list) return;
     if (!name.trim()) {
       setError("Enter a list name");
-      return;
-    }
-    if (!color) {
-      setError("Choose a color");
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      await onCreate(name.trim(), emoji, color);
-      setName("");
-      setEmoji("📍");
-      setColor(null);
+      await onSave(list.id, name.trim(), emoji, color);
       onClose();
     } catch (e: unknown) {
-      setError((e as Error).message ?? "Failed to create list");
+      setError((e as Error).message ?? "Failed to update list");
     } finally {
       setLoading(false);
     }
-  }, [name, emoji, color, onCreate, onClose]);
+  }, [list, name, emoji, color, onSave, onClose]);
 
   return (
     <Modal
@@ -79,7 +78,7 @@ export function CreateListSheet({ visible, onClose, onCreate }: Props) {
 
       <View style={styles.sheet}>
         <View style={styles.handle} />
-        <Text style={styles.title}>New List</Text>
+        <Text style={styles.title}>Edit List</Text>
 
         <Text style={styles.label}>Emoji</Text>
         <ScrollView
@@ -98,7 +97,7 @@ export function CreateListSheet({ visible, onClose, onCreate }: Props) {
           ))}
         </ScrollView>
 
-        <Text style={styles.label}>Color <Text style={styles.required}>*</Text></Text>
+        <Text style={styles.label}>Color</Text>
         <View style={styles.colorRow}>
           {LIST_COLORS.map((c) => (
             <TouchableOpacity
@@ -114,28 +113,27 @@ export function CreateListSheet({ visible, onClose, onCreate }: Props) {
           ))}
         </View>
 
-        <Text style={styles.label}>Name <Text style={styles.required}>*</Text></Text>
+        <Text style={styles.label}>Name</Text>
         <TextInput
           style={styles.input}
           value={name}
           onChangeText={setName}
           placeholder="e.g. Weekend Eats"
           placeholderTextColor={Colors.parchmentDim}
-          autoFocus
           maxLength={60}
         />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity
-          style={[styles.btn, (!canCreate || loading) && styles.btnDisabled]}
-          onPress={handleCreate}
-          disabled={!canCreate || loading}
+          style={[styles.btn, (!canSave || loading) && styles.btnDisabled]}
+          onPress={handleSave}
+          disabled={!canSave || loading}
         >
           {loading ? (
             <ActivityIndicator color={Colors.background} />
           ) : (
-            <Text style={styles.btnText}>Create List</Text>
+            <Text style={styles.btnText}>Save Changes</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -176,9 +174,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.parchmentMuted,
     marginBottom: 8,
-  },
-  required: {
-    color: Colors.error,
   },
   emojiRow: {
     gap: 8,

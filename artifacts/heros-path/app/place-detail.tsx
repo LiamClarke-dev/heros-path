@@ -430,11 +430,11 @@ export default function PlaceDetailScreen() {
       <CreateListSheet
         visible={showCreateList}
         onClose={() => setShowCreateList(false)}
-        onCreate={async (name, emoji) => {
+        onCreate={async (name, emoji, color) => {
           await apiFetch("/api/lists", {
             method: "POST",
             token: token!,
-            body: JSON.stringify({ name, emoji }),
+            body: JSON.stringify({ name, emoji, color }),
           });
         }}
       />

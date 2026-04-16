@@ -42,6 +42,13 @@ const STATEMENTS = [
 
   // ── PLACE_LISTS ─────────────────────────────────────────────
   `ALTER TABLE place_lists ADD COLUMN IF NOT EXISTS emoji TEXT`,
+  `ALTER TABLE place_lists ADD COLUMN IF NOT EXISTS color TEXT`,
+  `UPDATE place_lists SET emoji = '📍' WHERE emoji IS NULL`,
+  `UPDATE place_lists SET color = '#C9A84C' WHERE color IS NULL`,
+  `ALTER TABLE place_lists ALTER COLUMN emoji SET NOT NULL`,
+  `ALTER TABLE place_lists ALTER COLUMN emoji SET DEFAULT '📍'`,
+  `ALTER TABLE place_lists ALTER COLUMN color SET NOT NULL`,
+  `ALTER TABLE place_lists ALTER COLUMN color SET DEFAULT '#C9A84C'`,
 
   // ── USER_QUESTS ─────────────────────────────────────────────
   `ALTER TABLE user_quests ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0`,

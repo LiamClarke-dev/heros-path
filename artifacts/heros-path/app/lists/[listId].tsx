@@ -30,6 +30,7 @@ import { apiFetch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { VisitLogSheet } from "../../components/VisitLogSheet";
 import { SharingManagementSheet } from "../../components/SharingManagementSheet";
+import { EditListSheet, type ListToEdit } from "../../components/EditListSheet";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -61,6 +62,7 @@ interface PlaceList {
   id: string;
   name: string;
   emoji: string | null;
+  color: string | null;
   userId?: string;
 }
 
@@ -86,6 +88,7 @@ export default function ListDetailScreen() {
   const [logSheetPlace, setLogSheetPlace] = useState<{ id: string; name: string } | null>(null);
   const [webGoogleClientId, setWebGoogleClientId] = useState<string | null>(null);
   const [showSharing, setShowSharing] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const isOwner = !!(list?.userId && user?.id && list.userId === user.id);
 
@@ -347,6 +350,66 @@ export default function ListDetailScreen() {
     }
   }, [places.length, list, exportKml, copyMapsLink, createGoogleMyMap, effectiveGoogleClientId]);
 
+  const handleEditList = useCallback(
+    async (listId: string, name: string, emoji: string, color: string) => {
+      const data: { list: PlaceList } = await apiFetch(`/api/lists/${listId}`, {
+        method: "PATCH",
+        token: token!,
+        body: JSON.stringify({ name, emoji, color }),
+      });
+      setList((prev) => (prev ? { ...prev, ...data.list } : prev));
+    },
+    [token]
+  );
+
+  const handleDeleteList = useCallback(async () => {
+    if (!listId || !token) return;
+    const doDelete = async () => {
+      try {
+        await apiFetch(`/api/lists/${listId}`, { method: "DELETE", token: token! });
+        router.replace("/(tabs)/lists");
+      } catch {
+        Alert.alert("Error", "Could not delete the list. Please try again.");
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm(`Delete "${list?.name}"? This cannot be undone.`)) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        "Delete List",
+        `Delete "${list?.name}"? This cannot be undone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: doDelete },
+        ]
+      );
+    }
+  }, [listId, token, list?.name, router]);
+
+  const openListMenu = useCallback(() => {
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ["Edit", "Delete", "Cancel"],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 2,
+        },
+        (idx) => {
+          if (idx === 0) setShowEdit(true);
+          else if (idx === 1) handleDeleteList();
+        }
+      );
+    } else {
+      Alert.alert(list?.name ?? "List", undefined, [
+        { text: "Edit", onPress: () => setShowEdit(true) },
+        { text: "Delete", style: "destructive", onPress: handleDeleteList },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  }, [list?.name, handleDeleteList]);
+
   const renderItem = useCallback(
     ({ item }: { item: ListPlace }) => {
       const typeLabel = item.primaryType
@@ -451,6 +514,14 @@ export default function ListDetailScreen() {
             )}
           </TouchableOpacity>
         )}
+        {!loading && isOwner && (
+          <TouchableOpacity
+            style={styles.exportBtn}
+            onPress={openListMenu}
+          >
+            <Feather name="more-vertical" size={20} color={Colors.parchmentMuted} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {!loading && isOwner && collaborators.length > 0 && (
@@ -512,6 +583,22 @@ export default function ListDetailScreen() {
         listName={list?.name ?? ""}
         token={token ?? ""}
         onClose={() => setShowSharing(false)}
+      />
+
+      <EditListSheet
+        visible={showEdit}
+        list={
+          list
+            ? {
+                id: list.id,
+                name: list.name,
+                emoji: list.emoji ?? "📍",
+                color: list.color ?? "#C9A84C",
+              }
+            : null
+        }
+        onClose={() => setShowEdit(false)}
+        onSave={handleEditList}
       />
     </SafeAreaView>
   );

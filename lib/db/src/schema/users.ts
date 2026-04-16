@@ -42,6 +42,7 @@ export const userPreferences = pgTable(
     minRating: numeric("min_rating", { precision: 2, scale: 1 })
       .notNull()
       .default("0"),
+    maxDiscoveries: integer("max_discoveries").notNull().default(20),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [uniqueIndex("user_preferences_user_id_unique").on(t.userId)]

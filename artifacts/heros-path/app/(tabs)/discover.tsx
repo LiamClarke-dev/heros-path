@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  TextInput,
+  Modal,
+  ScrollView,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -20,23 +24,61 @@ import { CreateListSheet } from "../../components/CreateListSheet";
 import { VisitLogSheet, type VisitRecord } from "../../components/VisitLogSheet";
 
 type FilterType = "all" | "favorites" | "snoozed";
+type TypeCategory = "all" | "food" | "parks" | "culture" | "shopping";
 
-const FILTERS: { key: FilterType; label: string }[] = [
+interface Journey {
+  id: string;
+  name: string | null;
+  startedAt: string;
+}
+
+const STATUS_FILTERS: { key: FilterType; label: string }[] = [
   { key: "all", label: "All" },
   { key: "favorites", label: "Favorites ❤️" },
   { key: "snoozed", label: "Snoozed 😴" },
 ];
 
+const TYPE_FILTERS: { key: TypeCategory; label: string }[] = [
+  { key: "all", label: "All Types" },
+  { key: "food", label: "🍽 Food & Drink" },
+  { key: "parks", label: "🌿 Parks" },
+  { key: "culture", label: "🏛 Culture" },
+  { key: "shopping", label: "🛍 Shopping" },
+];
+
+function formatJourneyLabel(journey: Journey): string {
+  const date = new Date(journey.startedAt);
+  const dateStr = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return journey.name ? `${journey.name} (${dateStr})` : `Journey ${dateStr}`;
+}
+
 export default function DiscoverTab() {
   const { token } = useAuth();
   const router = useRouter();
+
   const [filter, setFilter] = useState<FilterType>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeCategory>("all");
+  const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showJourneyPicker, setShowJourneyPicker] = useState(false);
+
   const [places, setPlaces] = useState<DiscoveredPlace[]>([]);
+  const [journeys, setJourneys] = useState<Journey[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
   const [addToListId, setAddToListId] = useState<string | null>(null);
   const [showCreateList, setShowCreateList] = useState(false);
   const [visitPlaceId, setVisitPlaceId] = useState<string | null>(null);
+
+  const fetchJourneys = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiFetch("/api/journeys/history?limit=50", { token }) as { journeys: Journey[] };
+      setJourneys(data.journeys ?? []);
+    } catch {
+    }
+  }, [token]);
 
   const fetchPlaces = useCallback(
     async (isRefresh = false) => {
@@ -44,8 +86,12 @@ export default function DiscoverTab() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       try {
+        const params = new URLSearchParams({ filter });
+        if (typeFilter !== "all") params.set("type", typeFilter);
+        if (selectedJourneyId) params.set("journeyId", selectedJourneyId);
+
         const data: { places: DiscoveredPlace[] } = await apiFetch(
-          `/api/places/discovered?filter=${filter}`,
+          `/api/places/discovered?${params.toString()}`,
           { token }
         );
         setPlaces(data.places);
@@ -55,14 +101,21 @@ export default function DiscoverTab() {
         setRefreshing(false);
       }
     },
-    [token, filter]
+    [token, filter, typeFilter, selectedJourneyId]
   );
 
   useFocusEffect(
     useCallback(() => {
       fetchPlaces();
-    }, [fetchPlaces])
+      fetchJourneys();
+    }, [fetchPlaces, fetchJourneys])
   );
+
+  const filteredPlaces = searchQuery.trim()
+    ? places.filter((p) =>
+        p.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+      )
+    : places;
 
   const handleFavorite = useCallback(
     async (id: string, current: boolean) => {
@@ -151,6 +204,8 @@ export default function DiscoverTab() {
 
   const visitPlace = places.find((p) => p.googlePlaceId === visitPlaceId) ?? null;
 
+  const selectedJourney = journeys.find((j) => j.id === selectedJourneyId) ?? null;
+
   const renderItem = useCallback(
     ({ item }: { item: DiscoveredPlace }) => (
       <PlaceCard
@@ -172,8 +227,33 @@ export default function DiscoverTab() {
         <Text style={styles.title}>Discover</Text>
       </View>
 
-      <View style={styles.filterRow}>
-        {FILTERS.map((f) => (
+      <View style={styles.searchRow}>
+        <View style={styles.searchBox}>
+          <Feather name="search" size={15} color={Colors.parchmentDim} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search places…"
+            placeholderTextColor={Colors.parchmentDim}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="x" size={14} color={Colors.parchmentDim} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScrollContainer}
+        contentContainerStyle={styles.filterRow}
+      >
+        {STATUS_FILTERS.map((f) => (
           <TouchableOpacity
             key={f.key}
             style={[styles.chip, filter === f.key && styles.chipActive]}
@@ -184,7 +264,43 @@ export default function DiscoverTab() {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+        <View style={styles.chipDivider} />
+        {TYPE_FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.chip, typeFilter === f.key && styles.chipActive]}
+            onPress={() => setTypeFilter(f.key)}
+          >
+            <Text style={[styles.chipText, typeFilter === f.key && styles.chipTextActive]}>
+              {f.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        <View style={styles.chipDivider} />
+        <TouchableOpacity
+          style={[styles.chip, selectedJourneyId !== null && styles.chipActive]}
+          onPress={() => setShowJourneyPicker(true)}
+        >
+          <Feather
+            name="map"
+            size={12}
+            color={selectedJourneyId !== null ? Colors.gold : Colors.parchmentMuted}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.chipText, selectedJourneyId !== null && styles.chipTextActive]}>
+            {selectedJourney ? formatJourneyLabel(selectedJourney) : "By Journey"}
+          </Text>
+          {selectedJourneyId && (
+            <TouchableOpacity
+              onPress={(e) => { e.stopPropagation(); setSelectedJourneyId(null); }}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+              style={{ marginLeft: 4 }}
+            >
+              <Feather name="x" size={11} color={Colors.gold} />
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
 
       {loading ? (
         <View style={styles.center}>
@@ -192,7 +308,7 @@ export default function DiscoverTab() {
         </View>
       ) : (
         <FlatList
-          data={places}
+          data={filteredPlaces}
           keyExtractor={(p) => p.googlePlaceId}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
@@ -207,10 +323,12 @@ export default function DiscoverTab() {
             <View style={styles.empty}>
               <Feather name="compass" size={40} color={Colors.parchmentDim} />
               <Text style={styles.emptyTitle}>
-                {filter === "all" ? "No places discovered yet" : "Nothing here yet"}
+                {searchQuery ? "No matches found" : filter === "all" ? "No places discovered yet" : "Nothing here yet"}
               </Text>
               <Text style={styles.emptySubtitle}>
-                {filter === "all"
+                {searchQuery
+                  ? `No places match "${searchQuery}"`
+                  : filter === "all"
                   ? "Start a journey to discover nearby places!"
                   : filter === "favorites"
                   ? "Favorite some places to see them here."
@@ -220,6 +338,48 @@ export default function DiscoverTab() {
           }
         />
       )}
+
+      <Modal
+        visible={showJourneyPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowJourneyPicker(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowJourneyPicker(false)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Filter by Journey</Text>
+            <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
+              <TouchableOpacity
+                style={[styles.journeyRow, selectedJourneyId === null && styles.journeyRowActive]}
+                onPress={() => { setSelectedJourneyId(null); setShowJourneyPicker(false); }}
+              >
+                <Feather name="globe" size={16} color={selectedJourneyId === null ? Colors.gold : Colors.parchmentMuted} />
+                <Text style={[styles.journeyLabel, selectedJourneyId === null && styles.journeyLabelActive]}>
+                  All Journeys
+                </Text>
+                {selectedJourneyId === null && <Feather name="check" size={14} color={Colors.gold} />}
+              </TouchableOpacity>
+              {journeys.length === 0 && (
+                <Text style={styles.journeyEmpty}>No past journeys found</Text>
+              )}
+              {journeys.map((j) => (
+                <TouchableOpacity
+                  key={j.id}
+                  style={[styles.journeyRow, selectedJourneyId === j.id && styles.journeyRowActive]}
+                  onPress={() => { setSelectedJourneyId(j.id); setShowJourneyPicker(false); }}
+                >
+                  <Feather name="map-pin" size={16} color={selectedJourneyId === j.id ? Colors.gold : Colors.parchmentMuted} />
+                  <Text style={[styles.journeyLabel, selectedJourneyId === j.id && styles.journeyLabelActive]} numberOfLines={1}>
+                    {formatJourneyLabel(j)}
+                  </Text>
+                  {selectedJourneyId === j.id && <Feather name="check" size={14} color={Colors.gold} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <AddToListSheet
         visible={addToListId !== null}
@@ -264,13 +424,44 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: Colors.gold,
   },
+  searchRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchIcon: {
+    marginRight: 2,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.parchment,
+  },
+  filterScrollContainer: {
+    flexGrow: 0,
+    marginBottom: 4,
+  },
   filterRow: {
     flexDirection: "row",
     gap: 8,
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 10,
+    alignItems: "center",
   },
   chip: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,
@@ -289,6 +480,12 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: Colors.gold,
+  },
+  chipDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: Colors.border,
+    marginHorizontal: 2,
   },
   list: {
     paddingHorizontal: 16,
@@ -317,5 +514,65 @@ const styles = StyleSheet.create({
     color: Colors.parchmentMuted,
     textAlign: "center",
     lineHeight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingBottom: 32,
+    maxHeight: "70%",
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: Colors.parchment,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  sheetScroll: {
+    paddingHorizontal: 12,
+  },
+  journeyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  journeyRowActive: {
+    backgroundColor: Colors.goldGlow,
+  },
+  journeyLabel: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.parchmentMuted,
+  },
+  journeyLabelActive: {
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.gold,
+  },
+  journeyEmpty: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.parchmentDim,
+    textAlign: "center",
+    paddingVertical: 20,
   },
 });

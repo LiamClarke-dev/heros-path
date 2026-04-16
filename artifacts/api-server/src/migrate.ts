@@ -131,6 +131,9 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS list_collaborators_list_user_unique
      ON list_collaborators (list_id, user_id)`,
 
+  // ── USER_PREFERENCES additions ───────────────────────────────
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS max_discoveries INTEGER NOT NULL DEFAULT 20`,
+
   // ── NOTIFICATIONS (new table) ────────────────────────────────
   `CREATE TABLE IF NOT EXISTS notifications (
      id         TEXT PRIMARY KEY,

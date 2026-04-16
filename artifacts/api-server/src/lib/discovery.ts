@@ -4,6 +4,11 @@ import logger from "../logger.js";
 import { searchAlongRoute, searchNearby, type PlaceResult } from "./placesApi.js";
 import { decodePolyline, encodePolyline, snapRouteToRoads, type Coord } from "./geo.js";
 
+// TODO: route segment caching — cache which route segments have already been searched
+// using a geospatial grid. Before calling the Places API for a point along a new route,
+// check if that grid cell has been searched in the last 30 days. If yes, use cached results.
+// This requires a `places_search_cache` table keyed by grid cell + timestamp.
+
 const DEFAULT_ROUTE_QUERIES = [
   "restaurant",
   "cafe",
@@ -13,19 +18,22 @@ const DEFAULT_ROUTE_QUERIES = [
   "tourist_attraction",
 ];
 
+const DEFAULT_MAX_DISCOVERIES = 20;
+
 const XP_NEW_PLACE = 25;
 
 async function getUserPreferences(
   userId: string
-): Promise<{ placeTypes: string[]; minRating: number }> {
+): Promise<{ placeTypes: string[]; minRating: number; maxDiscoveries: number }> {
   const [prefs] = await db
     .select()
     .from(userPreferences)
     .where(eq(userPreferences.userId, userId));
-  if (!prefs) return { placeTypes: [], minRating: 0 };
+  if (!prefs) return { placeTypes: [], minRating: 0, maxDiscoveries: DEFAULT_MAX_DISCOVERIES };
   return {
     placeTypes: prefs.placeTypes ?? [],
     minRating: parseFloat(String(prefs.minRating ?? "0")),
+    maxDiscoveries: prefs.maxDiscoveries ?? DEFAULT_MAX_DISCOVERIES,
   };
 }
 
@@ -35,6 +43,30 @@ function deduplicatePlaces(places: PlaceResult[]): PlaceResult[] {
     if (seen.has(p.googlePlaceId)) return false;
     seen.add(p.googlePlaceId);
     return true;
+  });
+}
+
+async function filterOutSeenPlaces(
+  places: PlaceResult[],
+  userId: string
+): Promise<PlaceResult[]> {
+  if (!places.length) return places;
+
+  const existingGoogleIds = await db
+    .select({ googlePlaceId: userDiscoveredPlaces.googlePlaceId })
+    .from(userDiscoveredPlaces)
+    .where(eq(userDiscoveredPlaces.userId, userId));
+
+  const seenIds = new Set(existingGoogleIds.map((r) => r.googlePlaceId));
+
+  return places.filter((p) => !seenIds.has(p.googlePlaceId));
+}
+
+function sortByPopularity(places: PlaceResult[]): PlaceResult[] {
+  return [...places].sort((a, b) => {
+    const ratingDiff = (b.rating ?? 0) - (a.rating ?? 0);
+    if (ratingDiff !== 0) return ratingDiff;
+    return (b.userRatingCount ?? 0) - (a.userRatingCount ?? 0);
   });
 }
 
@@ -155,7 +187,7 @@ export async function discoverPlacesAlongRoute(
     .where(eq(journeys.id, journeyId));
 
   try {
-    const { placeTypes, minRating } = await getUserPreferences(userId);
+    const { placeTypes, minRating, maxDiscoveries } = await getUserPreferences(userId);
     const queries = placeTypes.length > 0 ? placeTypes : DEFAULT_ROUTE_QUERIES;
 
     const allPlaces: PlaceResult[] = [];
@@ -208,18 +240,25 @@ export async function discoverPlacesAlongRoute(
                   (p) => p.rating !== null && p.rating >= minRating
                 )
               : fallbackPlaces;
-          if (fallbackFiltered.length > 0) {
+
+          const fallbackNewToUser = await filterOutSeenPlaces(fallbackFiltered, userId);
+          const fallbackSorted = sortByPopularity(fallbackNewToUser);
+          const fallbackCapped = maxDiscoveries > 0
+            ? fallbackSorted.slice(0, maxDiscoveries)
+            : fallbackSorted;
+
+          if (fallbackCapped.length > 0) {
             const { newUserDiscoveries } = await upsertPlacesToDB(
-              fallbackFiltered, journeyId, userId, "route"
+              fallbackCapped, journeyId, userId, "route"
             );
             await db
               .update(journeys)
               .set({ discoveryStatus: "completed" })
               .where(eq(journeys.id, journeyId));
             logger.info(
-              `[discovery] Completed: ${fallbackFiltered.length} places via fallback, ${newUserDiscoveries} new to user, status → completed`
+              `[discovery] Completed: ${fallbackCapped.length} places via fallback, ${newUserDiscoveries} new to user, status → completed`
             );
-            return { placesFound: fallbackFiltered.length, newUserDiscoveries };
+            return { placesFound: fallbackCapped.length, newUserDiscoveries };
           }
         }
       }
@@ -237,8 +276,12 @@ export async function discoverPlacesAlongRoute(
         ? deduped.filter((p) => p.rating !== null && p.rating >= minRating)
         : deduped;
 
-    const { newUserDiscoveries } = filtered.length > 0
-      ? await upsertPlacesToDB(filtered, journeyId, userId, "route")
+    const newToUser = await filterOutSeenPlaces(filtered, userId);
+    const sorted = sortByPopularity(newToUser);
+    const capped = maxDiscoveries > 0 ? sorted.slice(0, maxDiscoveries) : sorted;
+
+    const { newUserDiscoveries } = capped.length > 0
+      ? await upsertPlacesToDB(capped, journeyId, userId, "route")
       : { newUserDiscoveries: 0 };
 
     await db
@@ -246,9 +289,9 @@ export async function discoverPlacesAlongRoute(
       .set({ discoveryStatus: "completed" })
       .where(eq(journeys.id, journeyId));
     logger.info(
-      `[discovery] Completed: ${filtered.length} places found (${deduped.length} raw, minRating=${minRating}), ${newUserDiscoveries} new to user, status → completed`
+      `[discovery] Completed: ${capped.length} places stored (${deduped.length} raw, ${filtered.length} rated, ${newToUser.length} new-to-user, cap=${maxDiscoveries}), ${newUserDiscoveries} new discoveries, status → completed`
     );
-    return { placesFound: filtered.length, newUserDiscoveries };
+    return { placesFound: capped.length, newUserDiscoveries };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await db
@@ -278,9 +321,11 @@ export async function discoverNearbyForPing(
 
   if (!filtered.length) return { places: filtered, newCount: 0, apiError: false };
 
-  const newCount = await countNewPlaces(filtered, userId);
-  await upsertPlacesToDB(filtered, journeyId, userId, "ping");
-  return { places: filtered, newCount, apiError: false };
+  const newToUser = await filterOutSeenPlaces(filtered, userId);
+  if (!newToUser.length) return { places: [], newCount: 0, apiError: false };
+
+  await upsertPlacesToDB(newToUser, journeyId, userId, "ping");
+  return { places: newToUser, newCount: newToUser.length, apiError: false };
 }
 
 export async function retryDiscovery(

@@ -7,14 +7,20 @@ import {
   userPlaceStates,
   placeVisits,
 } from "@workspace/db";
-import { eq, and, or, isNull, gt, sql } from "drizzle-orm";
+import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import { fetchPlaceDetail, fetchOpeningHours } from "../lib/placesApi.js";
-import logger from "../logger.js";
 
 const router = Router();
 
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const TYPE_CATEGORY_MAP: Record<string, string[]> = {
+  food: ["restaurant", "cafe", "bar", "bakery", "night_club", "food", "fast_food_restaurant", "coffee_shop", "sandwich_shop", "pizza_restaurant", "hamburger_restaurant", "sushi_restaurant", "ramen_restaurant", "thai_restaurant", "chinese_restaurant", "indian_restaurant", "italian_restaurant", "steak_house", "seafood_restaurant", "breakfast_restaurant", "brunch_restaurant", "vegetarian_restaurant", "vegan_restaurant", "ice_cream_shop", "donut_shop", "bagel_shop", "wine_bar", "cocktail_bar", "pub", "brewery", "winery", "distillery"],
+  parks: ["park", "national_park", "state_park", "hiking_area", "nature_reserve", "campground", "picnic_ground", "dog_park", "botanical_garden", "garden", "playground"],
+  culture: ["museum", "tourist_attraction", "library", "movie_theater", "art_gallery", "performing_arts_theater", "cultural_center", "historical_landmark", "monument", "aquarium", "zoo", "amusement_park", "concert_hall", "opera_house"],
+  shopping: ["shopping_mall", "store", "clothing_store", "supermarket", "department_store", "convenience_store", "book_store", "electronics_store", "furniture_store", "home_goods_store", "jewelry_store", "shoe_store", "sporting_goods_store", "market", "gift_shop", "toy_store"],
+};
 
 function makePhotoUrl(ref: string | null | undefined, width = 400): string | null {
   if (!ref) return null;
@@ -28,6 +34,8 @@ function makePhotoUrl(ref: string | null | undefined, width = 400): string | nul
 router.get("/discovered", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const filter = (req.query.filter as string) ?? "all";
+  const journeyId = (req.query.journeyId as string) ?? null;
+  const typeCategory = (req.query.type as string) ?? null;
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10)));
   const offset = (page - 1) * limit;
@@ -55,6 +63,30 @@ router.get("/discovered", async (req: Request, res: Response) => {
       : filter === "snoozed"
       ? and(notDismissed, activelySnoozed)
       : and(notDismissed, notActivelySnoozed);
+
+  const typeWhere =
+    typeCategory && TYPE_CATEGORY_MAP[typeCategory]
+      ? sql`${placeCache.primaryType} = ANY(ARRAY[${sql.join(
+          TYPE_CATEGORY_MAP[typeCategory].map((t) => sql`${t}`),
+          sql`, `
+        )}])`
+      : undefined;
+
+  const journeyWhere = journeyId
+    ? sql`EXISTS (
+        SELECT 1 FROM journey_discovered_places jdp
+        WHERE jdp.google_place_id = ${placeCache.googlePlaceId}
+          AND jdp.journey_id = ${journeyId}
+          AND jdp.user_id = ${user.id}
+      )`
+    : undefined;
+
+  const whereCondition = and(
+    eq(userDiscoveredPlaces.userId, user.id),
+    filterWhere,
+    typeWhere,
+    journeyWhere
+  );
 
   const baseJoin = db
     .select({
@@ -89,7 +121,7 @@ router.get("/discovered", async (req: Request, res: Response) => {
 
   const [rows, countRow] = await Promise.all([
     baseJoin
-      .where(and(eq(userDiscoveredPlaces.userId, user.id), filterWhere))
+      .where(whereCondition)
       .orderBy(sql`${userDiscoveredPlaces.lastDiscoveredAt} DESC`)
       .limit(limit)
       .offset(offset),
@@ -104,7 +136,7 @@ router.get("/discovered", async (req: Request, res: Response) => {
           eq(userPlaceStates.googlePlaceId, placeCache.googlePlaceId)
         )
       )
-      .where(and(eq(userDiscoveredPlaces.userId, user.id), filterWhere)),
+      .where(whereCondition),
   ]);
 
   const total = countRow[0]?.total ?? 0;
@@ -336,12 +368,13 @@ preferencesRouter.get("/preferences", async (req: Request, res: Response) => {
     minRating: prefs?.minRating !== undefined
       ? parseFloat(String(prefs.minRating))
       : 0,
+    maxDiscoveries: prefs?.maxDiscoveries ?? 20,
   });
 });
 
 preferencesRouter.put("/preferences", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
-  const body = req.body as { placeTypes?: unknown; minRating?: unknown };
+  const body = req.body as { placeTypes?: unknown; minRating?: unknown; maxDiscoveries?: unknown };
 
   const placeTypes = Array.isArray(body.placeTypes)
     ? (body.placeTypes as unknown[])
@@ -355,8 +388,14 @@ preferencesRouter.put("/preferences", async (req: Request, res: Response) => {
     minRating = clamped.toFixed(1);
   }
 
-  if (placeTypes === undefined && minRating === undefined) {
-    res.status(400).json({ error: "Provide placeTypes or minRating" });
+  let maxDiscoveries: number | undefined;
+  const maxDiscoveriesRaw = body.maxDiscoveries;
+  if (typeof maxDiscoveriesRaw === "number" && !isNaN(maxDiscoveriesRaw)) {
+    maxDiscoveries = Math.max(0, Math.floor(maxDiscoveriesRaw));
+  }
+
+  if (placeTypes === undefined && minRating === undefined && maxDiscoveries === undefined) {
+    res.status(400).json({ error: "Provide placeTypes, minRating, or maxDiscoveries" });
     return;
   }
 
@@ -366,9 +405,10 @@ preferencesRouter.put("/preferences", async (req: Request, res: Response) => {
     .where(eq(userPreferences.userId, user.id));
 
   if (existing) {
-    const updates: Partial<typeof existing> = {};
+    const updates: Record<string, unknown> = {};
     if (placeTypes !== undefined) updates.placeTypes = placeTypes;
     if (minRating !== undefined) updates.minRating = minRating;
+    if (maxDiscoveries !== undefined) updates.maxDiscoveries = maxDiscoveries;
     const [updated] = await db
       .update(userPreferences)
       .set(updates)
@@ -377,6 +417,7 @@ preferencesRouter.put("/preferences", async (req: Request, res: Response) => {
     res.json({
       placeTypes: updated.placeTypes ?? [],
       minRating: parseFloat(String(updated.minRating ?? "0")),
+      maxDiscoveries: updated.maxDiscoveries ?? 20,
     });
   } else {
     const [created] = await db
@@ -386,11 +427,13 @@ preferencesRouter.put("/preferences", async (req: Request, res: Response) => {
         userId: user.id,
         placeTypes: placeTypes ?? [],
         minRating: minRating ?? "0",
+        maxDiscoveries: maxDiscoveries ?? 20,
       })
       .returning();
     res.json({
       placeTypes: created.placeTypes ?? [],
       minRating: parseFloat(String(created.minRating ?? "0")),
+      maxDiscoveries: created.maxDiscoveries ?? 20,
     });
   }
 });

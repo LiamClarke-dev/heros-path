@@ -96,19 +96,28 @@ function tokyoFallbackZones(): Zone[] {
 
 // ── Live Overpass upgrade attempts ────────────────────────────────────────────
 const MELB_TARGET = new Set([
+  // Inner ring (original 25)
   "Fitzroy","Collingwood","Richmond","Carlton","Brunswick","Fitzroy North",
   "Northcote","Abbotsford","Windsor","South Yarra","Prahran",
   "St Kilda","Thornbury","Clifton Hill","Hawthorn","Kew","East Melbourne",
   "North Melbourne","West Melbourne","Southbank","Parkville","Alphington",
   "Fairfield","Docklands","Cremorne",
+  // Greater Melbourne additions
+  "Albert Park","Middle Park","Port Melbourne","South Melbourne",
+  "Elwood","St Kilda East",
+  "Brighton","Brighton East","Hampton","Sandringham",
+  "Williamstown","Newport","Yarraville","Footscray","Seddon",
+  "Brunswick East","Coburg","Preston","Reservoir","Moonee Ponds","Flemington","Ascot Vale",
+  "Hawthorn East","Camberwell","Surrey Hills","Malvern","Malvern East","Toorak","Glen Iris",
+  "Carnegie","Murrumbeena","Bentleigh","Oakleigh","Chadstone",
 ]);
 
 async function upgradeMelbourne(): Promise<Zone[] | null> {
   try {
     const elems = await overpassPost(
       `[out:json][timeout:12];
-(way["place"="suburb"](-37.87,144.90,-37.74,145.05);
- relation["place"="suburb"](-37.87,144.90,-37.74,145.05););
+(way["place"="suburb"](-38.00,144.85,-37.72,145.15);
+ relation["place"="suburb"](-38.00,144.85,-37.72,145.15););
 out body geom;`);
     const zones: Zone[] = []; const seen = new Set<string>();
     for (const el of elems) {
@@ -167,11 +176,16 @@ const DEMO: Record<string, [ZoneState, number]> = {
   "Shibuya":["progress",0.61], "Hiroo":["progress",0.45],
   "Dōgenzaka":["progress",0.78], "Udagawachō":["progress",0.33],
   "Kamiyamachō":["progress",0.52], "Shōtō":["progress",0.20],
-  // Melbourne
+  // Melbourne inner
   "Fitzroy":["complete",1], "Collingwood":["complete",1],
   "Richmond":["progress",0.71], "Carlton":["progress",0.47],
   "Brunswick":["progress",0.28], "Fitzroy North":["progress",0.55],
   "Abbotsford":["progress",0.38], "Clifton Hill":["progress",0.18],
+  // Melbourne expanded
+  "Williamstown":["complete",1], "Albert Park":["progress",0.45],
+  "Port Melbourne":["progress",0.62], "Yarraville":["progress",0.33],
+  "Brighton":["progress",0.58], "Footscray":["progress",0.41],
+  "South Melbourne":["progress",0.26], "Elwood":["progress",0.19],
   // Geelong
   "Geelong":["complete",1], "South Geelong":["complete",1],
   "Geelong West":["progress",0.64], "Geelong East":["progress",0.41],
@@ -187,15 +201,20 @@ function stateOf(name: string): [ZoneState, number] {
   return DEMO[name.trim()] ?? ["untouched", 0];
 }
 
+// ── Journey polyline colour ────────────────────────────────────────────────────
+const JOURNEY_COLOR     = "#6add93";
+const JOURNEY_GLOW      = "rgba(106,221,147,0.35)";
+
 // ── Map styling ───────────────────────────────────────────────────────────────
 function zoneStyle(state: ZoneState, pct: number): L.PathOptions {
+  const dash = "8, 4";
   switch (state) {
     case "complete":
-      return { fillColor: C.gold, fillOpacity: 0.45, color: C.gold, weight: 3, opacity: 1 };
+      return { fillColor: C.gold, fillOpacity: 0.45, color: C.gold, weight: 2.5, opacity: 1, dashArray: dash };
     case "progress":
-      return { fillColor: C.primary, fillOpacity: 0.10 + pct * 0.28, color: C.primary, weight: 2.5, opacity: 0.9 };
+      return { fillColor: C.primary, fillOpacity: 0.10 + pct * 0.28, color: C.primary, weight: 2, opacity: 0.9, dashArray: dash };
     default:
-      return { fillColor: "transparent", fillOpacity: 0, color: "rgba(159,193,132,0.50)", weight: 2, opacity: 0.8 };
+      return { fillColor: "transparent", fillOpacity: 0, color: "rgba(159,193,132,0.50)", weight: 1.5, opacity: 0.8, dashArray: dash };
   }
 }
 
@@ -291,6 +310,59 @@ const DEMO_STREETS: Record<string, DemoSegment[]> = {
     { explored:false, latlngs:[[37.7470,-122.4170],[37.7470,-122.4100]] },
     { explored:false, latlngs:[[37.7450,-122.4200],[37.7450,-122.4090]] },
   ],
+  // ── Greater Melbourne expanded suburbs ────────────────────────────────────
+  "Williamstown": [
+    // Complete — all explored (waterfront suburb)
+    { explored:true, latlngs:[[-37.8643,144.8900],[-37.8643,144.9005]] },  // Nelson Pl
+    { explored:true, latlngs:[[-37.8670,144.8920],[-37.8670,144.9000]] },  // Ferguson St
+    { explored:true, latlngs:[[-37.8650,144.8905],[-37.8710,144.8905]] },  // Ann St
+    { explored:true, latlngs:[[-37.8695,144.8940],[-37.8695,144.9010]] },  // Electra St
+  ],
+  "Albert Park": [
+    { explored:true,  latlngs:[[-37.8430,144.9560],[-37.8500,144.9560]] },  // Bridport St
+    { explored:true,  latlngs:[[-37.8465,144.9500],[-37.8465,144.9610]] },  // Cardigan Pl partial
+    { explored:false, latlngs:[[-37.8500,144.9530],[-37.8560,144.9530]] },  // Danks St ghost
+    { explored:false, latlngs:[[-37.8535,144.9480],[-37.8535,144.9600]] },  // Park St ghost
+  ],
+  "Port Melbourne": [
+    { explored:true,  latlngs:[[-37.8340,144.9290],[-37.8340,144.9430]] },  // Bay St
+    { explored:true,  latlngs:[[-37.8300,144.9320],[-37.8380,144.9320]] },  // Rouse St explored
+    { explored:false, latlngs:[[-37.8295,144.9370],[-37.8370,144.9370]] },  // Princes St ghost
+    { explored:false, latlngs:[[-37.8380,144.9290],[-37.8380,144.9430]] },  // Williamstown Rd ghost
+  ],
+  "Brighton": [
+    { explored:true,  latlngs:[[-37.9050,144.9960],[-37.9050,145.0060]] },  // Church St
+    { explored:true,  latlngs:[[-37.9010,144.9980],[-37.9100,144.9980]] },  // Bay St partial
+    { explored:false, latlngs:[[-37.9100,144.9950],[-37.9160,144.9950]] },  // south Church St
+    { explored:false, latlngs:[[-37.9120,144.9920],[-37.9120,145.0050]] },  // New St ghost
+  ],
+  "Yarraville": [
+    { explored:true,  latlngs:[[-37.8165,144.8920],[-37.8165,144.9020]] },  // Anderson St
+    { explored:false, latlngs:[[-37.8200,144.8900],[-37.8200,144.9010]] },  // Stephen St ghost
+    { explored:false, latlngs:[[-37.8225,144.8920],[-37.8225,144.9010]] },  // Somerville Rd ghost
+  ],
+  "Footscray": [
+    { explored:true,  latlngs:[[-37.7985,144.8990],[-37.7985,144.9090]] },  // Hopkins St
+    { explored:false, latlngs:[[-37.8025,144.8960],[-37.8025,144.9080]] },  // Droop St ghost
+    { explored:false, latlngs:[[-37.8055,144.8980],[-37.8055,144.9070]] },  // Barkly St ghost
+  ],
+  // ── Greater Geelong expanded ───────────────────────────────────────────────
+  "Ocean Grove": [
+    { explored:true,  latlngs:[[-38.2590,144.5225],[-38.2590,144.5325]] },  // The Terrace
+    { explored:true,  latlngs:[[-38.2640,144.5190],[-38.2640,144.5310]] },  // Surf Beach Rd partial
+    { explored:false, latlngs:[[-38.2680,144.5170],[-38.2680,144.5310]] },  // Grubb Rd ghost
+    { explored:false, latlngs:[[-38.2620,144.5280],[-38.2700,144.5280]] },  // Shell Rd ghost
+  ],
+  "Leopold": [
+    { explored:false, latlngs:[[-38.1870,144.4670],[-38.1870,144.4790]] },
+    { explored:false, latlngs:[[-38.1910,144.4650],[-38.1910,144.4800]] },
+    { explored:false, latlngs:[[-38.1880,144.4650],[-38.1880,144.4780]] },
+  ],
+  "Torquay": [
+    { explored:true,  latlngs:[[-38.3320,144.3215],[-38.3320,144.3335]] },  // The Esplanade
+    { explored:false, latlngs:[[-38.3380,144.3180],[-38.3380,144.3300]] },  // Bell St ghost
+    { explored:false, latlngs:[[-38.3355,144.3160],[-38.3355,144.3310]] },  // Price St ghost
+  ],
 };
 
 // ── Legend ────────────────────────────────────────────────────────────────────
@@ -308,14 +380,16 @@ function Legend() {
           <span style={{ color:C.text, fontSize:12, fontFamily:"system-ui" }}>{label}</span>
         </div>
       ))}
-      <div style={{ color:C.muted, fontSize:10, fontFamily:"system-ui", textTransform:"uppercase", letterSpacing:"0.08em", marginTop:6, marginBottom:2 }}>Streets</div>
+      <div style={{ color:C.muted, fontSize:10, fontFamily:"system-ui", textTransform:"uppercase", letterSpacing:"0.08em", marginTop:6, marginBottom:2 }}>Journey paths</div>
       {([
-        { label:"Street explored",   color:C.gold,                     dash:false },
-        { label:"Street in progress", color:C.primary,                  dash:false },
-        { label:"Street unexplored",  color:"rgba(159,193,132,0.30)",   dash:true  },
+        { label:"Explored",   color:JOURNEY_COLOR,              dash:false },
+        { label:"Unexplored", color:"rgba(159,193,132,0.30)",   dash:true  },
       ] as const).map(({ label, color, dash }) => (
         <div key={label} style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ width:22, height:3, borderRadius:2, background: dash ? "transparent" : color, border: dash ? `1.5px dashed ${color}` : "none", flexShrink:0 }} />
+          {dash
+            ? <div style={{ width:22, height:2, borderRadius:2, background:"transparent", border:`1.5px dashed ${color}`, flexShrink:0 }} />
+            : <div style={{ width:22, height:3, borderRadius:2, background:color, boxShadow:`0 0 6px 2px rgba(106,221,147,0.45)`, flexShrink:0 }} />
+          }
           <span style={{ color:C.text, fontSize:12, fontFamily:"system-ui" }}>{label}</span>
         </div>
       ))}
@@ -339,10 +413,10 @@ function StatsBar({ zones }: { zones: Zone[] }) {
 
 // ── City config ───────────────────────────────────────────────────────────────
 const CITY_CONFIG = {
-  melbourne:    { label:"🦘 Melbourne",     center:[-37.808, 144.989] as [number,number], zoom:13, sub:"Inner Suburbs (SAL 2021)" },
-  geelong:      { label:"🌊 Geelong",       center:[-38.143, 144.360] as [number,number], zoom:13, sub:"Greater Geelong (SAL 2021)" },
+  melbourne:    { label:"🦘 Melbourne",     center:[-37.825, 144.989] as [number,number], zoom:12, sub:"Greater Melbourne (SAL 2021 · 59 suburbs)" },
+  geelong:      { label:"🌊 Geelong",       center:[-38.155, 144.370] as [number,number], zoom:12, sub:"Greater Geelong (SAL 2021 · 31 suburbs)" },
   sanfrancisco: { label:"🌉 San Francisco", center:[37.762, -122.428] as [number,number], zoom:13, sub:"Neighbourhoods" },
-  tokyo:        { label:"🗼 Tokyo",         center:[35.663, 139.704]  as [number,number], zoom:14, sub:"Shibuya Ward" },
+  tokyo:        { label:"🗼 Tokyo",         center:[35.663, 139.704]  as [number,number], zoom:14, sub:"Shibuya Ward (admin_level 9)" },
 } as const;
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -414,28 +488,31 @@ export function ZoneMap() {
 
     // Render demo street polylines
     for (const zone of zones) {
-      const [state] = stateOf(zone.name);
       const streets = DEMO_STREETS[zone.name];
       if (!streets) continue;
 
       for (const seg of streets) {
-        const isExplored = seg.explored;
-        let color: string, weight: number, opacity: number, dashArray: string | undefined;
-
-        if (isExplored) {
-          color      = state === "complete" ? C.gold : C.primary;
-          weight     = 4;
-          opacity    = state === "complete" ? 0.92 : 0.82;
-          dashArray  = undefined;
+        if (seg.explored) {
+          // Glow layer (wider, very transparent) drawn first so it appears beneath
+          const glow = L.polyline(seg.latlngs, {
+            color: JOURNEY_GLOW, weight: 14, opacity: 1,
+            lineCap: "round", lineJoin: "round",
+          });
+          group.addLayer(glow);
+          // Core line on top
+          const line = L.polyline(seg.latlngs, {
+            color: JOURNEY_COLOR, weight: 3.5, opacity: 0.95,
+            lineCap: "round", lineJoin: "round",
+          });
+          group.addLayer(line);
         } else {
-          color      = "rgba(159,193,132,0.30)";
-          weight     = 2.5;
-          opacity    = 1;
-          dashArray  = "5, 5";
+          // Unexplored — ghost dashed line
+          const line = L.polyline(seg.latlngs, {
+            color: "rgba(159,193,132,0.28)", weight: 2, opacity: 1,
+            dashArray: "5, 5", lineCap: "round", lineJoin: "round",
+          });
+          group.addLayer(line);
         }
-
-        const line = L.polyline(seg.latlngs, { color, weight, opacity, dashArray, lineCap:"round", lineJoin:"round" });
-        group.addLayer(line);
       }
     }
   }, [activeCity, zonesMap]);

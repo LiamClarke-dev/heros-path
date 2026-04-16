@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, userBadges, userQuests, users, journeys, journeyWaypoints, userDiscoveredPlaces, suburbCompletions } from "@workspace/db";
+import { db, userBadges, userQuests, users, journeys, journeyWaypoints, userDiscoveredPlaces, zoneCompletions } from "@workspace/db";
 import { eq, and, isNotNull, count, sql, sum, max } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
@@ -63,7 +63,7 @@ router.get("/badges", async (req: Request, res: Response) => {
     [placeCountRow],
     allWaypoints,
     [maxPingRow],
-    [suburbCountRow],
+    [zoneCountRow],
   ] = await Promise.all([
     db.select().from(userBadges).where(eq(userBadges.userId, user.id)),
     db.select().from(users).where(eq(users.id, user.id)),
@@ -76,7 +76,7 @@ router.get("/badges", async (req: Request, res: Response) => {
     db.select({ maxPing: max(journeys.pingCount) })
       .from(journeys)
       .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt))),
-    db.select({ c: count() }).from(suburbCompletions).where(eq(suburbCompletions.userId, user.id)),
+    db.select({ c: count() }).from(zoneCompletions).where(eq(zoneCompletions.userId, user.id)),
   ]);
 
   const earnedMap = new Map(badgeRows.map((r) => [r.badgeKey, r.earnedAt]));
@@ -103,7 +103,7 @@ router.get("/badges", async (req: Request, res: Response) => {
   const currentStreak = dbUser?.streakDays ?? 0;
   const maxPingCount = Number(maxPingRow?.maxPing ?? 0);
   const distinctAreas = areaSet.size;
-  const suburbCount = Number(suburbCountRow?.c ?? 0);
+  const zoneCount = Number(zoneCountRow?.c ?? 0);
 
   // Badge progress values: progress value + target (null if no progress tracking)
   const badgeProgress: Record<string, { progress: number; target: number } | null> = {
@@ -120,9 +120,9 @@ router.get("/badges", async (req: Request, res: Response) => {
     streak_30:            { progress: currentStreak, target: 30 },
     ping_master:          { progress: maxPingCount, target: 5 },
     globe_trotter:        { progress: distinctAreas, target: 3 },
-    suburb_local:         { progress: Math.min(suburbCount, 1), target: 1 },
-    suburb_cartographer:  { progress: suburbCount, target: 5 },
-    suburb_master:        { progress: suburbCount, target: 20 },
+    zone_local:           { progress: Math.min(zoneCount, 1), target: 1 },
+    zone_cartographer:    { progress: zoneCount, target: 5 },
+    zone_master:          { progress: zoneCount, target: 20 },
   };
 
   const earned = [];
@@ -158,7 +158,7 @@ router.get("/badges", async (req: Request, res: Response) => {
 router.get("/me/stats", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
 
-  const [[dbUser], [journeyCountRow], [placeCountRow], cellsResult, [distanceRow], [suburbCountRow]] =
+  const [[dbUser], [journeyCountRow], [placeCountRow], cellsResult, [distanceRow], [zoneCountRow]] =
     await Promise.all([
       db.select().from(users).where(eq(users.id, user.id)),
       db
@@ -180,8 +180,8 @@ router.get("/me/stats", async (req: Request, res: Response) => {
         .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt))),
       db
         .select({ c: count() })
-        .from(suburbCompletions)
-        .where(eq(suburbCompletions.userId, user.id)),
+        .from(zoneCompletions)
+        .where(eq(zoneCompletions.userId, user.id)),
     ]);
 
   if (!dbUser) {
@@ -222,7 +222,7 @@ router.get("/me/stats", async (req: Request, res: Response) => {
     currentStreak: streak,
     longestStreak: streak,
     totalNewCells: cells,
-    suburbsCompleted: Number(suburbCountRow?.c ?? 0),
+    zonesCompleted: Number(zoneCountRow?.c ?? 0),
   });
 });
 

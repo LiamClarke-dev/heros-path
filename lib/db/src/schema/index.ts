@@ -5,4 +5,4 @@ export * from "./lists";
 export * from "./gamification";
 export * from "./visits";
 export * from "./social";
-export * from "./suburbs";
+export * from "./zones";

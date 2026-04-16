@@ -16,7 +16,7 @@ import {
   retryDiscovery,
 } from "../lib/discovery.js";
 import { awardJourneyGamification } from "../lib/gamification.js";
-import { processSuburbExploration } from "../lib/suburbExploration.js";
+import { processZoneCoverage } from "../lib/zoneExploration.js";
 import logger from "../logger.js";
 
 const router = Router();
@@ -301,20 +301,20 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       logger.warn({ err }, "awardJourneyGamification failed");
     }
 
-    // Step 4: Process suburb exploration
-    let suburbResult = {
-      newSuburbCompletions: [] as Array<{ suburbId: string; name: string; completionPct: number }>,
-      suburbXpGained: 0,
-      newSuburbBadges: [] as Array<{ key: string; name: string; description: string; icon: string }>,
+    // Step 4: Process zone coverage
+    let zoneResult = {
+      newZoneCompletions: [] as Array<{ zoneId: string; name: string; coveragePct: number }>,
+      zoneXpGained: 0,
+      newZoneBadges: [] as Array<{ key: string; name: string; description: string; icon: string }>,
     };
     try {
-      suburbResult = await processSuburbExploration(userId, coords);
+      zoneResult = await processZoneCoverage(userId, coords);
     } catch (err) {
-      logger.warn({ err }, "processSuburbExploration failed");
+      logger.warn({ err }, "processZoneCoverage failed");
     }
 
-    const totalXpGained = gamificationResult.xpGained + suburbResult.suburbXpGained;
-    const allNewBadges = [...gamificationResult.newBadges, ...suburbResult.newSuburbBadges];
+    const totalXpGained = gamificationResult.xpGained + zoneResult.zoneXpGained;
+    const allNewBadges = [...gamificationResult.newBadges, ...zoneResult.newZoneBadges];
 
     // Step 5: Store xpEarned and xpBreakdown on the journey
     const xpBreakdown = JSON.stringify({
@@ -323,7 +323,7 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       newPlaces: gamificationResult.newPlacesThisJourney,
       completedQuests: gamificationResult.completedQuests,
       newBadges: gamificationResult.newBadges,
-      suburbXp: suburbResult.suburbXpGained,
+      zoneXp: zoneResult.zoneXpGained,
     });
     await db
       .update(journeys)
@@ -345,9 +345,9 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
         newPlaces: gamificationResult.newPlacesThisJourney,
         completedQuests: gamificationResult.completedQuests,
         newBadges: gamificationResult.newBadges,
-        suburbXp: suburbResult.suburbXpGained,
+        zoneXp: zoneResult.zoneXpGained,
       },
-      newSuburbCompletions: suburbResult.newSuburbCompletions,
+      newZoneCompletions: zoneResult.newZoneCompletions,
     });
     return;
   }

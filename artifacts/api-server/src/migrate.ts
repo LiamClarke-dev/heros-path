@@ -152,45 +152,41 @@ const STATEMENTS = [
      created_at TIMESTAMPTZ DEFAULT NOW()
    )`,
 
-  // ── SUBURBS (new table) ───────────────────────────────────────
-  `CREATE TABLE IF NOT EXISTS suburbs (
+  // ── ZONES (new table) ────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS zones (
      id                 TEXT PRIMARY KEY,
      city               TEXT NOT NULL,
      name               TEXT NOT NULL,
+     name_en            TEXT,
+     ward_id            TEXT,
      boundary_geo_json  JSONB NOT NULL,
      centroid_lat       REAL NOT NULL,
      centroid_lng       REAL NOT NULL,
-     total_segments     INTEGER NOT NULL DEFAULT 0
+     total_cells        INTEGER NOT NULL DEFAULT 0
    )`,
-  `CREATE INDEX IF NOT EXISTS suburbs_city_idx ON suburbs (city)`,
+  `CREATE INDEX IF NOT EXISTS zones_city_idx ON zones (city)`,
+  `CREATE INDEX IF NOT EXISTS zones_ward_idx ON zones (ward_id)`,
 
-  // ── SUBURB_ROAD_SEGMENTS (new table) ─────────────────────────
-  `CREATE TABLE IF NOT EXISTS suburb_road_segments (
-     id          TEXT PRIMARY KEY,
-     suburb_id   TEXT NOT NULL REFERENCES suburbs(id) ON DELETE CASCADE,
-     geom        JSONB NOT NULL,
-     osm_way_id  BIGINT
+  // ── ZONE_COVERAGE (new table) ────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS zone_coverage (
+     user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     zone_id         TEXT NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
+     visited_cells   INTEGER NOT NULL DEFAULT 0,
+     coverage_pct    REAL NOT NULL DEFAULT 0,
+     last_visited_at TIMESTAMPTZ DEFAULT NOW(),
+     PRIMARY KEY (user_id, zone_id)
    )`,
-  `CREATE INDEX IF NOT EXISTS suburb_road_segments_suburb_idx ON suburb_road_segments (suburb_id)`,
+  `CREATE INDEX IF NOT EXISTS zone_coverage_user_idx ON zone_coverage (user_id)`,
 
-  // ── USER_EXPLORED_SEGMENTS (new table) ───────────────────────
-  `CREATE TABLE IF NOT EXISTS user_explored_segments (
-     user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-     segment_id        TEXT NOT NULL REFERENCES suburb_road_segments(id) ON DELETE CASCADE,
-     first_explored_at TIMESTAMPTZ DEFAULT NOW(),
-     PRIMARY KEY (user_id, segment_id)
+  // ── ZONE_COMPLETIONS (new table) ─────────────────────────────
+  `CREATE TABLE IF NOT EXISTS zone_completions (
+     user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     zone_id       TEXT NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
+     completed_at  TIMESTAMPTZ DEFAULT NOW(),
+     coverage_pct  REAL NOT NULL,
+     PRIMARY KEY (user_id, zone_id)
    )`,
-  `CREATE INDEX IF NOT EXISTS user_explored_segments_user_idx ON user_explored_segments (user_id)`,
-
-  // ── SUBURB_COMPLETIONS (new table) ───────────────────────────
-  `CREATE TABLE IF NOT EXISTS suburb_completions (
-     user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-     suburb_id      TEXT NOT NULL REFERENCES suburbs(id) ON DELETE CASCADE,
-     completed_at   TIMESTAMPTZ DEFAULT NOW(),
-     completion_pct REAL NOT NULL,
-     PRIMARY KEY (user_id, suburb_id)
-   )`,
-  `CREATE INDEX IF NOT EXISTS suburb_completions_user_idx ON suburb_completions (user_id)`,
+  `CREATE INDEX IF NOT EXISTS zone_completions_user_idx ON zone_completions (user_id)`,
 ];
 
 export async function runMigrations(): Promise<void> {

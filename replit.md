@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Hero's Path** is a gamified city exploration mobile app (Expo/React Native + Express backend). It tracks GPS journeys, permanently colors walked streets on a map, discovers nearby places via Google Places API (New), manages discovered places with lists, and gamifies exploration with quests, XP, badges, and adventurer rank progression. The app also features suburb-level exploration geofencing: road segments within SF, Melbourne, and Tokyo neighbourhoods are tracked cumulatively across all journeys, with progressive fog-of-war map rendering and suburb completion milestones (≥80% of road segments covered = suburb complete).
+**Hero's Path** is a gamified city exploration mobile app (Expo/React Native + Express backend). It tracks GPS journeys, discovers nearby places via Google Places API (New), manages discovered places with lists, and gamifies exploration with quests, XP, badges, and adventurer rank progression. The app features a territory/zone system: named neighbourhood zones (suburbs for Melbourne/Geelong/SF, chōme-level for Tokyo) are displayed on the map with polygon boundaries. Grid-cell coverage is tracked per zone per user; completing ≥80% of a zone's cells awards XP and badges. Four MVP cities: Tokyo (1056 chōme zones), Melbourne (59 suburbs), Geelong (31 suburbs), San Francisco (41 neighbourhoods).
 
 pnpm workspace monorepo using TypeScript throughout.
 

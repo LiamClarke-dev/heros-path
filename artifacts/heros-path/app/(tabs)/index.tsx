@@ -25,14 +25,13 @@ import { apiFetch } from "../../lib/api";
 import { rdpSimplify } from "../../lib/geo";
 import Colors from "../../constants/colors";
 import {
-  type SuburbData,
-  culledSegments,
+  type ZoneData,
   boundaryToPolygonCoords,
-  segmentToPolylineCoords,
-  getCompletionLabel,
-  SUBURB_COLORS,
-  SUBURB_COMPLETION_THRESHOLD,
-} from "../../lib/suburbLayer";
+  isZoneInViewport,
+  getZoneCompletionLabel,
+  ZONE_COLORS,
+  ZONE_COMPLETION_THRESHOLD,
+} from "../../lib/zoneLayer";
 
 const IS_WEB = Platform.OS === "web";
 
@@ -160,7 +159,7 @@ export default function JourneyTab() {
   const [exploredCells, setExploredCells] = useState<ExploredCell[]>([]);
   const [unexploredCells, setUnexploredCells] = useState<ExploredCell[]>([]);
   const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
-  const [suburbsData, setSuburbsData] = useState<SuburbData[]>([]);
+  const [zonesData, setZonesData] = useState<ZoneData[]>([]);
   const [viewport, setViewport] = useState<ViewportRegion | null>(null);
   const [elapsedDisplay, setElapsedDisplay] = useState("0:00");
   const [pingLoading, setPingLoading] = useState(false);
@@ -195,20 +194,20 @@ export default function JourneyTab() {
   const bypassQualityGateRef = useRef(false);
   const journeyIdRef = useRef<string | null>(null);
 
-  const loadAllSuburbs = useCallback(
+  const loadZones = useCallback(
     async (loc?: { lat: number; lng: number }) => {
       if (!token || IS_WEB) return;
       try {
         const params = loc
-          ? `?center_lat=${loc.lat}&center_lng=${loc.lng}`
+          ? `?lat=${loc.lat}&lng=${loc.lng}`
           : "";
         const data = (await apiFetch(
-          `/api/map/suburbs/all${params}`,
+          `/api/map/zones${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
-        )) as { suburbs: SuburbData[] };
-        setSuburbsData(data.suburbs ?? []);
+        )) as { city: string; zones: ZoneData[] };
+        setZonesData(data.zones ?? []);
       } catch (err) {
-        console.warn("[JourneyMap] loadAllSuburbs failed", err);
+        console.warn("[JourneyMap] loadZones failed", err);
       }
     },
     [token]
@@ -318,19 +317,19 @@ export default function JourneyTab() {
           setCurrentLocation(loc);
           await loadHistory();
           await loadExploredCells(loc.lat, loc.lng);
-          loadAllSuburbs(loc);
+          loadZones(loc);
         } else {
           await loadHistory();
-          loadAllSuburbs();
+          loadZones();
         }
       } else {
         await loadHistory();
-        loadAllSuburbs();
+        loadZones();
       }
       loadQuests();
       loadUserLists();
     })();
-  }, [token, loadHistory, loadExploredCells, loadQuests, loadUserLists, loadAllSuburbs]);
+  }, [token, loadHistory, loadExploredCells, loadQuests, loadUserLists, loadZones]);
 
   useEffect(() => {
     if (!currentLocation || hasAutocenteredRef.current || IS_WEB) return;
@@ -675,7 +674,7 @@ export default function JourneyTab() {
       loadHistory();
       loadQuests();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
-      loadAllSuburbs(currentLocation ?? undefined);
+      loadZones(currentLocation ?? undefined);
 
       if ((result.xpGained ?? 0) > 0) {
         const gamResult: GamificationResult = {
@@ -847,53 +846,45 @@ export default function JourneyTab() {
           }
         >
 
-          {suburbsData.flatMap((suburb) => {
-            const rings = boundaryToPolygonCoords(suburb.boundary);
-            const isCompleted = suburb.completionPct >= SUBURB_COMPLETION_THRESHOLD;
-            const culled = viewport
-              ? culledSegments(suburb.segments, viewport)
-              : suburb.segments;
+          {zonesData.flatMap((zone) => {
+            if (viewport && !isZoneInViewport(zone, viewport)) return [];
 
+            const rings = boundaryToPolygonCoords(zone.boundary);
+            const isCompleted = zone.coveragePct >= ZONE_COMPLETION_THRESHOLD;
+            const isVisited = zone.coveragePct > 0;
             const elements = [];
 
             for (let ri = 0; ri < rings.length; ri++) {
               if (Polygon) {
                 elements.push(
                   <Polygon
-                    key={`suburb-boundary-${suburb.id}-${ri}`}
+                    key={`zone-boundary-${zone.id}-${ri}`}
                     coordinates={rings[ri]}
-                    strokeColor={SUBURB_COLORS.boundaryStroke}
-                    strokeWidth={1.5}
-                    fillColor={isCompleted ? SUBURB_COLORS.completedFill : "transparent"}
-                  />
-                );
-              }
-            }
-
-            for (const seg of culled) {
-              if (Polyline) {
-                elements.push(
-                  <Polyline
-                    key={`seg-${seg.id}`}
-                    coordinates={segmentToPolylineCoords(seg)}
                     strokeColor={
-                      seg.explored
-                        ? SUBURB_COLORS.exploredSegment
-                        : SUBURB_COLORS.unexploredSegment
+                      isCompleted
+                        ? ZONE_COLORS.completedStroke
+                        : ZONE_COLORS.boundaryStrokeMuted
                     }
-                    strokeWidth={seg.explored ? 2 : 1}
+                    strokeWidth={isCompleted ? 2 : 1}
+                    fillColor={
+                      isCompleted
+                        ? ZONE_COLORS.completedFill
+                        : isVisited
+                        ? ZONE_COLORS.visitedFill
+                        : "transparent"
+                    }
                   />
                 );
               }
             }
 
-            if (Marker && !journeyId) {
+            if (Marker && !journeyId && zone.coveragePct > 0) {
               elements.push(
                 <Marker
-                  key={`suburb-label-${suburb.id}`}
+                  key={`zone-label-${zone.id}`}
                   coordinate={{
-                    latitude: suburb.centroidLat,
-                    longitude: suburb.centroidLng,
+                    latitude: zone.centroidLat,
+                    longitude: zone.centroidLng,
                   }}
                   anchor={{ x: 0.5, y: 0.5 }}
                   tracksViewChanges={false}
@@ -901,7 +892,7 @@ export default function JourneyTab() {
                 >
                   <View style={styles.suburbLabelChip}>
                     <Text style={styles.suburbLabelText}>
-                      {getCompletionLabel(suburb)}
+                      {getZoneCompletionLabel(zone)}
                     </Text>
                   </View>
                 </Marker>

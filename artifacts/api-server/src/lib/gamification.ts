@@ -70,9 +70,9 @@ export const BADGE_DEFINITIONS: BadgeDef[] = [
   { key: "streak_30",            name: "Legend Streak",     description: "Journey 30 days in a row",          icon: "👑" },
   { key: "ping_master",          name: "Ping Master",       description: "Use ping 5+ times in one journey",  icon: "📡" },
   { key: "globe_trotter",        name: "Globe Trotter",     description: "Journey in 3 different areas",      icon: "🌍" },
-  { key: "suburb_local",         name: "Local",             description: "Complete 1 suburb (≥ 80%)",         icon: "🏘️" },
-  { key: "suburb_cartographer",  name: "Cartographer",      description: "Complete 5 suburbs",                icon: "🗺️" },
-  { key: "suburb_master",        name: "Master Explorer",   description: "Complete 20 suburbs",               icon: "🌟" },
+  { key: "zone_local",           name: "Local",             description: "Complete 1 zone (≥ 80%)",           icon: "🏘️" },
+  { key: "zone_cartographer",    name: "Cartographer",      description: "Complete 5 zones",                  icon: "🗺️" },
+  { key: "zone_master",          name: "Master Explorer",   description: "Complete 20 zones",                 icon: "🌟" },
 ];
 
 // ─── Quest definitions ────────────────────────────────────────────────────────

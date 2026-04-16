@@ -8,9 +8,13 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LOCATION_TASK, WAYPOINT_BUFFER_KEY } from "../../lib/locationTask";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -121,6 +125,7 @@ export default function JourneyTab() {
   const router = useRouter();
   const mapRef = useRef<RNMapView | null>(null);
 
+  const [locationPermission, setLocationPermission] = useState<"granted" | "denied" | "undetermined">("undetermined");
   const [journeyStatus, setJourneyStatus] = useState<JourneyStatus>("idle");
   const [journeyId, setJourneyId] = useState<string | null>(null);
   const [journeyStartedAt, setJourneyStartedAt] = useState<string | null>(null);
@@ -152,6 +157,8 @@ export default function JourneyTab() {
   const flushInFlightRef = useRef<Promise<void> | null>(null);
   const lastCellCheckDistRef = useRef<{ lat: number; lng: number } | null>(null);
   const hasAutocenteredRef = useRef(false);
+  const bypassQualityGateRef = useRef(false);
+  const journeyIdRef = useRef<string | null>(null);
 
   const loadHistory = useCallback(async () => {
     if (!token || IS_WEB) return;
@@ -198,12 +205,20 @@ export default function JourneyTab() {
   useEffect(() => {
     if (IS_WEB || !token) return;
     (async () => {
-      const last = await Location.getLastKnownPositionAsync();
-      if (last) {
-        const loc = { lat: last.coords.latitude, lng: last.coords.longitude };
-        setCurrentLocation(loc);
-        await loadHistory();
-        await loadExploredCells(loc.lat, loc.lng);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      const granted = status === "granted";
+      setLocationPermission(granted ? "granted" : "denied");
+
+      if (granted) {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last) {
+          const loc = { lat: last.coords.latitude, lng: last.coords.longitude };
+          setCurrentLocation(loc);
+          await loadHistory();
+          await loadExploredCells(loc.lat, loc.lng);
+        } else {
+          await loadHistory();
+        }
       } else {
         await loadHistory();
       }
@@ -231,7 +246,35 @@ export default function JourneyTab() {
       if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (questRefreshRef.current) clearInterval(questRefreshRef.current);
+      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)
+        .then((running) => { if (running) Location.stopLocationUpdatesAsync(LOCATION_TASK); })
+        .catch(() => {});
     };
+  }, []);
+
+  useEffect(() => {
+    if (IS_WEB) return;
+    const subscription = AppState.addEventListener("change", async (nextState) => {
+      if (nextState === "active") {
+        const jId = journeyIdRef.current;
+        if (!jId) return;
+        try {
+          const raw = await AsyncStorage.getItem(WAYPOINT_BUFFER_KEY);
+          if (raw) {
+            const bgWaypoints = JSON.parse(raw) as { lat: number; lng: number; recordedAt: string }[];
+            if (bgWaypoints.length > 0) {
+              await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY);
+              setWaypoints((prev) => [...prev, ...bgWaypoints]);
+              waypointBufferRef.current.push(...bgWaypoints);
+              flushWaypoints(jId);
+            }
+          }
+        } catch (err) {
+          console.warn("[JourneyMap] AppState flush failed:", err);
+        }
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   async function handleLocateMe() {
@@ -319,10 +362,13 @@ export default function JourneyTab() {
   async function startJourney() {
     if (IS_WEB || !token) return;
 
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission required", "Location access is needed for journey tracking.");
-      return;
+    if (locationPermission !== "granted") {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission required", "Location access is needed for journey tracking.");
+        return;
+      }
+      setLocationPermission("granted");
     }
 
     let data: { id: string; startedAt: string };
@@ -337,6 +383,7 @@ export default function JourneyTab() {
     }
 
     const jId = data.id;
+    journeyIdRef.current = jId;
     setJourneyId(jId);
     setJourneyStartedAt(data.startedAt);
     setElapsedDisplay("0:00");
@@ -344,7 +391,29 @@ export default function JourneyTab() {
     waypointBufferRef.current = [];
     setJourneyStatus("active");
 
+    await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY).catch(() => {});
     await attachLocationWatcher();
+
+    try {
+      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+      if (bgStatus === "granted") {
+        const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+        if (!isRunning) {
+          await Location.startLocationUpdatesAsync(LOCATION_TASK, {
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 5,
+            timeInterval: 2000,
+            showsBackgroundLocationIndicator: true,
+            foregroundService: {
+              notificationTitle: "Journey in progress",
+              notificationBody: "Hero's Path is tracking your route",
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[JourneyMap] Background location setup failed:", err);
+    }
 
     flushIntervalRef.current = setInterval(() => flushWaypoints(jId), 10000);
     timerIntervalRef.current = setInterval(() => {
@@ -354,10 +423,77 @@ export default function JourneyTab() {
     loadQuests();
   }
 
+  async function discardJourney(jId: string) {
+    if (!token) return;
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
+    if (flushIntervalRef.current) { clearInterval(flushIntervalRef.current); flushIntervalRef.current = null; }
+    if (questRefreshRef.current) { clearInterval(questRefreshRef.current); questRefreshRef.current = null; }
+    try {
+      const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+      if (isRunning) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+    } catch {}
+    await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY).catch(() => {});
+    try {
+      await apiFetch(`/api/journeys/${jId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      console.warn("[JourneyMap] discard DELETE failed:", err);
+    }
+    journeyIdRef.current = null;
+    setJourneyId(null);
+    setJourneyStartedAt(null);
+    setCurrentHeading(null);
+    setWaypoints([]);
+    waypointBufferRef.current = [];
+    setJourneyStatus("idle");
+  }
+
   async function endJourney() {
     if (!journeyId || !token || journeyStatus !== "active") return;
     const jId = journeyId;
     const startedAtSnapshot = journeyStartedAt;
+
+    if (!bypassQualityGateRef.current) {
+      const currentWaypoints = waypoints;
+      const totalDist =
+        currentWaypoints.length >= 2
+          ? currentWaypoints.reduce((acc, wp, i) => {
+              if (i === 0) return 0;
+              const prev = currentWaypoints[i - 1];
+              return acc + haversineM(prev.lat, prev.lng, wp.lat, wp.lng);
+            }, 0)
+          : 0;
+      const durationMs = startedAtSnapshot
+        ? Date.now() - new Date(startedAtSnapshot).getTime()
+        : 0;
+      const durationSec = Math.round(durationMs / 1000);
+      if (durationMs < 60000 || totalDist < 50) {
+        Alert.alert(
+          "Short journey detected",
+          `You've only walked ${Math.round(totalDist)}m in ${durationSec}s. Save it anyway, or discard it?`,
+          [
+            {
+              text: "Save",
+              onPress: () => {
+                bypassQualityGateRef.current = true;
+                void endJourney();
+              },
+            },
+            {
+              text: "Discard",
+              style: "destructive",
+              onPress: () => { void discardJourney(jId); },
+            },
+          ]
+        );
+        return;
+      }
+    }
+    bypassQualityGateRef.current = false;
 
     setJourneyStatus("ending");
 
@@ -384,11 +520,22 @@ export default function JourneyTab() {
       questRefreshRef.current = null;
     }
 
+    // Stop background location tracking
+    try {
+      const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+      if (isRunning) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+    } catch {}
+    await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY).catch(() => {});
+
     try {
       const result = (await apiFetch(`/api/journeys/${jId}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "ended", waypoints: remainingWaypoints }),
+        body: JSON.stringify({
+          status: "ended",
+          waypoints: remainingWaypoints,
+          tzOffsetMinutes: new Date().getTimezoneOffset(),
+        }),
       })) as {
         totalDistanceM: number;
         placeCount: number;
@@ -399,6 +546,7 @@ export default function JourneyTab() {
         newStreak?: number;
       };
 
+      journeyIdRef.current = null;
       setJourneyId(null);
       setJourneyStartedAt(null);
       setCurrentHeading(null);
@@ -625,6 +773,18 @@ export default function JourneyTab() {
         )}
       </View>
 
+      {locationPermission === "denied" && journeyStatus === "idle" && (
+        <View style={[styles.permissionBanner, { top: insets.top + 52 }]}>
+          <Feather name="alert-circle" size={14} color={Colors.error} />
+          <Text style={styles.permissionBannerText}>
+            Location access denied. Enable it in Settings to start a journey.
+          </Text>
+          <TouchableOpacity onPress={() => Linking.openSettings()}>
+            <Text style={styles.permissionBannerLink}>Open Settings</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {journeyStatus === "active" && newTerritoryNearby && (
         <View style={[styles.nudgeBanner, { top: insets.top + 64 }]}>
           <Feather name="zap" size={14} color={Colors.info} />
@@ -672,9 +832,21 @@ export default function JourneyTab() {
       >
         <View style={styles.bottomControls} pointerEvents="box-none">
           {journeyStatus === "idle" && (
-            <TouchableOpacity style={styles.primaryBtn} onPress={startJourney}>
-              <Feather name="play" size={18} color={Colors.background} />
-              <Text style={styles.primaryBtnText}>Begin Journey</Text>
+            <TouchableOpacity
+              style={[
+                styles.primaryBtn,
+                locationPermission === "denied" && styles.primaryBtnDisabled,
+              ]}
+              onPress={locationPermission === "denied" ? () => Linking.openSettings() : startJourney}
+            >
+              <Feather
+                name={locationPermission === "denied" ? "lock" : "play"}
+                size={18}
+                color={Colors.background}
+              />
+              <Text style={styles.primaryBtnText}>
+                {locationPermission === "denied" ? "Enable location to start" : "Begin Journey"}
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -820,6 +992,36 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  permissionBanner: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    backgroundColor: "rgba(13,10,11,0.90)",
+    borderWidth: 1,
+    borderColor: Colors.error,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 20,
+    flexWrap: "wrap",
+  },
+  permissionBannerText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    flex: 1,
+  },
+  permissionBannerLink: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: Colors.error,
+  },
+  primaryBtnDisabled: {
+    backgroundColor: "rgba(212,160,23,0.45)",
   },
   nudgeBanner: {
     position: "absolute",

@@ -136,6 +136,7 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
   const body = req.body as {
     status?: unknown;
     waypoints?: unknown;
+    tzOffsetMinutes?: unknown;
   };
 
   if (body.status !== undefined && body.status !== "ended") {
@@ -273,6 +274,9 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
     const durationSeconds = Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
 
     // Step 3: Award gamification
+    const tzOffsetMinutes =
+      typeof body.tzOffsetMinutes === "number" ? body.tzOffsetMinutes : 0;
+
     let gamificationResult = {
       xpGained: 0,
       newLevel: 1,
@@ -286,7 +290,8 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
         journeyId,
         pingCount,
         distM,
-        durationSeconds
+        durationSeconds,
+        tzOffsetMinutes
       );
     } catch (err) {
       logger.warn({ err }, "awardJourneyGamification failed");

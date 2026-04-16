@@ -18,7 +18,9 @@
       "bundleIdentifier": "com.herospath.app",
       "icon": "./assets/icon.png",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Hero's Path uses your location to record your journey and show you on the map.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Hero's Path tracks your location in the background so your journey keeps recording when your screen is locked."
       }
     },
     "android": {
@@ -26,7 +28,14 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0D0A0B"
-      }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/icon.png"

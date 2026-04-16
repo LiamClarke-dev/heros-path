@@ -121,7 +121,8 @@ export async function awardJourneyGamification(
   journeyId: string,
   pingCount: number,
   distanceM: number,
-  durationSeconds: number
+  durationSeconds: number,
+  tzOffsetMinutes: number = 0
 ): Promise<GamificationResult> {
   // ── 1. Load journey row to get startedAt ──────────────────────────────────
   const [journeyRow] = await db.select().from(journeys).where(eq(journeys.id, journeyId));
@@ -273,8 +274,8 @@ export async function awardJourneyGamification(
   }
   const totalCells = allCells.size;
 
-  const nowHour = new Date().getUTCHours();
-  const isNight = nowHour >= 21 || nowHour < 4;
+  const localHour = new Date(new Date().getTime() - tzOffsetMinutes * 60000).getUTCHours();
+  const isNight = localHour >= 21 || localHour < 4;
 
   // ── 10. Badge evaluation (after XP/streak computed, before DB write) ──────
   const earnedBadgeRows = await db

@@ -24,6 +24,7 @@ module.exports = ({ config }) => ({
           CFBundleURLSchemes: ["herospath"],
         },
       ],
+      UIBackgroundModes: ["location"],
     },
   },
 });

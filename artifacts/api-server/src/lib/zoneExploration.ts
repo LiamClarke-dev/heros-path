@@ -66,11 +66,22 @@ function detectWardForPoint(lat: number, lng: number, wards: WardBoundary[]): st
 
 function getWardBbox(ward: WardBoundary): { minLat: number; maxLat: number; minLng: number; maxLng: number } | null {
   const b = ward.boundary as { type: string; coordinates: unknown };
-  if (b.type !== "Polygon") return null;
-  const coords = (b.coordinates as [number, number][][])[0];
-  if (!coords || coords.length < 4) return null;
-  const lngs = coords.map(([x]) => x).filter((x) => x != null && !isNaN(x));
-  const lats = coords.map(([, y]) => y).filter((y) => y != null && !isNaN(y));
+  let allCoords: [number, number][] = [];
+
+  if (b.type === "Polygon") {
+    const rings = b.coordinates as [number, number][][];
+    if (rings[0]) allCoords = rings[0];
+  } else if (b.type === "MultiPolygon") {
+    const polys = b.coordinates as [number, number][][][];
+    for (const poly of polys) {
+      if (poly[0]) allCoords = allCoords.concat(poly[0]);
+    }
+  } else {
+    return null;
+  }
+
+  const lngs = allCoords.map(([x]) => x).filter((x) => x != null && !isNaN(x));
+  const lats = allCoords.map(([, y]) => y).filter((y) => y != null && !isNaN(y));
   if (lngs.length === 0 || lats.length === 0) return null;
   return {
     minLat: Math.min(...lats),
@@ -368,8 +379,8 @@ export async function processZoneCoverage(
 
 export function inferCityFromCoords(lat: number, lng: number): string | null {
   if (lat >= 34.8 && lat <= 36.2 && lng >= 138.5 && lng <= 140.5) return "tokyo";
-  if (lat >= -38.5 && lat <= -37.5 && lng >= 143.5 && lng <= 145.0) return "geelong";
-  if (lat >= -38.5 && lat <= -37.0 && lng >= 144.0 && lng <= 145.5) return "melbourne";
+  if (lat >= -38.6 && lat <= -37.95 && lng >= 143.5 && lng <= 144.75) return "geelong";
+  if (lat >= -38.1 && lat <= -37.5 && lng >= 144.75 && lng <= 145.5) return "melbourne";
   if (lat >= 37.0 && lat <= 38.0 && lng >= -123.0 && lng <= -122.0) return "san_francisco";
   return null;
 }

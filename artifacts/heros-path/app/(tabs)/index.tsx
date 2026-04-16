@@ -608,7 +608,20 @@ export default function JourneyTab() {
       setPingNewCount(result.newCount ?? 0);
       setPingSheetVisible(true);
     } catch (err) {
-      Alert.alert("Ping failed", "Could not discover places. Try again.");
+      const status = (err as { status?: number }).status;
+      if (status === 503) {
+        Alert.alert(
+          "Places unavailable",
+          "The places service is temporarily unavailable. Please try again shortly.",
+          [{ text: "OK" }]
+        );
+      } else {
+        Alert.alert(
+          "Ping failed",
+          "Something went wrong. Check your connection and try again.",
+          [{ text: "Retry", onPress: handlePing }, { text: "Cancel", style: "cancel" }]
+        );
+      }
     } finally {
       setPingLoading(false);
     }

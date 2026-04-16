@@ -308,24 +308,40 @@ export async function discoverNearbyForPing(
   userId: string,
   lat: number,
   lng: number
-): Promise<{ places: PlaceResult[]; newCount: number; apiError: boolean }> {
+): Promise<{ places: PlaceResult[]; newCount: number; apiError: boolean; apiKeyMissing: boolean }> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    logger.error("[ping] GOOGLE_MAPS_API_KEY is not set — cannot reach Google Places API");
+    return { places: [], newCount: 0, apiError: true, apiKeyMissing: true };
+  }
+
+  logger.info({ journeyId, userId, lat, lng }, "[ping] Calling searchNearby (radius=200m)");
+
   const { minRating } = await getUserPreferences(userId);
 
   const { places, apiError } = await searchNearby(lat, lng, 200);
-  if (apiError) return { places: [], newCount: 0, apiError: true };
+  if (apiError) {
+    logger.warn({ journeyId, lat, lng }, "[ping] searchNearby returned apiError — Google Places API call failed");
+    return { places: [], newCount: 0, apiError: true, apiKeyMissing: false };
+  }
+
+  logger.info({ journeyId, rawCount: places.length, minRating }, "[ping] searchNearby succeeded");
 
   const filtered =
     minRating > 0
       ? places.filter((p) => p.rating !== null && p.rating >= minRating)
       : places;
 
-  if (!filtered.length) return { places: filtered, newCount: 0, apiError: false };
+  logger.info({ journeyId, filteredCount: filtered.length }, "[ping] After rating filter");
+
+  if (!filtered.length) return { places: filtered, newCount: 0, apiError: false, apiKeyMissing: false };
 
   const newToUser = await filterOutSeenPlaces(filtered, userId);
-  if (!newToUser.length) return { places: [], newCount: 0, apiError: false };
+  if (!newToUser.length) return { places: [], newCount: 0, apiError: false, apiKeyMissing: false };
 
   await upsertPlacesToDB(newToUser, journeyId, userId, "ping");
-  return { places: newToUser, newCount: newToUser.length, apiError: false };
+  logger.info({ journeyId, placesFound: newToUser.length }, "[ping] Completed successfully");
+  return { places: newToUser, newCount: newToUser.length, apiError: false, apiKeyMissing: false };
 }
 
 export async function retryDiscovery(

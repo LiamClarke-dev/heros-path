@@ -649,12 +649,16 @@ router.post("/:journeyId/ping", async (req: Request, res: Response) => {
   }
 
   try {
-    const { places, newCount, apiError } = await discoverNearbyForPing(
+    const { places, newCount, apiError, apiKeyMissing } = await discoverNearbyForPing(
       journeyId,
       user.id,
       lat,
       lng
     );
+    if (apiKeyMissing) {
+      res.status(503).json({ error: "Places service is not configured on this server" });
+      return;
+    }
     if (apiError) {
       res.status(503).json({ error: "Places API unavailable — try again shortly" });
       return;

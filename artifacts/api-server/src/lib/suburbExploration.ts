@@ -304,14 +304,26 @@ function rdpCoords(coords: [number, number][], eps: number): [number, number][] 
   return [coords[0], coords[end]];
 }
 
+// Simplify a closed ring (first === last coord) using RDP, preserving ring closure
+// and ensuring at least 4 points remain (3 unique + closing duplicate).
+function rdpRing(ring: [number, number][], eps: number): [number, number][] {
+  if (ring.length < 4) return ring;
+  // Drop the closing duplicate, simplify the open polyline, then re-close
+  const open = ring.slice(0, -1);
+  const simplified = rdpCoords(open, eps);
+  // Must have at least 3 unique points to form a valid polygon ring
+  if (simplified.length < 3) return ring;
+  return [...simplified, simplified[0]];
+}
+
 function simplifyBoundary(boundary: unknown, eps: number): unknown {
   const b = boundary as { type?: string; coordinates?: unknown };
   if (!b?.type) return boundary;
   if (b.type === "Polygon") {
-    return { ...b, coordinates: (b.coordinates as [number, number][][]).map(ring => rdpCoords(ring, eps)) };
+    return { ...b, coordinates: (b.coordinates as [number, number][][]).map(ring => rdpRing(ring, eps)) };
   }
   if (b.type === "MultiPolygon") {
-    return { ...b, coordinates: (b.coordinates as [number, number][][][]).map(poly => poly.map(ring => rdpCoords(ring, eps))) };
+    return { ...b, coordinates: (b.coordinates as [number, number][][][]).map(poly => poly.map(ring => rdpRing(ring, eps))) };
   }
   return boundary;
 }

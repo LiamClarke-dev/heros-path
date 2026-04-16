@@ -7,7 +7,7 @@ import {
   totalDistance,
   encodePolyline,
   decodePolyline,
-  snapRouteToRoads,
+  snapRouteToRoadsChunked,
   type Coord,
 } from "../lib/geo.js";
 import {
@@ -101,6 +101,11 @@ router.get("/", async (req: Request, res: Response) => {
       j.endedAt && j.startedAt
         ? Math.round((j.endedAt.getTime() - j.startedAt.getTime()) / 1000)
         : null;
+    const snappedRoute = j.snappedRoute as Array<{ lat: number; lng: number }> | null;
+    const polylineForMap =
+      snappedRoute && snappedRoute.length > 1
+        ? encodePolyline(snappedRoute)
+        : j.polylineEncoded;
     return {
       id: j.id,
       name: j.name ?? generateJourneyName(j.startedAt),
@@ -111,7 +116,7 @@ router.get("/", async (req: Request, res: Response) => {
       placeCount: placeCountMap.get(j.id) ?? 0,
       xpEarned: j.xpEarned,
       discoveryStatus: j.discoveryStatus,
-      staticMapUrl: buildStaticMapUrl(j.polylineEncoded),
+      staticMapUrl: buildStaticMapUrl(polylineForMap),
     };
   });
 
@@ -228,12 +233,7 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
     }));
 
     const distM = coords.length >= 2 ? totalDistance(coords) : 0;
-    let polylineEncoded = coords.length >= 2 ? encodePolyline(coords) : null;
-
-    if (coords.length >= 2) {
-      const snapped = await snapRouteToRoads(coords);
-      if (snapped) polylineEncoded = encodePolyline(snapped);
-    }
+    const polylineEncoded = coords.length >= 2 ? encodePolyline(coords) : null;
 
     await db
       .update(journeys)
@@ -379,7 +379,10 @@ router.get("/history", async (req: Request, res: Response) => {
       .filter((j) => j.endedAt !== null)
       .map(async (j) => {
         let waypoints: Coord[];
-        if (j.polylineEncoded) {
+        const snappedRoute = j.snappedRoute as Array<{ lat: number; lng: number }> | null;
+        if (snappedRoute && snappedRoute.length > 0) {
+          waypoints = snappedRoute;
+        } else if (j.polylineEncoded) {
           waypoints = decodePolyline(j.polylineEncoded);
         } else {
           const raw = await db
@@ -467,6 +470,65 @@ router.get("/explored-cells", async (req: Request, res: Response) => {
   }
 
   res.json({ explored, unexplored });
+});
+
+// POST /api/journeys/:journeyId/snap-to-roads — snap waypoints to road network
+router.post("/:journeyId/snap-to-roads", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const journeyId = req.params.journeyId as string;
+
+  const [journey] = await db
+    .select()
+    .from(journeys)
+    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)));
+
+  if (!journey) {
+    res.status(404).json({ error: "Journey not found" });
+    return;
+  }
+
+  if (!journey.endedAt) {
+    res.status(409).json({ error: "Journey has not ended yet" });
+    return;
+  }
+
+  // Short-circuit: if already snapped, return cached result
+  if (journey.snappedRoute) {
+    res.json({ snappedRoute: journey.snappedRoute });
+    return;
+  }
+
+  const rawWaypoints = await db
+    .select({ lat: journeyWaypoints.lat, lng: journeyWaypoints.lng })
+    .from(journeyWaypoints)
+    .where(eq(journeyWaypoints.journeyId, journeyId))
+    .orderBy(journeyWaypoints.recordedAt);
+
+  if (rawWaypoints.length < 2) {
+    res.json({ snappedRoute: null });
+    return;
+  }
+
+  const coords: Coord[] = rawWaypoints.map((wp) => ({
+    lat: parseFloat(String(wp.lat)),
+    lng: parseFloat(String(wp.lng)),
+  }));
+
+  let snappedRoute: Array<{ lat: number; lng: number }> | null = null;
+  try {
+    snappedRoute = await snapRouteToRoadsChunked(coords);
+  } catch (err) {
+    logger.warn({ err }, "snap-to-roads endpoint: snapRouteToRoadsChunked threw");
+  }
+
+  if (snappedRoute) {
+    await db
+      .update(journeys)
+      .set({ snappedRoute })
+      .where(eq(journeys.id, journeyId));
+  }
+
+  res.json({ snappedRoute: snappedRoute ?? null });
 });
 
 // PATCH /api/journeys/:journeyId/rename — rename a journey
@@ -666,6 +728,7 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
     pingCount: journey.pingCount,
     discoveryStatus: journey.discoveryStatus,
     waypoints,
+    snappedRoute: (journey.snappedRoute as Array<{ lat: number; lng: number }> | null) ?? null,
     places,
     placeCount: places.length,
     xpBreakdown,

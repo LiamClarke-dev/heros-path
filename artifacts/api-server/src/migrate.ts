@@ -39,6 +39,7 @@ const STATEMENTS = [
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS discovery_status TEXT NOT NULL DEFAULT 'pending'`,
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS name TEXT`,
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS xp_breakdown TEXT`,
+  `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS snapped_route JSONB`,
 
   // ── PLACE_LISTS ─────────────────────────────────────────────
   `ALTER TABLE place_lists ADD COLUMN IF NOT EXISTS emoji TEXT`,

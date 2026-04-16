@@ -67,6 +67,7 @@ interface JourneyDetail {
   pingCount: number;
   discoveryStatus: string;
   waypoints: Array<{ lat: number; lng: number }>;
+  snappedRoute: Array<{ lat: number; lng: number }> | null;
   places: JourneyPlace[];
   placeCount: number;
   xpBreakdown: XpBreakdown | null;
@@ -297,11 +298,13 @@ export default function JourneyDetailScreen() {
     }
   }
 
-  // Compute map region from waypoints
+  // Compute map region from snappedRoute if available, else raw waypoints
   const mapRegion = useCallback(() => {
-    if (!journey || journey.waypoints.length === 0) return null;
-    const lats = journey.waypoints.map((w) => w.lat);
-    const lngs = journey.waypoints.map((w) => w.lng);
+    if (!journey) return null;
+    const pts = journey.snappedRoute ?? journey.waypoints;
+    if (pts.length === 0) return null;
+    const lats = pts.map((w) => w.lat);
+    const lngs = pts.map((w) => w.lng);
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs);
@@ -347,7 +350,8 @@ export default function JourneyDetailScreen() {
     ? "Tap below to find places from this route."
     : "No places found — tap to retry discovery.";
 
-  const polylineCoords = journey.waypoints.map((w) => ({ latitude: w.lat, longitude: w.lng }));
+  const routePoints = journey.snappedRoute ?? journey.waypoints;
+  const polylineCoords = routePoints.map((w) => ({ latitude: w.lat, longitude: w.lng }));
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

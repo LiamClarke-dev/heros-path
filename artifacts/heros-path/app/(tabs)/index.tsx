@@ -182,6 +182,7 @@ export default function JourneyTab() {
   const [questPanelExpanded, setQuestPanelExpanded] = useState(false);
   const [celebrationVisible, setCelebrationVisible] = useState(false);
   const [celebrationData, setCelebrationData] = useState<GamificationResult | null>(null);
+  const [snapLoading, setSnapLoading] = useState(false);
   const celebrationOpacity = useRef(new Animated.Value(0)).current;
   const questRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -686,6 +687,7 @@ export default function JourneyTab() {
         newStreak?: number;
       };
 
+      const endedJourneyId = jId;
       journeyIdRef.current = null;
       setJourneyId(null);
       setJourneyStartedAt(null);
@@ -699,6 +701,22 @@ export default function JourneyTab() {
       loadQuests();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
       loadZones(currentLocation ?? undefined);
+
+      // Fire snap-to-roads asynchronously — does not block the journey-end UX
+      setSnapLoading(true);
+      (async () => {
+        try {
+          await apiFetch(`/api/journeys/${endedJourneyId}/snap-to-roads`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          loadHistory();
+        } catch (err) {
+          console.warn("[JourneyMap] snap-to-roads failed (non-fatal)", err);
+        } finally {
+          setSnapLoading(false);
+        }
+      })();
 
       if ((result.xpGained ?? 0) > 0) {
         const gamResult: GamificationResult = {
@@ -1232,6 +1250,13 @@ export default function JourneyTab() {
             <View style={styles.endingRow}>
               <ActivityIndicator color={Colors.gold} />
               <Text style={styles.endingText}>Saving journey…</Text>
+            </View>
+          )}
+
+          {journeyStatus === "idle" && snapLoading && (
+            <View style={styles.endingRow}>
+              <ActivityIndicator color={Colors.gold} size="small" />
+              <Text style={styles.endingText}>Tidying up your route…</Text>
             </View>
           )}
         </View>

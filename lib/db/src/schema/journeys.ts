@@ -5,6 +5,7 @@ import {
   timestamp,
   numeric,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
@@ -25,6 +26,7 @@ export const journeys = pgTable("journeys", {
   lastPingLat: numeric("last_ping_lat", { precision: 9, scale: 6 }),
   lastPingLng: numeric("last_ping_lng", { precision: 9, scale: 6 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  snappedRoute: jsonb("snapped_route").$type<Array<{ lat: number; lng: number }>>(),
 });
 
 export const journeyWaypoints = pgTable(

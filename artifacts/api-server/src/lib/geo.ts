@@ -92,6 +92,54 @@ export function decodePolyline(encoded: string): Coord[] {
   return coords;
 }
 
+export async function snapRouteToRoadsChunked(coords: Coord[]): Promise<Coord[] | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    logger.warn("GOOGLE_MAPS_API_KEY not set — skipping road snap");
+    return null;
+  }
+
+  const CHUNK_SIZE = 100;
+  const chunks: Coord[][] = [];
+  for (let i = 0; i < coords.length; i += CHUNK_SIZE) {
+    chunks.push(coords.slice(i, i + CHUNK_SIZE));
+  }
+
+  const allSnapped: Coord[] = [];
+  for (const chunk of chunks) {
+    const path = chunk.map((c) => `${c.lat},${c.lng}`).join("|");
+    try {
+      const url =
+        `https://roads.googleapis.com/v1/snapToRoads` +
+        `?path=${encodeURIComponent(path)}&interpolate=true&key=${apiKey}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        const hint =
+          res.status === 403
+            ? "Roads API not enabled — enable it in GCP Console > APIs & Services"
+            : res.status === 429
+              ? "Roads API quota exceeded — check GCP quotas for Roads API"
+              : "Check GCP credentials and API key restrictions";
+        logger.warn({ status: res.status, body: text, hint }, "Roads API snap failed for chunk");
+        return null;
+      }
+      const data = (await res.json()) as {
+        snappedPoints?: Array<{ location: { latitude: number; longitude: number } }>;
+      };
+      if (!data.snappedPoints?.length) continue;
+      for (const p of data.snappedPoints) {
+        allSnapped.push({ lat: p.location.latitude, lng: p.location.longitude });
+      }
+    } catch (err) {
+      logger.warn({ err }, "Roads API snap threw for chunk — aborting snap");
+      return null;
+    }
+  }
+
+  return allSnapped.length > 0 ? allSnapped : null;
+}
+
 export async function snapRouteToRoads(coords: Coord[]): Promise<Coord[] | null> {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {

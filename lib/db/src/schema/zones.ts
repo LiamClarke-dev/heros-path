@@ -6,8 +6,22 @@ import {
   real,
   jsonb,
   primaryKey,
+  customType,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
+
+const integerArray = customType<{ data: number[]; driverData: number[] }>({
+  dataType() {
+    return "integer[]";
+  },
+  toDriver(value: number[]) {
+    return value;
+  },
+  fromDriver(value: number[]) {
+    return value ?? [];
+  },
+});
 
 export const zones = pgTable("zones", {
   id: text("id").primaryKey(),
@@ -19,6 +33,11 @@ export const zones = pgTable("zones", {
   centroidLat: real("centroid_lat").notNull(),
   centroidLng: real("centroid_lng").notNull(),
   totalCells: integer("total_cells").notNull().default(0),
+  bboxMinLat: real("bbox_min_lat"),
+  bboxMaxLat: real("bbox_max_lat"),
+  bboxMinLng: real("bbox_min_lng"),
+  bboxMaxLng: real("bbox_max_lng"),
+  gridSize: real("grid_size").notNull().default(0.0005),
 });
 
 export const zoneCoverage = pgTable(
@@ -30,9 +49,9 @@ export const zoneCoverage = pgTable(
     zoneId: text("zone_id")
       .notNull()
       .references(() => zones.id, { onDelete: "cascade" }),
-    visitedCells: integer("visited_cells").notNull().default(0),
+    visitedCells: integerArray("visited_cells").notNull().default(sql`'{}'::integer[]`),
     coveragePct: real("coverage_pct").notNull().default(0),
-    lastVisitedAt: timestamp("last_visited_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.zoneId] })]
 );

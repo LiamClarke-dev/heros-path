@@ -162,7 +162,12 @@ const STATEMENTS = [
      boundary_geo_json  JSONB NOT NULL,
      centroid_lat       REAL NOT NULL,
      centroid_lng       REAL NOT NULL,
-     total_cells        INTEGER NOT NULL DEFAULT 0
+     total_cells        INTEGER NOT NULL DEFAULT 0,
+     bbox_min_lat       REAL,
+     bbox_max_lat       REAL,
+     bbox_min_lng       REAL,
+     bbox_max_lng       REAL,
+     grid_size          REAL NOT NULL DEFAULT 0.0005
    )`,
   `CREATE INDEX IF NOT EXISTS zones_city_idx ON zones (city)`,
   `CREATE INDEX IF NOT EXISTS zones_ward_idx ON zones (ward_id)`,
@@ -171,9 +176,9 @@ const STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS zone_coverage (
      user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
      zone_id         TEXT NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
-     visited_cells   INTEGER NOT NULL DEFAULT 0,
+     visited_cells   INTEGER[] NOT NULL DEFAULT '{}',
      coverage_pct    REAL NOT NULL DEFAULT 0,
-     last_visited_at TIMESTAMPTZ DEFAULT NOW(),
+     updated_at      TIMESTAMPTZ DEFAULT NOW(),
      PRIMARY KEY (user_id, zone_id)
    )`,
   `CREATE INDEX IF NOT EXISTS zone_coverage_user_idx ON zone_coverage (user_id)`,

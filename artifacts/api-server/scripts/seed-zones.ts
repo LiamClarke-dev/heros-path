@@ -2,12 +2,11 @@
  * Zone seeder — loads static GeoJSON boundary files for all 4 cities into the `zones` table.
  *
  * Usage:
- *   npx tsx artifacts/api-server/scripts/seed-zones.ts [city]
- *   city: "tokyo" | "melbourne" | "geelong" | "san-francisco" | "all" (default: "all")
+ *   tsx artifacts/api-server/scripts/seed-zones.ts [city|all]
  */
 
 import { db, zones } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, isNull, sql } from "drizzle-orm";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -32,7 +31,34 @@ function pointInPolygon(lng: number, lat: number, ring: [number, number][]): boo
   return inside;
 }
 
-function computeTotalCells(boundary: { type: string; coordinates: unknown }): number {
+interface BBox {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+}
+
+function computeBBox(boundary: { type: string; coordinates: unknown }): BBox {
+  let allCoords: [number, number][] = [];
+
+  if (boundary.type === "Polygon") {
+    allCoords = (boundary.coordinates as [number, number][][]).flat();
+  } else if (boundary.type === "MultiPolygon") {
+    allCoords = (boundary.coordinates as [number, number][][][]).flat(2);
+  }
+
+  const lngs = allCoords.map(([lng]) => lng);
+  const lats = allCoords.map(([, lat]) => lat);
+
+  return {
+    minLat: Math.min(...lats),
+    maxLat: Math.max(...lats),
+    minLng: Math.min(...lngs),
+    maxLng: Math.max(...lngs),
+  };
+}
+
+function computeTotalCells(boundary: { type: string; coordinates: unknown }, bbox: BBox): number {
   let rings: [number, number][][] = [];
 
   if (boundary.type === "Polygon") {
@@ -41,19 +67,11 @@ function computeTotalCells(boundary: { type: string; coordinates: unknown }): nu
     rings = (boundary.coordinates as [number, number][][][]).map((poly) => poly[0]);
   }
 
-  if (rings.length === 0) return 0;
-
-  const allCoords = rings.flat();
-  const lngs = allCoords.map(([lng]) => lng);
-  const lats = allCoords.map(([, lat]) => lat);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
+  if (rings.length === 0) return 1;
 
   let count = 0;
-  for (let lat = minLat; lat <= maxLat; lat += CELL_DEG) {
-    for (let lng = minLng; lng <= maxLng; lng += CELL_DEG) {
+  for (let lat = bbox.minLat; lat <= bbox.maxLat; lat += CELL_DEG) {
+    for (let lng = bbox.minLng; lng <= bbox.maxLng; lng += CELL_DEG) {
       const cellCenterLat = lat + CELL_DEG / 2;
       const cellCenterLng = lng + CELL_DEG / 2;
       const inAny = rings.some((ring) => pointInPolygon(cellCenterLng, cellCenterLat, ring));
@@ -88,29 +106,28 @@ function loadTokyo(): ZoneRecord[] {
 
   return raw.zones.map((z): ZoneRecord | null => {
     const ring = z.ring;
-    const closed = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
-      ? ring
-      : [...ring, ring[0]];
+    if (!ring || ring.length < 3) return null;
+
+    const closed =
+      ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+        ? ring
+        : [...ring, ring[0]];
 
     const centroidLat = z.centroid?.[0] ?? null;
     const centroidLng = z.centroid?.[1] ?? null;
 
+    let resolvedLat: number;
+    let resolvedLng: number;
+
     if (centroidLat == null || centroidLng == null || isNaN(centroidLat) || isNaN(centroidLng)) {
       const lats = ring.map((pt) => pt[1]);
       const lngs = ring.map((pt) => pt[0]);
-      const computedLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-      const computedLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
-      if (isNaN(computedLat) || isNaN(computedLng)) return null;
-      return {
-        id: `tokyo-${z.id.replace(/\//g, "-")}`,
-        city: "tokyo",
-        name: z.name,
-        nameEn: z.nameEn ?? null,
-        wardId: z.wardId ?? null,
-        boundary: { type: "Polygon", coordinates: [closed] },
-        centroidLat: computedLat,
-        centroidLng: computedLng,
-      };
+      resolvedLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+      resolvedLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+      if (isNaN(resolvedLat) || isNaN(resolvedLng)) return null;
+    } else {
+      resolvedLat = centroidLat;
+      resolvedLng = centroidLng;
     }
 
     return {
@@ -120,8 +137,8 @@ function loadTokyo(): ZoneRecord[] {
       nameEn: z.nameEn ?? null,
       wardId: z.wardId ?? null,
       boundary: { type: "Polygon", coordinates: [closed] },
-      centroidLat,
-      centroidLng,
+      centroidLat: resolvedLat,
+      centroidLng: resolvedLng,
     };
   }).filter((z): z is ZoneRecord => z !== null);
 }
@@ -134,10 +151,11 @@ function loadGeoJsonCity(city: string, filename: string, nameKey: string): ZoneR
     }>;
   };
 
+  const prefix = city === "san_francisco" ? "sf" : city === "melbourne" ? "mel" : "geo";
+
   return raw.features.map((f, idx) => {
     const name = f.properties[nameKey] ?? f.properties["name"] ?? `Zone ${idx + 1}`;
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const prefix = city === "san-francisco" ? "sf" : city === "melbourne" ? "mel" : "geo";
 
     const coords: [number, number][] =
       f.geometry.type === "Polygon"
@@ -164,21 +182,38 @@ function loadGeoJsonCity(city: string, filename: string, nameKey: string): ZoneR
 
 async function seedCity(city: string, records: ZoneRecord[]): Promise<void> {
   console.log(`\nSeeding ${city} (${records.length} zones)...`);
-  let seeded = 0;
+  let inserted = 0;
+  let updated = 0;
   let skipped = 0;
 
   for (const rec of records) {
     const [existing] = await db
-      .select({ id: zones.id })
+      .select({ id: zones.id, bboxMinLat: zones.bboxMinLat })
       .from(zones)
       .where(eq(zones.id, rec.id));
 
+    const bbox = computeBBox(rec.boundary);
+    const totalCells = computeTotalCells(rec.boundary, bbox);
+
     if (existing) {
-      skipped++;
+      if (existing.bboxMinLat == null) {
+        await db
+          .update(zones)
+          .set({
+            bboxMinLat: bbox.minLat,
+            bboxMaxLat: bbox.maxLat,
+            bboxMinLng: bbox.minLng,
+            bboxMaxLng: bbox.maxLng,
+            gridSize: CELL_DEG,
+            totalCells,
+          })
+          .where(eq(zones.id, rec.id));
+        updated++;
+      } else {
+        skipped++;
+      }
       continue;
     }
-
-    const totalCells = computeTotalCells(rec.boundary);
 
     await db.insert(zones).values({
       id: rec.id,
@@ -190,22 +225,27 @@ async function seedCity(city: string, records: ZoneRecord[]): Promise<void> {
       centroidLat: rec.centroidLat,
       centroidLng: rec.centroidLng,
       totalCells,
+      bboxMinLat: bbox.minLat,
+      bboxMaxLat: bbox.maxLat,
+      bboxMinLng: bbox.minLng,
+      bboxMaxLng: bbox.maxLng,
+      gridSize: CELL_DEG,
     });
 
-    seeded++;
-    if (seeded % 50 === 0) {
-      console.log(`  ${seeded}/${records.length} seeded...`);
+    inserted++;
+    if (inserted % 50 === 0) {
+      console.log(`  ${inserted}/${records.length} seeded...`);
     }
   }
 
-  console.log(`  Done: ${seeded} inserted, ${skipped} already existed`);
+  console.log(`  Done: ${inserted} inserted, ${updated} bbox-updated, ${skipped} already complete`);
 }
 
 async function main() {
   const target = process.argv[2] ?? "all";
   const cities =
     target === "all"
-      ? ["tokyo", "melbourne", "geelong", "san-francisco"]
+      ? ["tokyo", "melbourne", "geelong", "san_francisco"]
       : target.split(",").map((s) => s.trim());
 
   for (const city of cities) {
@@ -220,8 +260,8 @@ async function main() {
       case "geelong":
         records = loadGeoJsonCity("geelong", "geelong.json", "name");
         break;
-      case "san-francisco":
-        records = loadGeoJsonCity("san-francisco", "sf.json", "nhood");
+      case "san_francisco":
+        records = loadGeoJsonCity("san_francisco", "sf.json", "nhood");
         break;
       default:
         console.warn(`Unknown city: ${city}`);

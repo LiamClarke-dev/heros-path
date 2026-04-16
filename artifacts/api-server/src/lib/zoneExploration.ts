@@ -10,15 +10,8 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import logger from "../logger.js";
 import { computeLevel, xpForCurrentLevel, xpForNextLevel } from "./gamification.js";
 
-const CELL_DEG = 0.0005;
-const ZONE_COMPLETION_XP = 400;
+const ZONE_COMPLETION_XP = 500;
 const ZONE_THRESHOLD = 0.8;
-
-function cellKey(lat: number, lng: number): string {
-  const cLat = Math.floor(lat / CELL_DEG) * CELL_DEG;
-  const cLng = Math.floor(lng / CELL_DEG) * CELL_DEG;
-  return `${cLat.toFixed(4)},${cLng.toFixed(4)}`;
-}
 
 function pointInPolygon(lat: number, lng: number, ring: [number, number][]): boolean {
   let inside = false;
@@ -34,38 +27,42 @@ function pointInPolygon(lat: number, lng: number, ring: [number, number][]): boo
   return inside;
 }
 
-function getRing(boundary: Record<string, unknown>): [number, number][] | null {
-  const type = boundary.type as string;
-  if (type === "Polygon") {
-    const coords = boundary.coordinates as [number, number][][];
-    return coords[0] ?? null;
-  }
-  if (type === "MultiPolygon") {
-    const coords = boundary.coordinates as [number, number][][][];
-    return coords[0]?.[0] ?? null;
-  }
-  return null;
-}
-
 function pointInBoundary(lat: number, lng: number, boundary: Record<string, unknown>): boolean {
   const type = boundary.type as string;
   if (type === "Polygon") {
     const coords = boundary.coordinates as [number, number][][];
     const outer = coords[0];
     if (!outer) return false;
-    const ring: [number, number][] = outer.map(([x, y]) => [x, y]);
-    return pointInPolygon(lng, lat, ring);
+    return pointInPolygon(lng, lat, outer.map(([x, y]) => [x, y]));
   }
   if (type === "MultiPolygon") {
     const coords = boundary.coordinates as [number, number][][][];
     return coords.some((poly) => {
       const outer = poly[0];
       if (!outer) return false;
-      const ring: [number, number][] = outer.map(([x, y]) => [x, y]);
-      return pointInPolygon(lng, lat, ring);
+      return pointInPolygon(lng, lat, outer.map(([x, y]) => [x, y]));
     });
   }
   return false;
+}
+
+type ZoneRow = typeof zones.$inferSelect;
+
+function cellIndex(lat: number, lng: number, zone: ZoneRow): number | null {
+  if (
+    zone.bboxMinLat == null ||
+    zone.bboxMaxLat == null ||
+    zone.bboxMinLng == null ||
+    zone.bboxMaxLng == null
+  ) {
+    return null;
+  }
+  const gridSize = zone.gridSize ?? 0.0005;
+  const row = Math.floor((lat - zone.bboxMinLat) / gridSize);
+  const col = Math.floor((lng - zone.bboxMinLng) / gridSize);
+  const numCols = Math.ceil((zone.bboxMaxLng - zone.bboxMinLng) / gridSize);
+  if (row < 0 || col < 0 || col >= numCols) return null;
+  return row * numCols + col;
 }
 
 interface WaypointCoord {
@@ -100,7 +97,7 @@ export async function processZoneCoverage(
     return { newZoneCompletions: [], zoneXpGained: 0, newZoneBadges: [] };
   }
 
-  const padding = CELL_DEG * 2;
+  const padding = 0.001;
   const minLat = Math.min(...waypoints.map((w) => w.lat)) - padding;
   const maxLat = Math.max(...waypoints.map((w) => w.lat)) + padding;
   const minLng = Math.min(...waypoints.map((w) => w.lng)) - padding;
@@ -118,76 +115,54 @@ export async function processZoneCoverage(
     return { newZoneCompletions: [], zoneXpGained: 0, newZoneBadges: [] };
   }
 
-  const journeyCellKeys = new Set<string>();
-  for (const wp of waypoints) {
-    journeyCellKeys.add(cellKey(wp.lat, wp.lng));
-  }
-
-  const journeyCells = [...journeyCellKeys].map((key) => {
-    const [lat, lng] = key.split(",").map(Number);
-    return { lat, lng, key };
-  });
-
-  const affectedZoneIds = new Set<string>();
-  for (const cell of journeyCells) {
-    for (const zone of nearbyZones) {
-      const boundary = zone.boundaryGeoJSON as Record<string, unknown>;
-      if (pointInBoundary(cell.lat, cell.lng, boundary)) {
-        affectedZoneIds.add(zone.id);
-        break;
-      }
-    }
-  }
-
-  if (affectedZoneIds.size === 0) {
-    return { newZoneCompletions: [], zoneXpGained: 0, newZoneBadges: [] };
-  }
-
   const newZoneCompletions: ZoneExplorationResult["newZoneCompletions"] = [];
   let zoneXpGained = 0;
   const newZoneBadges: ZoneExplorationResult["newZoneBadges"] = [];
 
-  for (const zoneId of affectedZoneIds) {
-    const zoneRow = nearbyZones.find((z) => z.id === zoneId);
-    if (!zoneRow || zoneRow.totalCells === 0) continue;
+  for (const zone of nearbyZones) {
+    if (zone.totalCells === 0) continue;
 
-    const boundary = zoneRow.boundaryGeoJSON as Record<string, unknown>;
-    const zoneCellSet = new Set<string>();
+    const boundary = zone.boundaryGeoJSON as Record<string, unknown>;
 
-    for (const cell of journeyCells) {
-      if (pointInBoundary(cell.lat, cell.lng, boundary)) {
-        zoneCellSet.add(cell.key);
+    const newCellIndices = new Set<number>();
+    for (const wp of waypoints) {
+      if (pointInBoundary(wp.lat, wp.lng, boundary)) {
+        const idx = cellIndex(wp.lat, wp.lng, zone);
+        if (idx !== null) newCellIndices.add(idx);
       }
     }
 
-    if (zoneCellSet.size === 0) continue;
+    if (newCellIndices.size === 0) continue;
 
-    const [existingCoverage] = await db
+    const [existingRow] = await db
       .select({ visitedCells: zoneCoverage.visitedCells, coveragePct: zoneCoverage.coveragePct })
       .from(zoneCoverage)
-      .where(and(eq(zoneCoverage.userId, userId), eq(zoneCoverage.zoneId, zoneId)));
+      .where(and(eq(zoneCoverage.userId, userId), eq(zoneCoverage.zoneId, zone.id)));
 
-    const prevCoveragePct = existingCoverage?.coveragePct ?? 0;
-    const prevVisited = existingCoverage?.visitedCells ?? 0;
+    const prevCells: number[] = existingRow?.visitedCells ?? [];
+    const prevCoveragePct = existingRow?.coveragePct ?? 0;
 
-    const newVisited = Math.max(prevVisited, zoneCellSet.size);
-    const newCoveragePct = Math.min(1, newVisited / zoneRow.totalCells);
+    const mergedSet = new Set([...prevCells, ...newCellIndices]);
+    const mergedCells = [...mergedSet].sort((a, b) => a - b);
+    const newCoveragePct = Math.min(1, mergedCells.length / zone.totalCells);
+
+    if (mergedCells.length === prevCells.length && newCoveragePct === prevCoveragePct) continue;
 
     await db
       .insert(zoneCoverage)
       .values({
         userId,
-        zoneId,
-        visitedCells: newVisited,
+        zoneId: zone.id,
+        visitedCells: mergedCells,
         coveragePct: newCoveragePct,
-        lastVisitedAt: new Date(),
+        updatedAt: new Date(),
       })
       .onConflictDoUpdate({
         target: [zoneCoverage.userId, zoneCoverage.zoneId],
         set: {
-          visitedCells: sql`GREATEST(zone_coverage.visited_cells, EXCLUDED.visited_cells)`,
-          coveragePct: sql`LEAST(1.0, GREATEST(zone_coverage.coverage_pct, EXCLUDED.coverage_pct))`,
-          lastVisitedAt: new Date(),
+          visitedCells: sql`(SELECT array(SELECT DISTINCT unnest(zone_coverage.visited_cells || EXCLUDED.visited_cells) ORDER BY 1))`,
+          coveragePct: sql`LEAST(1.0, array_length((SELECT array(SELECT DISTINCT unnest(zone_coverage.visited_cells || EXCLUDED.visited_cells))), 1)::real / ${zone.totalCells})`,
+          updatedAt: new Date(),
         },
       });
 
@@ -195,21 +170,21 @@ export async function processZoneCoverage(
       const [alreadyCompleted] = await db
         .select({ userId: zoneCompletions.userId })
         .from(zoneCompletions)
-        .where(and(eq(zoneCompletions.userId, userId), eq(zoneCompletions.zoneId, zoneId)));
+        .where(and(eq(zoneCompletions.userId, userId), eq(zoneCompletions.zoneId, zone.id)));
 
       if (!alreadyCompleted) {
         await db.insert(zoneCompletions).values({
           userId,
-          zoneId,
+          zoneId: zone.id,
           coveragePct: newCoveragePct,
         });
         newZoneCompletions.push({
-          zoneId,
-          name: zoneRow.name,
+          zoneId: zone.id,
+          name: zone.name,
           coveragePct: newCoveragePct,
         });
         zoneXpGained += ZONE_COMPLETION_XP;
-        logger.info({ userId, zoneId, name: zoneRow.name }, "Zone completed");
+        logger.info({ userId, zoneId: zone.id, name: zone.name }, "Zone completed");
       }
     }
   }
@@ -319,6 +294,6 @@ export function inferCityFromCoords(lat: number, lng: number): string | null {
   if (lat >= 34.8 && lat <= 36.2 && lng >= 138.5 && lng <= 140.5) return "tokyo";
   if (lat >= -38.5 && lat <= -37.0 && lng >= 144.0 && lng <= 145.5) return "melbourne";
   if (lat >= -38.5 && lat <= -37.5 && lng >= 143.5 && lng <= 145.0) return "geelong";
-  if (lat >= 37.0 && lat <= 38.0 && lng >= -123.0 && lng <= -122.0) return "san-francisco";
+  if (lat >= 37.0 && lat <= 38.0 && lng >= -123.0 && lng <= -122.0) return "san_francisco";
   return null;
 }

@@ -863,9 +863,12 @@ export default function JourneyTab() {
                     strokeColor={
                       isCompleted
                         ? ZONE_COLORS.completedStroke
+                        : isVisited
+                        ? ZONE_COLORS.boundaryStroke
                         : ZONE_COLORS.boundaryStrokeMuted
                     }
-                    strokeWidth={isCompleted ? 2 : 1}
+                    strokeWidth={isCompleted ? 2 : isVisited ? 1.5 : 1}
+                    lineDashPattern={isCompleted ? undefined : [8, 4]}
                     fillColor={
                       isCompleted
                         ? ZONE_COLORS.completedFill
@@ -917,11 +920,18 @@ export default function JourneyTab() {
           })}
 
           {journeyStatus === "active" && activePolyline.length >= 2 && Polyline && (
-            <Polyline
-              coordinates={activePolyline}
-              strokeColor={Colors.gold}
-              strokeWidth={5}
-            />
+            <>
+              <Polyline
+                coordinates={activePolyline}
+                strokeColor="rgba(106,221,147,0.35)"
+                strokeWidth={10}
+              />
+              <Polyline
+                coordinates={activePolyline}
+                strokeColor="#6add93"
+                strokeWidth={4}
+              />
+            </>
           )}
 
           {currentLocation && Marker && (

@@ -315,11 +315,11 @@ export async function discoverNearbyForPing(
     return { places: [], newCount: 0, apiError: true, apiKeyMissing: true };
   }
 
-  logger.info({ journeyId, userId, lat, lng }, "[ping] Calling searchNearby (radius=200m)");
+  logger.info({ journeyId, userId, lat, lng }, "[ping] Calling searchNearby (radius=60m)");
 
   const { minRating } = await getUserPreferences(userId);
 
-  const { places, apiError } = await searchNearby(lat, lng, 200);
+  const { places, apiError } = await searchNearby(lat, lng, 60);
   if (apiError) {
     logger.warn({ journeyId, lat, lng }, "[ping] searchNearby returned apiError — Google Places API call failed");
     return { places: [], newCount: 0, apiError: true, apiKeyMissing: false };

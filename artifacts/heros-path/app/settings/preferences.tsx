@@ -40,6 +40,14 @@ const RATING_OPTIONS = [
   { value: 4.5, label: "4.5+" },
 ];
 
+const MAX_DISCOVERIES_OPTIONS = [
+  { value: 5, label: "5" },
+  { value: 10, label: "10" },
+  { value: 20, label: "20" },
+  { value: 50, label: "50" },
+  { value: 0, label: "Unlimited" },
+];
+
 export default function PreferencesScreen() {
   const router = useRouter();
   const { token } = useAuth();
@@ -48,15 +56,17 @@ export default function PreferencesScreen() {
   const [saving, setSaving] = useState(false);
   const [placeTypes, setPlaceTypes] = useState<string[]>([]);
   const [minRating, setMinRating] = useState(0);
+  const [maxDiscoveries, setMaxDiscoveries] = useState(20);
 
   const loadPrefs = useCallback(async () => {
     if (!token) { setLoading(false); return; }
     try {
       const data = (await apiFetch("/api/me/preferences", {
         headers: { Authorization: `Bearer ${token}` },
-      })) as { placeTypes: string[]; minRating: number };
+      })) as { placeTypes: string[]; minRating: number; maxDiscoveries: number };
       setPlaceTypes(data.placeTypes ?? []);
       setMinRating(data.minRating ?? 0);
+      setMaxDiscoveries(data.maxDiscoveries ?? 20);
     } catch (err) {
       console.warn("[Preferences] load failed", err);
     } finally {
@@ -81,7 +91,7 @@ export default function PreferencesScreen() {
       await apiFetch("/api/me/preferences", {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ placeTypes, minRating }),
+        body: JSON.stringify({ placeTypes, minRating, maxDiscoveries }),
       });
       Alert.alert("Saved", "Your discovery preferences have been updated.");
     } catch (err) {
@@ -170,6 +180,32 @@ export default function PreferencesScreen() {
           })}
         </View>
 
+        <Text style={[styles.sectionLabel, { marginTop: 24 }]}>Max Discoveries per Journey</Text>
+        <Text style={styles.sectionSubtitle}>
+          Caps how many new places are discovered per journey (sorted by highest rated first).
+        </Text>
+        <View style={styles.ratingRow}>
+          {MAX_DISCOVERIES_OPTIONS.map((opt) => {
+            const selected = maxDiscoveries === opt.value;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.ratingBtn, selected && styles.ratingBtnSelected]}
+                onPress={() => setMaxDiscoveries(opt.value)}
+              >
+                <Text
+                  style={[
+                    styles.ratingBtnText,
+                    selected && styles.ratingBtnTextSelected,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         <TouchableOpacity
           style={[styles.saveBtn, saving && { opacity: 0.6 }]}
           onPress={save}
@@ -225,6 +261,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.parchmentMuted,
     lineHeight: 19,
+  },
+  sectionSubtitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    lineHeight: 17,
+    marginBottom: 12,
+    marginTop: -8,
   },
   scroll: {
     flex: 1,

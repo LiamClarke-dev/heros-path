@@ -57,19 +57,22 @@ export interface BadgeDef {
 }
 
 export const BADGE_DEFINITIONS: BadgeDef[] = [
-  { key: "first_journey",   name: "First Steps",       description: "Complete your first journey",       icon: "🥾" },
-  { key: "streets_10",      name: "Street Walker",     description: "Walk 10 new grid cells",            icon: "🗺️" },
-  { key: "streets_50",      name: "City Explorer",     description: "Walk 50 new grid cells",            icon: "🏙️" },
-  { key: "streets_200",     name: "Legend Strider",    description: "Walk 200 new grid cells",           icon: "⚔️" },
-  { key: "discovery_first", name: "The Discoverer",    description: "Find your first place",             icon: "🔭" },
-  { key: "discovery_10",    name: "Place Hunter",      description: "Discover 10 unique places",         icon: "🏛️" },
-  { key: "discovery_50",    name: "World Cataloguer",  description: "Discover 50 unique places",         icon: "📖" },
-  { key: "night_explorer",  name: "Night Owl",         description: "Complete a journey after 9 PM",     icon: "🦉" },
-  { key: "streak_3",        name: "Consistent",        description: "Journey 3 days in a row",           icon: "🔥" },
-  { key: "streak_7",        name: "Devoted",           description: "Journey 7 days in a row",           icon: "🔥" },
-  { key: "streak_30",       name: "Legend Streak",     description: "Journey 30 days in a row",          icon: "👑" },
-  { key: "ping_master",     name: "Ping Master",       description: "Use ping 5+ times in one journey",  icon: "📡" },
-  { key: "globe_trotter",   name: "Globe Trotter",     description: "Journey in 3 different areas",      icon: "🌍" },
+  { key: "first_journey",        name: "First Steps",       description: "Complete your first journey",       icon: "🥾" },
+  { key: "streets_10",           name: "Street Walker",     description: "Walk 10 new grid cells",            icon: "🗺️" },
+  { key: "streets_50",           name: "City Explorer",     description: "Walk 50 new grid cells",            icon: "🏙️" },
+  { key: "streets_200",          name: "Legend Strider",    description: "Walk 200 new grid cells",           icon: "⚔️" },
+  { key: "discovery_first",      name: "The Discoverer",    description: "Find your first place",             icon: "🔭" },
+  { key: "discovery_10",         name: "Place Hunter",      description: "Discover 10 unique places",         icon: "🏛️" },
+  { key: "discovery_50",         name: "World Cataloguer",  description: "Discover 50 unique places",         icon: "📖" },
+  { key: "night_explorer",       name: "Night Owl",         description: "Complete a journey after 9 PM",     icon: "🦉" },
+  { key: "streak_3",             name: "Consistent",        description: "Journey 3 days in a row",           icon: "🔥" },
+  { key: "streak_7",             name: "Devoted",           description: "Journey 7 days in a row",           icon: "🔥" },
+  { key: "streak_30",            name: "Legend Streak",     description: "Journey 30 days in a row",          icon: "👑" },
+  { key: "ping_master",          name: "Ping Master",       description: "Use ping 5+ times in one journey",  icon: "📡" },
+  { key: "globe_trotter",        name: "Globe Trotter",     description: "Journey in 3 different areas",      icon: "🌍" },
+  { key: "suburb_local",         name: "Local",             description: "Complete 1 suburb (≥ 80%)",         icon: "🏘️" },
+  { key: "suburb_cartographer",  name: "Cartographer",      description: "Complete 5 suburbs",                icon: "🗺️" },
+  { key: "suburb_master",        name: "Master Explorer",   description: "Complete 20 suburbs",               icon: "🌟" },
 ];
 
 // ─── Quest definitions ────────────────────────────────────────────────────────
@@ -102,6 +105,9 @@ export interface GamificationResult {
   newBadges: Array<{ key: string; name: string; description: string; icon: string }>;
   completedQuests: Array<{ key: string; title: string; xpReward: number }>;
   newStreak: number;
+  newCells: number;
+  revisitCells: number;
+  newPlacesThisJourney: number;
 }
 
 // ─── Grid cell helpers ────────────────────────────────────────────────────────
@@ -121,7 +127,8 @@ export async function awardJourneyGamification(
   journeyId: string,
   pingCount: number,
   distanceM: number,
-  durationSeconds: number
+  durationSeconds: number,
+  tzOffsetMinutes: number = 0
 ): Promise<GamificationResult> {
   // ── 1. Load journey row to get startedAt ──────────────────────────────────
   const [journeyRow] = await db.select().from(journeys).where(eq(journeys.id, journeyId));
@@ -273,8 +280,8 @@ export async function awardJourneyGamification(
   }
   const totalCells = allCells.size;
 
-  const nowHour = new Date().getUTCHours();
-  const isNight = nowHour >= 21 || nowHour < 4;
+  const localHour = new Date(new Date().getTime() - tzOffsetMinutes * 60000).getUTCHours();
+  const isNight = localHour >= 21 || localHour < 4;
 
   // ── 10. Badge evaluation (after XP/streak computed, before DB write) ──────
   const earnedBadgeRows = await db
@@ -373,5 +380,5 @@ export async function awardJourneyGamification(
     .set({ xp: newXp, level: newLevel, streakDays: newStreak, lastJourneyDate: todayUTC })
     .where(eq(users.id, userId));
 
-  return { xpGained, newLevel, newBadges, completedQuests, newStreak };
+  return { xpGained, newLevel, newBadges, completedQuests, newStreak, newCells, revisitCells, newPlacesThisJourney };
 }

@@ -42,22 +42,44 @@ function photoUrl(ref: string | null | undefined, width = 400): string | null {
 
 router.get("/", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
+  const placeId = (req.query.placeId as string) ?? null;
 
-  const rows = await db
-    .select({
-      id: placeLists.id,
-      name: placeLists.name,
-      emoji: placeLists.emoji,
-      createdAt: placeLists.createdAt,
-      itemCount: sql<number>`count(${placeListItems.id})::int`,
-    })
-    .from(placeLists)
-    .leftJoin(placeListItems, eq(placeListItems.listId, placeLists.id))
-    .where(eq(placeLists.userId, user.id))
-    .groupBy(placeLists.id)
-    .orderBy(placeLists.createdAt);
+  const [rows, memberRows] = await Promise.all([
+    db
+      .select({
+        id: placeLists.id,
+        name: placeLists.name,
+        emoji: placeLists.emoji,
+        createdAt: placeLists.createdAt,
+        itemCount: sql<number>`count(${placeListItems.id})::int`,
+      })
+      .from(placeLists)
+      .leftJoin(placeListItems, eq(placeListItems.listId, placeLists.id))
+      .where(eq(placeLists.userId, user.id))
+      .groupBy(placeLists.id)
+      .orderBy(placeLists.createdAt),
+    placeId
+      ? db
+          .select({ listId: placeListItems.listId })
+          .from(placeListItems)
+          .innerJoin(placeLists, eq(placeListItems.listId, placeLists.id))
+          .where(
+            and(
+              eq(placeLists.userId, user.id),
+              eq(placeListItems.googlePlaceId, placeId)
+            )
+          )
+      : Promise.resolve([]),
+  ]);
 
-  res.json({ lists: rows });
+  const memberSet = new Set(memberRows.map((r) => r.listId));
+
+  const lists = rows.map((r) => ({
+    ...r,
+    containsPlace: placeId != null ? memberSet.has(r.id) : undefined,
+  }));
+
+  res.json({ lists });
 });
 
 router.post("/", async (req: Request, res: Response) => {

@@ -19,6 +19,7 @@ interface PlaceList {
   name: string;
   emoji: string | null;
   itemCount: number;
+  containsPlace?: boolean;
 }
 
 interface Props {
@@ -26,9 +27,10 @@ interface Props {
   googlePlaceId: string | null;
   onClose: () => void;
   onCreateNew: () => void;
+  onAdded?: (listId: string) => void;
 }
 
-export function AddToListSheet({ visible, googlePlaceId, onClose, onCreateNew }: Props) {
+export function AddToListSheet({ visible, googlePlaceId, onClose, onCreateNew, onAdded }: Props) {
   const { token } = useAuth();
   const [lists, setLists] = useState<PlaceList[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,12 +40,20 @@ export function AddToListSheet({ visible, googlePlaceId, onClose, onCreateNew }:
   useEffect(() => {
     if (!visible || !token) return;
     setLoading(true);
-    setAdded(new Set());
-    apiFetch("/api/lists", { token })
-      .then((data: { lists: PlaceList[] }) => setLists(data.lists))
+    const url = googlePlaceId
+      ? `/api/lists?placeId=${encodeURIComponent(googlePlaceId)}`
+      : "/api/lists";
+    apiFetch(url, { token })
+      .then((data: { lists: PlaceList[] }) => {
+        setLists(data.lists);
+        const preAdded = new Set(
+          data.lists.filter((l) => l.containsPlace).map((l) => l.id)
+        );
+        setAdded(preAdded);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [visible, token]);
+  }, [visible, token, googlePlaceId]);
 
   const handleAdd = useCallback(
     async (listId: string) => {
@@ -56,6 +66,12 @@ export function AddToListSheet({ visible, googlePlaceId, onClose, onCreateNew }:
           body: JSON.stringify({ googlePlaceId }),
         });
         setAdded((prev) => new Set(prev).add(listId));
+        setLists((prev) =>
+          prev.map((l) =>
+            l.id === listId ? { ...l, itemCount: l.itemCount + 1 } : l
+          )
+        );
+        onAdded?.(listId);
       } catch {
       } finally {
         setAdding(null);

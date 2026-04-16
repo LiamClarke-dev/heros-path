@@ -236,7 +236,7 @@ export default function PingResultsSheet({
             <View style={styles.emptyState}>
               <Feather name="search" size={40} color={Colors.parchmentDim} />
               <Text style={styles.emptyText}>
-                No places discovered in this area.{"\n"}Try pinging from a different location.
+                No places found within 200m.{"\n"}Try pinging from a different location.
               </Text>
             </View>
           ) : (

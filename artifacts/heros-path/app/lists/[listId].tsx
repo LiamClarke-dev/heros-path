@@ -97,7 +97,7 @@ export default function ListDetailScreen() {
   const redirectUri = makeRedirectUri(
     Platform.OS === "ios" && GOOGLE_IOS_REDIRECT
       ? { native: GOOGLE_IOS_REDIRECT }
-      : { scheme: "herospath" }
+      : { useProxy: true }
   );
 
   const [, , googlePromptAsync] = useAuthRequest(
@@ -156,30 +156,34 @@ export default function ListDetailScreen() {
 
   const handleRemove = useCallback(
     (googlePlaceId: string, name: string) => {
-      Alert.alert(
-        "Remove Place",
-        `Remove "${name}" from this list?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Remove",
-            style: "destructive",
-            onPress: async () => {
-              setPlaces((prev) =>
-                prev.filter((p) => p.googlePlaceId !== googlePlaceId)
-              );
-              try {
-                await apiFetch(
-                  `/api/lists/${listId}/items/${googlePlaceId}`,
-                  { method: "DELETE", token: token! }
-                );
-              } catch {
-                fetchDetail();
-              }
-            },
-          },
-        ]
-      );
+      const doRemove = async () => {
+        setPlaces((prev) =>
+          prev.filter((p) => p.googlePlaceId !== googlePlaceId)
+        );
+        try {
+          await apiFetch(
+            `/api/lists/${listId}/items/${googlePlaceId}`,
+            { method: "DELETE", token: token! }
+          );
+        } catch {
+          fetchDetail();
+        }
+      };
+
+      if (Platform.OS === "web") {
+        if (window.confirm(`Remove "${name}" from this list?`)) {
+          doRemove();
+        }
+      } else {
+        Alert.alert(
+          "Remove Place",
+          `Remove "${name}" from this list?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Remove", style: "destructive", onPress: doRemove },
+          ]
+        );
+      }
     },
     [listId, token, fetchDetail]
   );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,17 +8,31 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LOCATION_TASK, WAYPOINT_BUFFER_KEY } from "../../lib/locationTask";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import type RNMapView from "react-native-maps";
-import type { MapViewProps, MapMarkerProps, MapPolylineProps, MapCircleProps, Provider } from "react-native-maps";
+import type { MapViewProps, MapMarkerProps, MapPolylineProps, MapCircleProps, MapPolygonProps, Region, Provider } from "react-native-maps";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
+import { rdpSimplify } from "../../lib/geo";
 import Colors from "../../constants/colors";
+import {
+  type SuburbData,
+  culledSegments,
+  boundaryToPolygonCoords,
+  segmentToPolylineCoords,
+  getCompletionLabel,
+  SUBURB_COLORS,
+  SUBURB_COMPLETION_THRESHOLD,
+} from "../../lib/suburbLayer";
 
 const IS_WEB = Platform.OS === "web";
 
@@ -26,6 +40,7 @@ let MapView: React.ComponentClass<MapViewProps> | null = null;
 let Marker: React.ComponentType<MapMarkerProps> | null = null;
 let Polyline: React.ComponentType<MapPolylineProps> | null = null;
 let Circle: React.ComponentType<MapCircleProps> | null = null;
+let Polygon: React.ComponentType<MapPolygonProps> | null = null;
 let PROVIDER_GOOGLE: Provider | null = null;
 
 if (!IS_WEB) {
@@ -34,6 +49,7 @@ if (!IS_WEB) {
   Marker = Maps.Marker;
   Polyline = Maps.Polyline;
   Circle = Maps.Circle;
+  Polygon = Maps.Polygon;
   PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
 }
 
@@ -59,6 +75,13 @@ interface ExploredCell {
 }
 
 type JourneyStatus = "idle" | "active" | "ending";
+
+interface ViewportRegion {
+  swLat: number;
+  swLng: number;
+  neLat: number;
+  neLng: number;
+}
 
 interface QuestItem {
   key: string;
@@ -121,6 +144,7 @@ export default function JourneyTab() {
   const router = useRouter();
   const mapRef = useRef<RNMapView | null>(null);
 
+  const [locationPermission, setLocationPermission] = useState<"granted" | "denied" | "undetermined">("undetermined");
   const [journeyStatus, setJourneyStatus] = useState<JourneyStatus>("idle");
   const [journeyId, setJourneyId] = useState<string | null>(null);
   const [journeyStartedAt, setJourneyStartedAt] = useState<string | null>(null);
@@ -131,6 +155,9 @@ export default function JourneyTab() {
   const [exploredCells, setExploredCells] = useState<ExploredCell[]>([]);
   const [unexploredCells, setUnexploredCells] = useState<ExploredCell[]>([]);
   const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
+  const [suburbsData, setSuburbsData] = useState<SuburbData[]>([]);
+  const [viewport, setViewport] = useState<ViewportRegion | null>(null);
+  const suburbLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [elapsedDisplay, setElapsedDisplay] = useState("0:00");
   const [pingLoading, setPingLoading] = useState(false);
   const [pingSheetVisible, setPingSheetVisible] = useState(false);
@@ -152,6 +179,27 @@ export default function JourneyTab() {
   const flushInFlightRef = useRef<Promise<void> | null>(null);
   const lastCellCheckDistRef = useRef<{ lat: number; lng: number } | null>(null);
   const hasAutocenteredRef = useRef(false);
+  const bypassQualityGateRef = useRef(false);
+  const journeyIdRef = useRef<string | null>(null);
+
+  const loadSuburbs = useCallback(
+    async (vp: ViewportRegion) => {
+      if (!token || IS_WEB) return;
+      const latSpan = vp.neLat - vp.swLat;
+      const lngSpan = vp.neLng - vp.swLng;
+      if (latSpan > 2 || lngSpan > 2) return;
+      try {
+        const data = (await apiFetch(
+          `/api/map/suburbs?sw_lat=${vp.swLat}&sw_lng=${vp.swLng}&ne_lat=${vp.neLat}&ne_lng=${vp.neLng}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )) as { suburbs: SuburbData[] };
+        setSuburbsData(data.suburbs ?? []);
+      } catch (err) {
+        console.warn("[JourneyMap] loadSuburbs failed", err);
+      }
+    },
+    [token]
+  );
 
   const loadHistory = useCallback(async () => {
     if (!token || IS_WEB) return;
@@ -198,12 +246,20 @@ export default function JourneyTab() {
   useEffect(() => {
     if (IS_WEB || !token) return;
     (async () => {
-      const last = await Location.getLastKnownPositionAsync();
-      if (last) {
-        const loc = { lat: last.coords.latitude, lng: last.coords.longitude };
-        setCurrentLocation(loc);
-        await loadHistory();
-        await loadExploredCells(loc.lat, loc.lng);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      const granted = status === "granted";
+      setLocationPermission(granted ? "granted" : "denied");
+
+      if (granted) {
+        const last = await Location.getLastKnownPositionAsync().catch(() => null);
+        if (last) {
+          const loc = { lat: last.coords.latitude, lng: last.coords.longitude };
+          setCurrentLocation(loc);
+          await loadHistory();
+          await loadExploredCells(loc.lat, loc.lng);
+        } else {
+          await loadHistory();
+        }
       } else {
         await loadHistory();
       }
@@ -231,14 +287,60 @@ export default function JourneyTab() {
       if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (questRefreshRef.current) clearInterval(questRefreshRef.current);
+      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)
+        .then((running) => { if (running) Location.stopLocationUpdatesAsync(LOCATION_TASK); })
+        .catch(() => {});
+      if (suburbLoadTimerRef.current) clearTimeout(suburbLoadTimerRef.current);
+      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)
+        .then((running) => { if (running) Location.stopLocationUpdatesAsync(LOCATION_TASK); })
+        .catch(() => {});
     };
   }, []);
+
+  useEffect(() => {
+    if (IS_WEB) return;
+    const subscription = AppState.addEventListener("change", async (nextState) => {
+      if (nextState === "active") {
+        const jId = journeyIdRef.current;
+        if (!jId) return;
+        try {
+          const raw = await AsyncStorage.getItem(WAYPOINT_BUFFER_KEY);
+          if (raw) {
+            const bgWaypoints = JSON.parse(raw) as { lat: number; lng: number; recordedAt: string }[];
+            if (bgWaypoints.length > 0) {
+              await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY);
+              setWaypoints((prev) => [...prev, ...bgWaypoints]);
+              waypointBufferRef.current.push(...bgWaypoints);
+              flushWaypoints(jId);
+            }
+          }
+        } catch (err) {
+          console.warn("[JourneyMap] AppState flush failed:", err);
+        }
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  function handleRegionChangeComplete(region: Region) {
+    const vp: ViewportRegion = {
+      swLat: region.latitude - region.latitudeDelta / 2,
+      swLng: region.longitude - region.longitudeDelta / 2,
+      neLat: region.latitude + region.latitudeDelta / 2,
+      neLng: region.longitude + region.longitudeDelta / 2,
+    };
+    setViewport(vp);
+    if (suburbLoadTimerRef.current) clearTimeout(suburbLoadTimerRef.current);
+    suburbLoadTimerRef.current = setTimeout(() => {
+      loadSuburbs(vp);
+    }, 600);
+  }
 
   async function handleLocateMe() {
     if (IS_WEB) return;
     let loc = currentLocation;
     if (!loc) {
-      const last = await Location.getLastKnownPositionAsync();
+      const last = await Location.getLastKnownPositionAsync().catch(() => null);
       if (last) {
         loc = { lat: last.coords.latitude, lng: last.coords.longitude };
       } else {
@@ -284,7 +386,7 @@ export default function JourneyTab() {
 
   const locationWatchOptions: Location.LocationOptions = {
     accuracy: Location.Accuracy.BestForNavigation,
-    distanceInterval: 5,
+    distanceInterval: 10,
     timeInterval: 2000,
   };
 
@@ -319,10 +421,13 @@ export default function JourneyTab() {
   async function startJourney() {
     if (IS_WEB || !token) return;
 
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission required", "Location access is needed for journey tracking.");
-      return;
+    if (locationPermission !== "granted") {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission required", "Location access is needed for journey tracking.");
+        return;
+      }
+      setLocationPermission("granted");
     }
 
     let data: { id: string; startedAt: string };
@@ -337,6 +442,7 @@ export default function JourneyTab() {
     }
 
     const jId = data.id;
+    journeyIdRef.current = jId;
     setJourneyId(jId);
     setJourneyStartedAt(data.startedAt);
     setElapsedDisplay("0:00");
@@ -344,7 +450,29 @@ export default function JourneyTab() {
     waypointBufferRef.current = [];
     setJourneyStatus("active");
 
+    await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY).catch(() => {});
     await attachLocationWatcher();
+
+    try {
+      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+      if (bgStatus === "granted") {
+        const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+        if (!isRunning) {
+          await Location.startLocationUpdatesAsync(LOCATION_TASK, {
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 5,
+            timeInterval: 2000,
+            showsBackgroundLocationIndicator: true,
+            foregroundService: {
+              notificationTitle: "Journey in progress",
+              notificationBody: "Hero's Path is tracking your route",
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[JourneyMap] Background location setup failed:", err);
+    }
 
     flushIntervalRef.current = setInterval(() => flushWaypoints(jId), 10000);
     timerIntervalRef.current = setInterval(() => {
@@ -354,10 +482,77 @@ export default function JourneyTab() {
     loadQuests();
   }
 
+  async function discardJourney(jId: string) {
+    if (!token) return;
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
+    if (flushIntervalRef.current) { clearInterval(flushIntervalRef.current); flushIntervalRef.current = null; }
+    if (questRefreshRef.current) { clearInterval(questRefreshRef.current); questRefreshRef.current = null; }
+    try {
+      const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+      if (isRunning) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+    } catch {}
+    await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY).catch(() => {});
+    try {
+      await apiFetch(`/api/journeys/${jId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      console.warn("[JourneyMap] discard DELETE failed:", err);
+    }
+    journeyIdRef.current = null;
+    setJourneyId(null);
+    setJourneyStartedAt(null);
+    setCurrentHeading(null);
+    setWaypoints([]);
+    waypointBufferRef.current = [];
+    setJourneyStatus("idle");
+  }
+
   async function endJourney() {
     if (!journeyId || !token || journeyStatus !== "active") return;
     const jId = journeyId;
     const startedAtSnapshot = journeyStartedAt;
+
+    if (!bypassQualityGateRef.current) {
+      const currentWaypoints = waypoints;
+      const totalDist =
+        currentWaypoints.length >= 2
+          ? currentWaypoints.reduce((acc, wp, i) => {
+              if (i === 0) return 0;
+              const prev = currentWaypoints[i - 1];
+              return acc + haversineM(prev.lat, prev.lng, wp.lat, wp.lng);
+            }, 0)
+          : 0;
+      const durationMs = startedAtSnapshot
+        ? Date.now() - new Date(startedAtSnapshot).getTime()
+        : 0;
+      const durationSec = Math.round(durationMs / 1000);
+      if (durationMs < 60000 || totalDist < 50) {
+        Alert.alert(
+          "Short journey detected",
+          `You've only walked ${Math.round(totalDist)}m in ${durationSec}s. Save it anyway, or discard it?`,
+          [
+            {
+              text: "Save",
+              onPress: () => {
+                bypassQualityGateRef.current = true;
+                void endJourney();
+              },
+            },
+            {
+              text: "Discard",
+              style: "destructive",
+              onPress: () => { void discardJourney(jId); },
+            },
+          ]
+        );
+        return;
+      }
+    }
+    bypassQualityGateRef.current = false;
 
     setJourneyStatus("ending");
 
@@ -384,11 +579,22 @@ export default function JourneyTab() {
       questRefreshRef.current = null;
     }
 
+    // Stop background location tracking
+    try {
+      const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+      if (isRunning) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+    } catch {}
+    await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY).catch(() => {});
+
     try {
       const result = (await apiFetch(`/api/journeys/${jId}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "ended", waypoints: remainingWaypoints }),
+        body: JSON.stringify({
+          status: "ended",
+          waypoints: remainingWaypoints,
+          tzOffsetMinutes: new Date().getTimezoneOffset(),
+        }),
       })) as {
         totalDistanceM: number;
         placeCount: number;
@@ -399,6 +605,7 @@ export default function JourneyTab() {
         newStreak?: number;
       };
 
+      journeyIdRef.current = null;
       setJourneyId(null);
       setJourneyStartedAt(null);
       setCurrentHeading(null);
@@ -407,6 +614,7 @@ export default function JourneyTab() {
       loadHistory();
       loadQuests();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
+      if (viewport) loadSuburbs(viewport);
 
       if ((result.xpGained ?? 0) > 0) {
         const gamResult: GamificationResult = {
@@ -461,7 +669,20 @@ export default function JourneyTab() {
       setPingNewCount(result.newCount ?? 0);
       setPingSheetVisible(true);
     } catch (err) {
-      Alert.alert("Ping failed", "Could not discover places. Try again.");
+      const status = (err as { status?: number }).status;
+      if (status === 503) {
+        Alert.alert(
+          "Places unavailable",
+          "The places service is temporarily unavailable. Please try again shortly.",
+          [{ text: "OK" }]
+        );
+      } else {
+        Alert.alert(
+          "Ping failed",
+          "Something went wrong. Check your connection and try again.",
+          [{ text: "Retry", onPress: handlePing }, { text: "Cancel", style: "cancel" }]
+        );
+      }
     } finally {
       setPingLoading(false);
     }
@@ -477,10 +698,13 @@ export default function JourneyTab() {
     );
   }
 
-  const activePolyline = waypoints.map((wp) => ({
-    latitude: wp.lat,
-    longitude: wp.lng,
-  }));
+  const activePolyline = useMemo(() => {
+    const raw = waypoints.map((wp) => ({
+      latitude: wp.lat,
+      longitude: wp.lng,
+    }));
+    return raw.length >= 3 ? rdpSimplify(raw, 0.00005) : raw;
+  }, [waypoints]);
 
   return (
     <View style={styles.container}>
@@ -493,6 +717,7 @@ export default function JourneyTab() {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
+          onRegionChangeComplete={handleRegionChangeComplete}
           initialRegion={
             currentLocation
               ? {
@@ -533,6 +758,69 @@ export default function JourneyTab() {
             )
           ))}
 
+          {suburbsData.flatMap((suburb) => {
+            const rings = boundaryToPolygonCoords(suburb.boundary);
+            const isCompleted = suburb.completionPct >= SUBURB_COMPLETION_THRESHOLD;
+            const culled = viewport
+              ? culledSegments(suburb.segments, viewport)
+              : suburb.segments;
+
+            const elements = [];
+
+            for (let ri = 0; ri < rings.length; ri++) {
+              if (Polygon) {
+                elements.push(
+                  <Polygon
+                    key={`suburb-boundary-${suburb.id}-${ri}`}
+                    coordinates={rings[ri]}
+                    strokeColor={SUBURB_COLORS.boundaryStroke}
+                    strokeWidth={1.5}
+                    fillColor={isCompleted ? SUBURB_COLORS.completedFill : "transparent"}
+                  />
+                );
+              }
+            }
+
+            for (const seg of culled) {
+              if (Polyline) {
+                elements.push(
+                  <Polyline
+                    key={`seg-${seg.id}`}
+                    coordinates={segmentToPolylineCoords(seg)}
+                    strokeColor={
+                      seg.explored
+                        ? SUBURB_COLORS.exploredSegment
+                        : SUBURB_COLORS.unexploredSegment
+                    }
+                    strokeWidth={seg.explored ? 2 : 1}
+                  />
+                );
+              }
+            }
+
+            if (Marker) {
+              elements.push(
+                <Marker
+                  key={`suburb-label-${suburb.id}`}
+                  coordinate={{
+                    latitude: suburb.centroidLat,
+                    longitude: suburb.centroidLng,
+                  }}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                  flat
+                >
+                  <View style={styles.suburbLabelChip}>
+                    <Text style={styles.suburbLabelText}>
+                      {getCompletionLabel(suburb)}
+                    </Text>
+                  </View>
+                </Marker>
+              );
+            }
+
+            return elements;
+          })}
           {historicalJourneys.map((j, idx) => {
             const color = HISTORY_COLORS[Math.min(idx, HISTORY_COLORS.length - 1)];
             return Polyline ? (
@@ -563,7 +851,7 @@ export default function JourneyTab() {
                 longitude: currentLocation.lng,
               }}
               anchor={{ x: 0.5, y: 1.0 }}
-              tracksViewChanges={journeyStatus === "active"}
+              tracksViewChanges={true}
               flat={false}
             >
               <CharacterMarker
@@ -625,6 +913,18 @@ export default function JourneyTab() {
         )}
       </View>
 
+      {locationPermission === "denied" && journeyStatus === "idle" && (
+        <View style={[styles.permissionBanner, { top: insets.top + 52 }]}>
+          <Feather name="alert-circle" size={14} color={Colors.error} />
+          <Text style={styles.permissionBannerText}>
+            Location access denied. Enable it in Settings to start a journey.
+          </Text>
+          <TouchableOpacity onPress={() => Linking.openSettings()}>
+            <Text style={styles.permissionBannerLink}>Open Settings</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {journeyStatus === "active" && newTerritoryNearby && (
         <View style={[styles.nudgeBanner, { top: insets.top + 64 }]}>
           <Feather name="zap" size={14} color={Colors.info} />
@@ -672,9 +972,21 @@ export default function JourneyTab() {
       >
         <View style={styles.bottomControls} pointerEvents="box-none">
           {journeyStatus === "idle" && (
-            <TouchableOpacity style={styles.primaryBtn} onPress={startJourney}>
-              <Feather name="play" size={18} color={Colors.background} />
-              <Text style={styles.primaryBtnText}>Begin Journey</Text>
+            <TouchableOpacity
+              style={[
+                styles.primaryBtn,
+                locationPermission === "denied" && styles.primaryBtnDisabled,
+              ]}
+              onPress={locationPermission === "denied" ? () => Linking.openSettings() : startJourney}
+            >
+              <Feather
+                name={locationPermission === "denied" ? "lock" : "play"}
+                size={18}
+                color={Colors.background}
+              />
+              <Text style={styles.primaryBtnText}>
+                {locationPermission === "denied" ? "Enable location to start" : "Begin Journey"}
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -820,6 +1132,36 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  permissionBanner: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    backgroundColor: "rgba(13,10,11,0.90)",
+    borderWidth: 1,
+    borderColor: Colors.error,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 20,
+    flexWrap: "wrap",
+  },
+  permissionBannerText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+    flex: 1,
+  },
+  permissionBannerLink: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: Colors.error,
+  },
+  primaryBtnDisabled: {
+    backgroundColor: "rgba(212,160,23,0.45)",
   },
   nudgeBanner: {
     position: "absolute",
@@ -999,5 +1341,18 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     color: Colors.parchment,
+  },
+  suburbLabelChip: {
+    backgroundColor: "rgba(13,10,11,0.72)",
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "#2C4030",
+  },
+  suburbLabelText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: Colors.parchmentMuted,
   },
 });

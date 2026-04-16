@@ -37,6 +37,8 @@ const STATEMENTS = [
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS xp_earned INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS ping_count INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS discovery_status TEXT NOT NULL DEFAULT 'pending'`,
+  `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS name TEXT`,
+  `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS xp_breakdown TEXT`,
 
   // ── PLACE_LISTS ─────────────────────────────────────────────
   `ALTER TABLE place_lists ADD COLUMN IF NOT EXISTS emoji TEXT`,
@@ -130,6 +132,9 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS list_collaborators_list_user_unique
      ON list_collaborators (list_id, user_id)`,
 
+  // ── USER_PREFERENCES additions ───────────────────────────────
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS max_discoveries INTEGER NOT NULL DEFAULT 20`,
+
   // ── NOTIFICATIONS (new table) ────────────────────────────────
   `CREATE TABLE IF NOT EXISTS notifications (
      id         TEXT PRIMARY KEY,
@@ -139,6 +144,46 @@ const STATEMENTS = [
      read_at    TIMESTAMPTZ,
      created_at TIMESTAMPTZ DEFAULT NOW()
    )`,
+
+  // ── SUBURBS (new table) ───────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS suburbs (
+     id                 TEXT PRIMARY KEY,
+     city               TEXT NOT NULL,
+     name               TEXT NOT NULL,
+     boundary_geo_json  JSONB NOT NULL,
+     centroid_lat       REAL NOT NULL,
+     centroid_lng       REAL NOT NULL,
+     total_segments     INTEGER NOT NULL DEFAULT 0
+   )`,
+  `CREATE INDEX IF NOT EXISTS suburbs_city_idx ON suburbs (city)`,
+
+  // ── SUBURB_ROAD_SEGMENTS (new table) ─────────────────────────
+  `CREATE TABLE IF NOT EXISTS suburb_road_segments (
+     id          TEXT PRIMARY KEY,
+     suburb_id   TEXT NOT NULL REFERENCES suburbs(id) ON DELETE CASCADE,
+     geom        JSONB NOT NULL,
+     osm_way_id  BIGINT
+   )`,
+  `CREATE INDEX IF NOT EXISTS suburb_road_segments_suburb_idx ON suburb_road_segments (suburb_id)`,
+
+  // ── USER_EXPLORED_SEGMENTS (new table) ───────────────────────
+  `CREATE TABLE IF NOT EXISTS user_explored_segments (
+     user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     segment_id        TEXT NOT NULL REFERENCES suburb_road_segments(id) ON DELETE CASCADE,
+     first_explored_at TIMESTAMPTZ DEFAULT NOW(),
+     PRIMARY KEY (user_id, segment_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS user_explored_segments_user_idx ON user_explored_segments (user_id)`,
+
+  // ── SUBURB_COMPLETIONS (new table) ───────────────────────────
+  `CREATE TABLE IF NOT EXISTS suburb_completions (
+     user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     suburb_id      TEXT NOT NULL REFERENCES suburbs(id) ON DELETE CASCADE,
+     completed_at   TIMESTAMPTZ DEFAULT NOW(),
+     completion_pct REAL NOT NULL,
+     PRIMARY KEY (user_id, suburb_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS suburb_completions_user_idx ON suburb_completions (user_id)`,
 ];
 
 export async function runMigrations(): Promise<void> {

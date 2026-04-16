@@ -8,7 +8,17 @@ import {
   Image,
   ActivityIndicator,
   Platform,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Alert,
+  LayoutAnimation,
+  UIManager,
 } from "react-native";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -38,8 +48,17 @@ interface JourneyPlace {
   address: string | null;
 }
 
+interface XpBreakdown {
+  newCells: number;
+  revisitCells: number;
+  newPlaces: number;
+  completedQuests: Array<{ key: string; title: string; xpReward: number }>;
+  newBadges: Array<{ key: string; name: string; description: string; icon: string }>;
+}
+
 interface JourneyDetail {
   id: string;
+  name: string;
   startedAt: string;
   endedAt: string | null;
   durationSeconds: number | null;
@@ -50,6 +69,7 @@ interface JourneyDetail {
   waypoints: Array<{ lat: number; lng: number }>;
   places: JourneyPlace[];
   placeCount: number;
+  xpBreakdown: XpBreakdown | null;
 }
 
 function formatDurationSeconds(s: number | null): string {
@@ -108,6 +128,79 @@ function PlaceThumbnail({ place }: { place: JourneyPlace }) {
   );
 }
 
+function XpBreakdownSection({ breakdown, xpEarned }: { breakdown: XpBreakdown; xpEarned: number }) {
+  const [expanded, setExpanded] = useState(false);
+
+  function toggle() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded((v) => !v);
+  }
+
+  const rows: Array<{ emoji: string; label: string; xp: number }> = [];
+  if (breakdown.newCells > 0) {
+    rows.push({ emoji: "🗺️", label: `${breakdown.newCells} new street${breakdown.newCells !== 1 ? "s" : ""} × 10 XP`, xp: breakdown.newCells * 10 });
+  }
+  if (breakdown.revisitCells > 0) {
+    rows.push({ emoji: "🔄", label: `${breakdown.revisitCells} revisited street${breakdown.revisitCells !== 1 ? "s" : ""} × 3 XP`, xp: breakdown.revisitCells * 3 });
+  }
+  if (breakdown.newPlaces > 0) {
+    rows.push({ emoji: "📍", label: `${breakdown.newPlaces} new place${breakdown.newPlaces !== 1 ? "s" : ""} × 25 XP`, xp: breakdown.newPlaces * 25 });
+  }
+  for (const quest of breakdown.completedQuests) {
+    rows.push({ emoji: "⚡", label: `Quest: ${quest.title}`, xp: quest.xpReward });
+  }
+
+  return (
+    <View style={styles.xpSection}>
+      <TouchableOpacity style={styles.xpSectionHeader} onPress={toggle} activeOpacity={0.8}>
+        <Feather name="zap" size={16} color={Colors.gold} />
+        <Text style={styles.xpSectionTitle}>XP Earned</Text>
+        <Text style={styles.xpSectionTotal}>+{xpEarned} XP</Text>
+        <Feather name={expanded ? "chevron-up" : "chevron-down"} size={16} color={Colors.parchmentDim} />
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={styles.xpSectionBody}>
+          {rows.length === 0 ? (
+            <Text style={styles.xpNoBreakdown}>No XP breakdown available</Text>
+          ) : (
+            <>
+              {rows.map((row, i) => (
+                <View key={i} style={styles.xpRow}>
+                  <Text style={styles.xpRowEmoji}>{row.emoji}</Text>
+                  <Text style={styles.xpRowLabel} numberOfLines={1}>{row.label}</Text>
+                  <Text style={styles.xpRowValue}>+{row.xp} XP</Text>
+                </View>
+              ))}
+              <View style={styles.xpDivider} />
+              <View style={styles.xpRow}>
+                <Text style={styles.xpRowEmoji}></Text>
+                <Text style={[styles.xpRowLabel, styles.xpTotalLabel]}>Total</Text>
+                <Text style={[styles.xpRowValue, styles.xpTotalValue]}>+{xpEarned} XP</Text>
+              </View>
+            </>
+          )}
+
+          {breakdown.newBadges.length > 0 && (
+            <View style={styles.newBadgesSection}>
+              <Text style={styles.newBadgesTitle}>Badges Unlocked</Text>
+              {breakdown.newBadges.map((badge) => (
+                <View key={badge.key} style={styles.newBadgeRow}>
+                  <Text style={styles.newBadgeIcon}>{badge.icon}</Text>
+                  <View style={styles.newBadgeInfo}>
+                    <Text style={styles.newBadgeName}>{badge.name}</Text>
+                    <Text style={styles.newBadgeDesc}>{badge.description}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function JourneyDetailScreen() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
@@ -118,6 +211,10 @@ export default function JourneyDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
   const [retryMsg, setRetryMsg] = useState<string | null>(null);
+
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   const fetchJourney = useCallback(async () => {
     if (!token || !journeyId) return;
@@ -169,6 +266,37 @@ export default function JourneyDetailScreen() {
     }
   }
 
+  function openRenameModal() {
+    if (!journey) return;
+    setRenameValue(journey.name);
+    setRenameModalOpen(true);
+  }
+
+  function closeRenameModal() {
+    setRenameModalOpen(false);
+    setRenameValue("");
+    setRenaming(false);
+  }
+
+  async function submitRename() {
+    if (!journey || !token || renaming) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) return;
+    setRenaming(true);
+    try {
+      await apiFetch(`/api/journeys/${journey.id}/rename`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      setJourney((prev) => (prev ? { ...prev, name: trimmed } : prev));
+      closeRenameModal();
+    } catch (err) {
+      console.warn("[JourneyDetail] rename failed", err);
+      setRenaming(false);
+    }
+  }
+
   // Compute map region from waypoints
   const mapRegion = useCallback(() => {
     if (!journey || journey.waypoints.length === 0) return null;
@@ -189,7 +317,7 @@ export default function JourneyDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]} edges={['top']}>
+      <SafeAreaView style={[styles.container, styles.centered]} edges={["top"]}>
         <ActivityIndicator color={Colors.gold} />
       </SafeAreaView>
     );
@@ -197,7 +325,7 @@ export default function JourneyDetailScreen() {
 
   if (!journey) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]} edges={['top']}>
+      <SafeAreaView style={[styles.container, styles.centered]} edges={["top"]}>
         <Text style={styles.errorText}>Journey not found.</Text>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtnFull}>
           <Text style={styles.backBtnText}>Go Back</Text>
@@ -207,12 +335,22 @@ export default function JourneyDetailScreen() {
   }
 
   const region = mapRegion();
-  const showRetryBanner =
+
+  const showRetryBanner = journey.places.length === 0;
+
+  const isFailedOrPending =
     journey.discoveryStatus === "failed" || journey.discoveryStatus === "pending";
+  const retryBannerTitle = isFailedOrPending
+    ? "Place discovery didn't complete"
+    : "No places found";
+  const retryBannerSubtitle = isFailedOrPending
+    ? "Tap below to find places from this route."
+    : "No places found — tap to retry discovery.";
+
   const polylineCoords = journey.waypoints.map((w) => ({ latitude: w.lat, longitude: w.lng }));
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -222,8 +360,17 @@ export default function JourneyDetailScreen() {
           <Feather name="arrow-left" size={22} color={Colors.parchment} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
+          <View style={styles.headerNameRow}>
+            <Text style={styles.headerName} numberOfLines={1}>{journey.name}</Text>
+            <TouchableOpacity
+              onPress={openRenameModal}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.editBtn}
+            >
+              <Feather name="edit-2" size={14} color={Colors.parchmentDim} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.headerDate}>{formatDate(journey.startedAt)}</Text>
-          <Text style={styles.headerDuration}>{formatDurationSeconds(journey.durationSeconds)}</Text>
         </View>
       </View>
 
@@ -284,16 +431,19 @@ export default function JourneyDetailScreen() {
           ))}
         </View>
 
+        {/* XP Breakdown */}
+        {journey.xpBreakdown && (
+          <XpBreakdownSection breakdown={journey.xpBreakdown} xpEarned={journey.xpEarned} />
+        )}
+
         {/* Discovery retry banner */}
         {showRetryBanner && (
           <View style={styles.retryBanner}>
             <View style={styles.retryBannerHeader}>
               <Feather name="alert-triangle" size={16} color={Colors.gold} />
-              <Text style={styles.retryBannerTitle}>Place discovery didn't complete</Text>
+              <Text style={styles.retryBannerTitle}>{retryBannerTitle}</Text>
             </View>
-            <Text style={styles.retryBannerSubtitle}>
-              Tap below to find places from this route.
-            </Text>
+            <Text style={styles.retryBannerSubtitle}>{retryBannerSubtitle}</Text>
             {retryMsg && (
               <Text style={[styles.retryMsg, retryMsg.includes("failed") && styles.retryMsgError]}>
                 {retryMsg}
@@ -339,13 +489,51 @@ export default function JourneyDetailScreen() {
             </ScrollView>
           </View>
         )}
-
-        {journey.places.length === 0 && journey.discoveryStatus === "completed" && (
-          <View style={styles.noPlaces}>
-            <Text style={styles.noPlacesText}>No places were discovered on this journey.</Text>
-          </View>
-        )}
       </ScrollView>
+
+      {/* Rename Modal */}
+      <Modal
+        visible={renameModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeRenameModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Rename Journey</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={renameValue}
+              onChangeText={setRenameValue}
+              placeholder="Journey name"
+              placeholderTextColor={Colors.parchmentDim}
+              maxLength={120}
+              autoFocus
+              onSubmitEditing={submitRename}
+              returnKeyType="done"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={closeRenameModal}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSave, (!renameValue.trim() || renaming) && styles.modalSaveDisabled]}
+                onPress={submitRename}
+                disabled={!renameValue.trim() || renaming}
+              >
+                {renaming ? (
+                  <ActivityIndicator size="small" color={Colors.background} />
+                ) : (
+                  <Text style={styles.modalSaveText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -374,13 +562,23 @@ const styles = StyleSheet.create({
   },
   headerInfo: {
     flex: 1,
+    gap: 2,
   },
-  headerDate: {
+  headerNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  headerName: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 16,
     color: Colors.parchment,
+    flex: 1,
   },
-  headerDuration: {
+  editBtn: {
+    padding: 2,
+  },
+  headerDate: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
     color: Colors.parchmentMuted,
@@ -557,16 +755,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.gold,
   },
-  noPlaces: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  noPlacesText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.parchmentMuted,
-    textAlign: "center",
-  },
   errorText: {
     fontFamily: "Inter_500Medium",
     fontSize: 15,
@@ -582,5 +770,186 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 14,
     color: Colors.background,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  modalBox: {
+    backgroundColor: Colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 24,
+    width: "100%",
+    gap: 16,
+  },
+  modalTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    color: Colors.parchment,
+  },
+  modalInput: {
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: "Inter_400Regular",
+    fontSize: 15,
+    color: Colors.parchment,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "flex-end",
+  },
+  modalCancel: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalCancelText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 14,
+    color: Colors.parchmentMuted,
+  },
+  modalSave: {
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.gold,
+    minWidth: 80,
+    alignItems: "center",
+  },
+  modalSaveDisabled: {
+    opacity: 0.5,
+  },
+  modalSaveText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    color: Colors.background,
+  },
+  xpSection: {
+    marginHorizontal: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: "hidden",
+  },
+  xpSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 14,
+  },
+  xpSectionTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: Colors.parchment,
+    flex: 1,
+  },
+  xpSectionTotal: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    color: Colors.gold,
+  },
+  xpSectionBody: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  xpRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  xpRowEmoji: {
+    fontSize: 14,
+    width: 22,
+    textAlign: "center",
+  },
+  xpRowLabel: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.parchmentMuted,
+  },
+  xpRowValue: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.parchment,
+    minWidth: 60,
+    textAlign: "right",
+  },
+  xpDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 4,
+  },
+  xpTotalLabel: {
+    fontFamily: "Inter_700Bold",
+    color: Colors.parchment,
+    fontSize: 13,
+  },
+  xpTotalValue: {
+    fontFamily: "Inter_700Bold",
+    color: Colors.gold,
+    fontSize: 14,
+  },
+  xpNoBreakdown: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.parchmentMuted,
+    textAlign: "center",
+    paddingVertical: 8,
+  },
+  newBadgesSection: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 10,
+    gap: 8,
+  },
+  newBadgesTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: Colors.gold,
+  },
+  newBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(212,160,23,0.08)",
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "rgba(212,160,23,0.3)",
+  },
+  newBadgeIcon: {
+    fontSize: 22,
+  },
+  newBadgeInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  newBadgeName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.parchment,
+  },
+  newBadgeDesc: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.parchmentMuted,
   },
 });

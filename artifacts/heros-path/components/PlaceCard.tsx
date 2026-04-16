@@ -33,6 +33,7 @@ export interface DiscoveredPlace {
   isSnoozed: boolean;
   visitCount: number;
   lastVisitedAt: string | null;
+  listIds: string[];
 }
 
 interface Props {
@@ -253,11 +254,17 @@ export function PlaceCard({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionBtn}
+              style={[styles.actionBtn, place.listIds?.length > 0 && styles.actionBtnListed]}
               onPress={() => onAddToList(place.googlePlaceId)}
             >
-              <Feather name="plus-square" size={16} color={Colors.parchmentMuted} />
-              <Text style={styles.actionLabel}>List</Text>
+              <Feather
+                name={place.listIds?.length > 0 ? "bookmark" : "plus-square"}
+                size={16}
+                color={place.listIds?.length > 0 ? Colors.gold : Colors.parchmentMuted}
+              />
+              <Text style={[styles.actionLabel, place.listIds?.length > 0 && { color: Colors.gold }]}>
+                {place.listIds?.length > 0 ? `${place.listIds.length} List${place.listIds.length > 1 ? "s" : ""}` : "List"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionBtn} onPress={openMoreMenu}>
@@ -393,6 +400,10 @@ const styles = StyleSheet.create({
   actionBtnVisited: {
     borderColor: "rgba(34,197,94,0.3)",
     backgroundColor: "rgba(34,197,94,0.08)",
+  },
+  actionBtnListed: {
+    borderColor: "rgba(212,160,23,0.4)",
+    backgroundColor: "rgba(212,160,23,0.1)",
   },
   actionLabel: {
     fontFamily: "Inter_400Regular",

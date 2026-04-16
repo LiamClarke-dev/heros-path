@@ -53,6 +53,7 @@
     "expo-crypto": "~15.0.8",
     "expo-dev-client": "6.0.20",
     "expo-secure-store": "^15.0.8",
+    "expo-task-manager": "^55.0.14",
     "react-native-maps": "1.18.0",
     "react-native-qrcode-svg": "^6.3.21"
   }

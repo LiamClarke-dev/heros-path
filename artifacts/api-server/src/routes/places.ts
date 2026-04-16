@@ -6,6 +6,8 @@ import {
   userDiscoveredPlaces,
   userPlaceStates,
   placeVisits,
+  placeListItems,
+  placeLists,
 } from "@workspace/db";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
@@ -108,6 +110,7 @@ router.get("/discovered", async (req: Request, res: Response) => {
       snoozeUntil: userPlaceStates.snoozeUntil,
       visitCount: sql<number>`COALESCE((SELECT COUNT(*) FROM ${placeVisits} WHERE ${placeVisits.googlePlaceId} = ${placeCache.googlePlaceId} AND ${placeVisits.userId} = ${user.id}), 0)::int`,
       lastVisitedAt: sql<string | null>`(SELECT MAX(visited_at) FROM ${placeVisits} WHERE google_place_id = ${placeCache.googlePlaceId} AND user_id = ${user.id})`,
+      listIds: sql<string[]>`COALESCE(ARRAY(SELECT pli.list_id::text FROM ${placeListItems} pli INNER JOIN ${placeLists} pl ON pl.id = pli.list_id WHERE pli.google_place_id = ${placeCache.googlePlaceId} AND pl.user_id = ${user.id}), ARRAY[]::text[])`,
     })
     .from(userDiscoveredPlaces)
     .innerJoin(placeCache, eq(userDiscoveredPlaces.googlePlaceId, placeCache.googlePlaceId))
@@ -152,6 +155,7 @@ router.get("/discovered", async (req: Request, res: Response) => {
     visitCount: Number(p.visitCount ?? 0),
     lastVisitedAt: p.lastVisitedAt ?? null,
     photoUrl: makePhotoUrl(p.photoReference),
+    listIds: (p.listIds as string[]) ?? [],
   }));
 
   res.json({ places, total, page });

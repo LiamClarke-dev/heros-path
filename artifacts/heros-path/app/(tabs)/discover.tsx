@@ -69,6 +69,7 @@ export default function DiscoverTab() {
 
   const [addToListId, setAddToListId] = useState<string | null>(null);
   const [showCreateList, setShowCreateList] = useState(false);
+  const [pendingPlaceForNewList, setPendingPlaceForNewList] = useState<string | null>(null);
   const [visitPlaceId, setVisitPlaceId] = useState<string | null>(null);
 
   const fetchJourneys = useCallback(async () => {
@@ -179,13 +180,33 @@ export default function DiscoverTab() {
 
   const handleCreateList = useCallback(
     async (name: string, emoji: string) => {
-      await apiFetch("/api/lists", {
+      const result = await apiFetch("/api/lists", {
         method: "POST",
         token: token!,
         body: JSON.stringify({ name, emoji }),
-      });
+      }) as { list: { id: string } };
+
+      if (pendingPlaceForNewList && result?.list?.id) {
+        try {
+          await apiFetch(`/api/lists/${result.list.id}/items`, {
+            method: "POST",
+            token: token!,
+            body: JSON.stringify({ googlePlaceId: pendingPlaceForNewList }),
+          });
+          const newListId = result.list.id;
+          setPlaces((prev) =>
+            prev.map((p) =>
+              p.googlePlaceId === pendingPlaceForNewList
+                ? { ...p, listIds: [...(p.listIds ?? []), newListId] }
+                : p
+            )
+          );
+        } catch {
+        }
+        setPendingPlaceForNewList(null);
+      }
     },
-    [token]
+    [token, pendingPlaceForNewList]
   );
 
   const handleVisitSaved = useCallback((visit: VisitRecord) => {
@@ -384,16 +405,31 @@ export default function DiscoverTab() {
       <AddToListSheet
         visible={addToListId !== null}
         googlePlaceId={addToListId}
-        onClose={() => setAddToListId(null)}
+        onClose={() => {
+          setAddToListId(null);
+          setPendingPlaceForNewList(null);
+        }}
         onCreateNew={() => {
+          setPendingPlaceForNewList(addToListId);
           setAddToListId(null);
           setShowCreateList(true);
+        }}
+        onAdded={(listId) => {
+          if (!addToListId) return;
+          const placeId = addToListId;
+          setPlaces((prev) =>
+            prev.map((p) =>
+              p.googlePlaceId === placeId && !p.listIds?.includes(listId)
+                ? { ...p, listIds: [...(p.listIds ?? []), listId] }
+                : p
+            )
+          );
         }}
       />
 
       <CreateListSheet
         visible={showCreateList}
-        onClose={() => setShowCreateList(false)}
+        onClose={() => { setShowCreateList(false); setPendingPlaceForNewList(null); }}
         onCreate={handleCreateList}
       />
 

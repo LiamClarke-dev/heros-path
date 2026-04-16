@@ -856,7 +856,7 @@ export default function JourneyTab() {
             const scaledFill = isCompleted
               ? ZONE_COLORS.completedFill
               : isVisited
-              ? `rgba(106,221,147,${Math.round(zone.coveragePct * 0.45 * 100) / 100})`
+              ? `rgba(56,204,246,${Math.round(zone.coveragePct * 0.45 * 100) / 100})`
               : "transparent";
             const strokeColor = isCompleted
               ? ZONE_COLORS.completedStroke

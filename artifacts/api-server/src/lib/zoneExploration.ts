@@ -9,15 +9,14 @@ import {
 } from "@workspace/db";
 import { eq, and, or, sql, inArray } from "drizzle-orm";
 import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { join } from "path";
 import logger from "../logger.js";
 
 const ZONE_COMPLETION_XP = 500;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const DATA_DIR = join(__dirname, "../data/zones");
+// pnpm runs scripts with CWD set to the package directory (artifacts/api-server/).
+// This works in both ESM dev (tsx) and production CJS (esbuild) without import.meta.url.
+const DATA_DIR = join(process.cwd(), "src/data/zones");
 
 const PROXIMITY_DEG = 0.009;
 

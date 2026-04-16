@@ -198,6 +198,7 @@ export default function JourneyTab() {
   const bypassQualityGateRef = useRef(false);
   const journeyIdRef = useRef<string | null>(null);
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zonesFingerprintRef = useRef<string>("");
 
   const loadZones = useCallback(
     async (loc?: { lat: number; lng: number }) => {
@@ -210,7 +211,16 @@ export default function JourneyTab() {
           `/api/map/zones${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
         )) as { city: string; zones: ZoneData[] };
-        setZonesData(data.zones ?? []);
+        const incoming = data.zones ?? [];
+        const newFingerprint = incoming
+          .slice()
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((z) => `${z.id}:${z.coveragePct}`)
+          .join("|");
+        if (newFingerprint !== zonesFingerprintRef.current) {
+          zonesFingerprintRef.current = newFingerprint;
+          setZonesData(incoming);
+        }
       } catch (err) {
         console.warn("[JourneyMap] loadZones failed", err);
       }

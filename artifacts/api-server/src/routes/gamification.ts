@@ -63,6 +63,7 @@ router.get("/badges", async (req: Request, res: Response) => {
     [placeCountRow],
     allWaypoints,
     [maxPingRow],
+    [suburbCountRow],
   ] = await Promise.all([
     db.select().from(userBadges).where(eq(userBadges.userId, user.id)),
     db.select().from(users).where(eq(users.id, user.id)),
@@ -75,6 +76,7 @@ router.get("/badges", async (req: Request, res: Response) => {
     db.select({ maxPing: max(journeys.pingCount) })
       .from(journeys)
       .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt))),
+    db.select({ c: count() }).from(suburbCompletions).where(eq(suburbCompletions.userId, user.id)),
   ]);
 
   const earnedMap = new Map(badgeRows.map((r) => [r.badgeKey, r.earnedAt]));
@@ -101,22 +103,26 @@ router.get("/badges", async (req: Request, res: Response) => {
   const currentStreak = dbUser?.streakDays ?? 0;
   const maxPingCount = Number(maxPingRow?.maxPing ?? 0);
   const distinctAreas = areaSet.size;
+  const suburbCount = Number(suburbCountRow?.c ?? 0);
 
   // Badge progress values: progress value + target (null if no progress tracking)
   const badgeProgress: Record<string, { progress: number; target: number } | null> = {
-    first_journey:   { progress: Math.min(totalJourneys, 1), target: 1 },
-    streets_10:      { progress: totalNewCells, target: 10 },
-    streets_50:      { progress: totalNewCells, target: 50 },
-    streets_200:     { progress: totalNewCells, target: 200 },
-    discovery_first: { progress: Math.min(totalPlaces, 1), target: 1 },
-    discovery_10:    { progress: totalPlaces, target: 10 },
-    discovery_50:    { progress: totalPlaces, target: 50 },
-    night_explorer:  null,
-    streak_3:        { progress: currentStreak, target: 3 },
-    streak_7:        { progress: currentStreak, target: 7 },
-    streak_30:       { progress: currentStreak, target: 30 },
-    ping_master:     { progress: maxPingCount, target: 5 },
-    globe_trotter:   { progress: distinctAreas, target: 3 },
+    first_journey:        { progress: Math.min(totalJourneys, 1), target: 1 },
+    streets_10:           { progress: totalNewCells, target: 10 },
+    streets_50:           { progress: totalNewCells, target: 50 },
+    streets_200:          { progress: totalNewCells, target: 200 },
+    discovery_first:      { progress: Math.min(totalPlaces, 1), target: 1 },
+    discovery_10:         { progress: totalPlaces, target: 10 },
+    discovery_50:         { progress: totalPlaces, target: 50 },
+    night_explorer:       null,
+    streak_3:             { progress: currentStreak, target: 3 },
+    streak_7:             { progress: currentStreak, target: 7 },
+    streak_30:            { progress: currentStreak, target: 30 },
+    ping_master:          { progress: maxPingCount, target: 5 },
+    globe_trotter:        { progress: distinctAreas, target: 3 },
+    suburb_local:         { progress: Math.min(suburbCount, 1), target: 1 },
+    suburb_cartographer:  { progress: suburbCount, target: 5 },
+    suburb_master:        { progress: suburbCount, target: 20 },
   };
 
   const earned = [];

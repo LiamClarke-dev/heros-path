@@ -100,6 +100,7 @@ function Avatar({ name, imageUrl, size = 64 }: { name: string; imageUrl?: string
 }
 
 function XpBar({ current, min, max }: { current: number; min: number; max: number }) {
+  const [containerWidth, setContainerWidth] = useState(0);
   const fillAnim = useRef(new Animated.Value(0)).current;
   const ratio = max > min ? Math.min((current - min) / (max - min), 1) : 0;
 
@@ -112,15 +113,20 @@ function XpBar({ current, min, max }: { current: number; min: number; max: numbe
   }, [ratio]);
 
   return (
-    <View style={styles.xpBarOuter}>
+    <View
+      style={styles.xpBarOuter}
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+    >
       <Animated.View
         style={[
           styles.xpBarFill,
           {
-            width: fillAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: ["0%", "100%"],
-            }),
+            width: containerWidth > 0
+              ? fillAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, containerWidth],
+                })
+              : 0,
           },
         ]}
       />
@@ -134,8 +140,8 @@ function formatEarnedDate(iso: string): string {
 
 function BadgeGridItem({ badge, earned }: { badge: BadgeItem; earned: boolean }) {
   const prog = badge.progress;
-  const showProgress = !earned && prog !== null && prog.target > 1;
-  const progressRatio = showProgress ? Math.min(prog!.progress / prog!.target, 1) : 0;
+  const showProgress = !earned && prog != null && prog.target > 1;
+  const progressRatio = showProgress ? Math.min(prog.progress / prog.target, 1) : 0;
 
   return (
     <View style={[styles.badgeGridItem, !earned && styles.badgeGridItemLocked]}>
@@ -164,7 +170,7 @@ function BadgeGridItem({ badge, earned }: { badge: BadgeItem; earned: boolean })
           <View style={styles.badgeProgressBar}>
             <View style={[styles.badgeProgressFill, { width: `${Math.round(progressRatio * 100)}%` as `${number}%` }]} />
           </View>
-          <Text style={styles.badgeProgressText}>{prog!.progress}/{prog!.target}</Text>
+          <Text style={styles.badgeProgressText}>{prog?.progress}/{prog?.target}</Text>
         </View>
       )}
     </View>

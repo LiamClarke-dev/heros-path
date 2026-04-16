@@ -57,19 +57,22 @@ export interface BadgeDef {
 }
 
 export const BADGE_DEFINITIONS: BadgeDef[] = [
-  { key: "first_journey",   name: "First Steps",       description: "Complete your first journey",       icon: "🥾" },
-  { key: "streets_10",      name: "Street Walker",     description: "Walk 10 new grid cells",            icon: "🗺️" },
-  { key: "streets_50",      name: "City Explorer",     description: "Walk 50 new grid cells",            icon: "🏙️" },
-  { key: "streets_200",     name: "Legend Strider",    description: "Walk 200 new grid cells",           icon: "⚔️" },
-  { key: "discovery_first", name: "The Discoverer",    description: "Find your first place",             icon: "🔭" },
-  { key: "discovery_10",    name: "Place Hunter",      description: "Discover 10 unique places",         icon: "🏛️" },
-  { key: "discovery_50",    name: "World Cataloguer",  description: "Discover 50 unique places",         icon: "📖" },
-  { key: "night_explorer",  name: "Night Owl",         description: "Complete a journey after 9 PM",     icon: "🦉" },
-  { key: "streak_3",        name: "Consistent",        description: "Journey 3 days in a row",           icon: "🔥" },
-  { key: "streak_7",        name: "Devoted",           description: "Journey 7 days in a row",           icon: "🔥" },
-  { key: "streak_30",       name: "Legend Streak",     description: "Journey 30 days in a row",          icon: "👑" },
-  { key: "ping_master",     name: "Ping Master",       description: "Use ping 5+ times in one journey",  icon: "📡" },
-  { key: "globe_trotter",   name: "Globe Trotter",     description: "Journey in 3 different areas",      icon: "🌍" },
+  { key: "first_journey",        name: "First Steps",       description: "Complete your first journey",       icon: "🥾" },
+  { key: "streets_10",           name: "Street Walker",     description: "Walk 10 new grid cells",            icon: "🗺️" },
+  { key: "streets_50",           name: "City Explorer",     description: "Walk 50 new grid cells",            icon: "🏙️" },
+  { key: "streets_200",          name: "Legend Strider",    description: "Walk 200 new grid cells",           icon: "⚔️" },
+  { key: "discovery_first",      name: "The Discoverer",    description: "Find your first place",             icon: "🔭" },
+  { key: "discovery_10",         name: "Place Hunter",      description: "Discover 10 unique places",         icon: "🏛️" },
+  { key: "discovery_50",         name: "World Cataloguer",  description: "Discover 50 unique places",         icon: "📖" },
+  { key: "night_explorer",       name: "Night Owl",         description: "Complete a journey after 9 PM",     icon: "🦉" },
+  { key: "streak_3",             name: "Consistent",        description: "Journey 3 days in a row",           icon: "🔥" },
+  { key: "streak_7",             name: "Devoted",           description: "Journey 7 days in a row",           icon: "🔥" },
+  { key: "streak_30",            name: "Legend Streak",     description: "Journey 30 days in a row",          icon: "👑" },
+  { key: "ping_master",          name: "Ping Master",       description: "Use ping 5+ times in one journey",  icon: "📡" },
+  { key: "globe_trotter",        name: "Globe Trotter",     description: "Journey in 3 different areas",      icon: "🌍" },
+  { key: "suburb_local",         name: "Local",             description: "Complete 1 suburb (≥ 80%)",         icon: "🏘️" },
+  { key: "suburb_cartographer",  name: "Cartographer",      description: "Complete 5 suburbs",                icon: "🗺️" },
+  { key: "suburb_master",        name: "Master Explorer",   description: "Complete 20 suburbs",               icon: "🌟" },
 ];
 
 // ─── Quest definitions ────────────────────────────────────────────────────────

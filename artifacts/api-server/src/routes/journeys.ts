@@ -16,6 +16,7 @@ import {
   retryDiscovery,
 } from "../lib/discovery.js";
 import { awardJourneyGamification } from "../lib/gamification.js";
+import { processSuburbExploration } from "../lib/suburbExploration.js";
 import logger from "../logger.js";
 
 const router = Router();
@@ -300,26 +301,42 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       logger.warn({ err }, "awardJourneyGamification failed");
     }
 
-    // Step 4: Store xpEarned and xpBreakdown on the journey
+    // Step 4: Process suburb exploration
+    let suburbResult = {
+      newSuburbCompletions: [] as Array<{ suburbId: string; name: string; completionPct: number }>,
+      suburbXpGained: 0,
+      newSuburbBadges: [] as Array<{ key: string; name: string; description: string; icon: string }>,
+    };
+    try {
+      suburbResult = await processSuburbExploration(userId, coords);
+    } catch (err) {
+      logger.warn({ err }, "processSuburbExploration failed");
+    }
+
+    const totalXpGained = gamificationResult.xpGained + suburbResult.suburbXpGained;
+    const allNewBadges = [...gamificationResult.newBadges, ...suburbResult.newSuburbBadges];
+
+    // Step 5: Store xpEarned and xpBreakdown on the journey
     const xpBreakdown = JSON.stringify({
       newCells: gamificationResult.newCells,
       revisitCells: gamificationResult.revisitCells,
       newPlaces: gamificationResult.newPlacesThisJourney,
       completedQuests: gamificationResult.completedQuests,
       newBadges: gamificationResult.newBadges,
+      suburbXp: suburbResult.suburbXpGained,
     });
     await db
       .update(journeys)
-      .set({ xpEarned: gamificationResult.xpGained, xpBreakdown })
+      .set({ xpEarned: totalXpGained, xpBreakdown })
       .where(eq(journeys.id, journeyId));
 
     res.json({
       id: journeyId,
       placeCount,
       totalDistanceM: distM,
-      xpGained: gamificationResult.xpGained,
+      xpGained: totalXpGained,
       newLevel: gamificationResult.newLevel,
-      newBadges: gamificationResult.newBadges,
+      newBadges: allNewBadges,
       completedQuests: gamificationResult.completedQuests,
       newStreak: gamificationResult.newStreak,
       xpBreakdown: {
@@ -328,7 +345,9 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
         newPlaces: gamificationResult.newPlacesThisJourney,
         completedQuests: gamificationResult.completedQuests,
         newBadges: gamificationResult.newBadges,
+        suburbXp: suburbResult.suburbXpGained,
       },
+      newSuburbCompletions: suburbResult.newSuburbCompletions,
     });
     return;
   }

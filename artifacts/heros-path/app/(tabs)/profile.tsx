@@ -47,6 +47,7 @@ interface Stats {
   totalStreetsWalked: number;
   totalDistanceM: number;
   joinedAt: string | null;
+  suburbsCompleted?: number;
   // A7 contract field names (also provided by API)
   currentStreak?: number;
   longestStreak?: number;
@@ -519,6 +520,7 @@ export default function ProfileTab() {
           { label: "Places Found", value: stats.totalPlaces.toLocaleString(), icon: "compass" as const },
           { label: "Distance", value: formatDistanceM(stats.totalDistanceM), icon: "navigation" as const },
           { label: "Day Streak", value: stats.streakDays.toLocaleString(), icon: "zap" as const },
+          { label: "Suburbs Completed", value: (stats.suburbsCompleted ?? 0).toLocaleString(), icon: "map-pin" as const },
         ].map((stat) => (
           <View key={stat.label} style={styles.statCard}>
             <Feather name={stat.icon} size={18} color={Colors.gold} />

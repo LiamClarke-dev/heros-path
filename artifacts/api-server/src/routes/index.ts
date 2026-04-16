@@ -7,6 +7,7 @@ import gamificationRouter from "./gamification.js";
 import { placeVisitsRouter, meVisitsRouter } from "./visits.js";
 import { friendsRouter, socialMeRouter } from "./social.js";
 import profileRouter, { publicProfileRouter } from "./profile.js";
+import mapRouter from "./map.js";
 import { requireAuth } from "../middlewares/auth.js";
 
 const router = Router();
@@ -25,6 +26,7 @@ router.use("/me", socialMeRouter);
 router.use("/lists", listsRouter);
 router.use("/friends", friendsRouter);
 router.use("/", profileRouter);
+router.use("/map", mapRouter);
 router.use("/", gamificationRouter);
 
 export default router;

@@ -19,17 +19,28 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import type RNMapView from "react-native-maps";
-import type { MapViewProps, MapMarkerProps, MapPolylineProps, Provider } from "react-native-maps";
+import type { MapViewProps, MapMarkerProps, MapPolylineProps, MapCircleProps, MapPolygonProps, Region, Provider } from "react-native-maps";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import { rdpSimplify } from "../../lib/geo";
 import Colors from "../../constants/colors";
+import {
+  type SuburbData,
+  culledSegments,
+  boundaryToPolygonCoords,
+  segmentToPolylineCoords,
+  getCompletionLabel,
+  SUBURB_COLORS,
+  SUBURB_COMPLETION_THRESHOLD,
+} from "../../lib/suburbLayer";
 
 const IS_WEB = Platform.OS === "web";
 
 let MapView: React.ComponentClass<MapViewProps> | null = null;
 let Marker: React.ComponentType<MapMarkerProps> | null = null;
 let Polyline: React.ComponentType<MapPolylineProps> | null = null;
+let Circle: React.ComponentType<MapCircleProps> | null = null;
+let Polygon: React.ComponentType<MapPolygonProps> | null = null;
 let PROVIDER_GOOGLE: Provider | null = null;
 
 if (!IS_WEB) {
@@ -37,6 +48,8 @@ if (!IS_WEB) {
   MapView = Maps.default;
   Marker = Maps.Marker;
   Polyline = Maps.Polyline;
+  Circle = Maps.Circle;
+  Polygon = Maps.Polygon;
   PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
 }
 
@@ -62,6 +75,13 @@ interface ExploredCell {
 }
 
 type JourneyStatus = "idle" | "active" | "ending";
+
+interface ViewportRegion {
+  swLat: number;
+  swLng: number;
+  neLat: number;
+  neLng: number;
+}
 
 interface QuestItem {
   key: string;
@@ -135,6 +155,9 @@ export default function JourneyTab() {
   const [exploredCells, setExploredCells] = useState<ExploredCell[]>([]);
   const [unexploredCells, setUnexploredCells] = useState<ExploredCell[]>([]);
   const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
+  const [suburbsData, setSuburbsData] = useState<SuburbData[]>([]);
+  const [viewport, setViewport] = useState<ViewportRegion | null>(null);
+  const suburbLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [elapsedDisplay, setElapsedDisplay] = useState("0:00");
   const [pingLoading, setPingLoading] = useState(false);
   const [pingSheetVisible, setPingSheetVisible] = useState(false);
@@ -158,6 +181,25 @@ export default function JourneyTab() {
   const hasAutocenteredRef = useRef(false);
   const bypassQualityGateRef = useRef(false);
   const journeyIdRef = useRef<string | null>(null);
+
+  const loadSuburbs = useCallback(
+    async (vp: ViewportRegion) => {
+      if (!token || IS_WEB) return;
+      const latSpan = vp.neLat - vp.swLat;
+      const lngSpan = vp.neLng - vp.swLng;
+      if (latSpan > 2 || lngSpan > 2) return;
+      try {
+        const data = (await apiFetch(
+          `/api/map/suburbs?sw_lat=${vp.swLat}&sw_lng=${vp.swLng}&ne_lat=${vp.neLat}&ne_lng=${vp.neLng}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )) as { suburbs: SuburbData[] };
+        setSuburbsData(data.suburbs ?? []);
+      } catch (err) {
+        console.warn("[JourneyMap] loadSuburbs failed", err);
+      }
+    },
+    [token]
+  );
 
   const loadHistory = useCallback(async () => {
     if (!token || IS_WEB) return;
@@ -248,6 +290,10 @@ export default function JourneyTab() {
       Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)
         .then((running) => { if (running) Location.stopLocationUpdatesAsync(LOCATION_TASK); })
         .catch(() => {});
+      if (suburbLoadTimerRef.current) clearTimeout(suburbLoadTimerRef.current);
+      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)
+        .then((running) => { if (running) Location.stopLocationUpdatesAsync(LOCATION_TASK); })
+        .catch(() => {});
     };
   }, []);
 
@@ -275,6 +321,20 @@ export default function JourneyTab() {
     });
     return () => subscription.remove();
   }, []);
+
+  function handleRegionChangeComplete(region: Region) {
+    const vp: ViewportRegion = {
+      swLat: region.latitude - region.latitudeDelta / 2,
+      swLng: region.longitude - region.longitudeDelta / 2,
+      neLat: region.latitude + region.latitudeDelta / 2,
+      neLng: region.longitude + region.longitudeDelta / 2,
+    };
+    setViewport(vp);
+    if (suburbLoadTimerRef.current) clearTimeout(suburbLoadTimerRef.current);
+    suburbLoadTimerRef.current = setTimeout(() => {
+      loadSuburbs(vp);
+    }, 600);
+  }
 
   async function handleLocateMe() {
     if (IS_WEB) return;
@@ -554,6 +614,7 @@ export default function JourneyTab() {
       loadHistory();
       loadQuests();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
+      if (viewport) loadSuburbs(viewport);
 
       if ((result.xpGained ?? 0) > 0) {
         const gamResult: GamificationResult = {
@@ -656,6 +717,7 @@ export default function JourneyTab() {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
+          onRegionChangeComplete={handleRegionChangeComplete}
           initialRegion={
             currentLocation
               ? {
@@ -672,6 +734,93 @@ export default function JourneyTab() {
                 }
           }
         >
+          {exploredCells.map((cell) => (
+            Circle && (
+              <Circle
+                key={`exp-${cell.lat}-${cell.lng}`}
+                center={{ latitude: cell.lat, longitude: cell.lng }}
+                radius={26}
+                fillColor="rgba(212,160,23,0.12)"
+                strokeColor="transparent"
+              />
+            )
+          ))}
+
+          {unexploredCells.map((cell) => (
+            Circle && (
+              <Circle
+                key={`unexp-${cell.lat}-${cell.lng}`}
+                center={{ latitude: cell.lat, longitude: cell.lng }}
+                radius={30}
+                fillColor="rgba(41,182,246,0.12)"
+                strokeColor="transparent"
+              />
+            )
+          ))}
+
+          {suburbsData.flatMap((suburb) => {
+            const rings = boundaryToPolygonCoords(suburb.boundary);
+            const isCompleted = suburb.completionPct >= SUBURB_COMPLETION_THRESHOLD;
+            const culled = viewport
+              ? culledSegments(suburb.segments, viewport)
+              : suburb.segments;
+
+            const elements = [];
+
+            for (let ri = 0; ri < rings.length; ri++) {
+              if (Polygon) {
+                elements.push(
+                  <Polygon
+                    key={`suburb-boundary-${suburb.id}-${ri}`}
+                    coordinates={rings[ri]}
+                    strokeColor={SUBURB_COLORS.boundaryStroke}
+                    strokeWidth={1.5}
+                    fillColor={isCompleted ? SUBURB_COLORS.completedFill : "transparent"}
+                  />
+                );
+              }
+            }
+
+            for (const seg of culled) {
+              if (Polyline) {
+                elements.push(
+                  <Polyline
+                    key={`seg-${seg.id}`}
+                    coordinates={segmentToPolylineCoords(seg)}
+                    strokeColor={
+                      seg.explored
+                        ? SUBURB_COLORS.exploredSegment
+                        : SUBURB_COLORS.unexploredSegment
+                    }
+                    strokeWidth={seg.explored ? 2 : 1}
+                  />
+                );
+              }
+            }
+
+            if (Marker) {
+              elements.push(
+                <Marker
+                  key={`suburb-label-${suburb.id}`}
+                  coordinate={{
+                    latitude: suburb.centroidLat,
+                    longitude: suburb.centroidLng,
+                  }}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                  flat
+                >
+                  <View style={styles.suburbLabelChip}>
+                    <Text style={styles.suburbLabelText}>
+                      {getCompletionLabel(suburb)}
+                    </Text>
+                  </View>
+                </Marker>
+              );
+            }
+
+            return elements;
+          })}
           {historicalJourneys.map((j, idx) => {
             const color = HISTORY_COLORS[Math.min(idx, HISTORY_COLORS.length - 1)];
             return Polyline ? (
@@ -1192,5 +1341,18 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     color: Colors.parchment,
+  },
+  suburbLabelChip: {
+    backgroundColor: "rgba(13,10,11,0.72)",
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "#2C4030",
+  },
+  suburbLabelText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: Colors.parchmentMuted,
   },
 });

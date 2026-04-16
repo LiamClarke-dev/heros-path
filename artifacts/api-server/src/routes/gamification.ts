@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, userBadges, userQuests, users, journeys, journeyWaypoints, userDiscoveredPlaces } from "@workspace/db";
+import { db, userBadges, userQuests, users, journeys, journeyWaypoints, userDiscoveredPlaces, suburbCompletions } from "@workspace/db";
 import { eq, and, isNotNull, count, sql, sum, max } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
@@ -152,7 +152,7 @@ router.get("/badges", async (req: Request, res: Response) => {
 router.get("/me/stats", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
 
-  const [[dbUser], [journeyCountRow], [placeCountRow], cellsResult, [distanceRow]] =
+  const [[dbUser], [journeyCountRow], [placeCountRow], cellsResult, [distanceRow], [suburbCountRow]] =
     await Promise.all([
       db.select().from(users).where(eq(users.id, user.id)),
       db
@@ -172,6 +172,10 @@ router.get("/me/stats", async (req: Request, res: Response) => {
         .select({ total: sum(journeys.totalDistanceM) })
         .from(journeys)
         .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt))),
+      db
+        .select({ c: count() })
+        .from(suburbCompletions)
+        .where(eq(suburbCompletions.userId, user.id)),
     ]);
 
   if (!dbUser) {
@@ -212,6 +216,7 @@ router.get("/me/stats", async (req: Request, res: Response) => {
     currentStreak: streak,
     longestStreak: streak,
     totalNewCells: cells,
+    suburbsCompleted: Number(suburbCountRow?.c ?? 0),
   });
 });
 

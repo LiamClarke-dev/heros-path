@@ -16,22 +16,16 @@
 
 import { db, suburbs, suburbRoadSegments } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import {
+  fetchChomelevelSuburbs,
+  seedOneChoume,
+  type BBox,
+} from "../src/lib/osmSeeder.js";
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
 const ROAD_TYPES =
   'way[highway~"^(residential|secondary|tertiary|unclassified|footway|path|steps)$"]';
-
-interface OSMNode {
-  id: number;
-  lat: number;
-  lon: number;
-}
-
-interface OSMWay {
-  id: number;
-  nodes: number[];
-}
 
 interface OSMElement {
   type: "node" | "way" | "relation";
@@ -55,7 +49,22 @@ interface SuburbSpec {
   overpassQuery: string;
 }
 
-const CITIES: Record<string, SuburbSpec[]> = {
+/**
+ * Bounding boxes for Tokyo chōme-level seeding.
+ * Each bbox covers a walkable neighbourhood cluster at admin_level=9 granularity.
+ * Coords: [south, west, north, east] — all in WGS84 decimal degrees.
+ *
+ * Nakameguro / Daikanyama / Ebisu / Meguro / Shibuya core:
+ *   roughly 35.62–35.68 N, 139.67–139.73 E
+ */
+const TOKYO_CHOUME_BBOXES: Array<{ label: string; bbox: BBox }> = [
+  {
+    label: "Nakameguro / Daikanyama / Ebisu / Meguro / Shibuya",
+    bbox: { south: 35.62, west: 139.67, north: 35.68, east: 139.73 },
+  },
+];
+
+const CITIES_NAMED: Record<string, SuburbSpec[]> = {
   melbourne: [
     { city: "melbourne", name: "Fitzroy",   id: "fitzroy-melbourne",   overpassQuery: `relation["name"="Fitzroy"]["admin_level"~"^(9|10)$"]["boundary"="administrative"](area.melbourne);` },
     { city: "melbourne", name: "Richmond",  id: "richmond-melbourne",  overpassQuery: `relation["name"="Richmond"]["admin_level"~"^(9|10)$"]["boundary"="administrative"](area.melbourne);` },
@@ -70,13 +79,6 @@ const CITIES: Record<string, SuburbSpec[]> = {
     { city: "san-francisco", name: "Haight",        id: "haight-sf",         overpassQuery: `relation["name"="Haight-Ashbury"]["boundary"="administrative"](area.sf);` },
     { city: "san-francisco", name: "North Beach",   id: "north-beach-sf",    overpassQuery: `relation["name"="North Beach"]["boundary"="administrative"](area.sf);` },
   ],
-  tokyo: [
-    { city: "tokyo", name: "Shibuya", id: "shibuya-tokyo", overpassQuery: `relation["name"="渋谷区"]["admin_level"="7"]["boundary"="administrative"];` },
-    { city: "tokyo", name: "Shinjuku", id: "shinjuku-tokyo", overpassQuery: `relation["name"="新宿区"]["admin_level"="7"]["boundary"="administrative"];` },
-    { city: "tokyo", name: "Asakusa", id: "asakusa-tokyo", overpassQuery: `relation["name"="浅草"]["admin_level"~"^(8|9)$"]["boundary"="administrative"];` },
-    { city: "tokyo", name: "Harajuku", id: "harajuku-tokyo", overpassQuery: `relation["name"="原宿"]["admin_level"~"^(8|9)$"]["boundary"="administrative"];` },
-    { city: "tokyo", name: "Roppongi", id: "roppongi-tokyo", overpassQuery: `relation["name"="六本木"]["admin_level"~"^(8|9)$"]["boundary"="administrative"];` },
-  ],
 };
 
 async function overpassFetch(query: string): Promise<OverpassResponse> {
@@ -85,6 +87,7 @@ async function overpassFetch(query: string): Promise<OverpassResponse> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `data=${encodeURIComponent(body)}`,
+      signal: AbortSignal.timeout(75_000),
   });
   if (!res.ok) throw new Error(`Overpass HTTP ${res.status}: ${await res.text()}`);
   return res.json() as Promise<OverpassResponse>;
@@ -299,19 +302,58 @@ async function seedSuburb(spec: SuburbSpec): Promise<void> {
   console.log(`  Done: ${spec.name} — ${segments.length} segments`);
 }
 
+async function seedTokyoBbox(): Promise<void> {
+  for (const { label, bbox } of TOKYO_CHOUME_BBOXES) {
+    console.log(`\nFetching chōme-level relations for: ${label}`);
+    console.log(`  Bbox: ${bbox.south},${bbox.west} → ${bbox.north},${bbox.east}`);
+
+    const chomes = await fetchChomelevelSuburbs(bbox);
+    console.log(`  Found ${chomes.length} chōme relations`);
+
+    let seededCount = 0;
+    let skippedCount = 0;
+
+    for (const chome of chomes) {
+      const segCount = await seedOneChoume(
+        chome.osmRelationId,
+        chome.name,
+        "tokyo",
+        chome.boundary,
+        chome.centroid
+      );
+      if (segCount > 0) {
+        console.log(`  ✓ ${chome.name} — ${segCount} segments`);
+        seededCount++;
+      } else {
+        skippedCount++;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    console.log(`  Done: ${seededCount} new, ${skippedCount} skipped`);
+  }
+}
+
 async function main() {
   const target = process.argv[2] ?? "all";
   const citiesToSeed =
     target === "all"
-      ? Object.keys(CITIES)
+      ? ["melbourne", "san-francisco", "tokyo"]
       : target.split(",").map((s) => s.trim());
 
+  const availableCities = [...Object.keys(CITIES_NAMED), "tokyo"];
   console.log(`Seeding suburbs for: ${citiesToSeed.join(", ")}`);
 
   for (const city of citiesToSeed) {
-    const specs = CITIES[city];
+    if (city === "tokyo") {
+      console.log("\n=== Tokyo (chōme-level bbox seeding) ===");
+      await seedTokyoBbox();
+      continue;
+    }
+
+    const specs = CITIES_NAMED[city];
     if (!specs) {
-      console.warn(`Unknown city: ${city}. Available: ${Object.keys(CITIES).join(", ")}`);
+      console.warn(`Unknown city: ${city}. Available: ${availableCities.join(", ")}`);
       continue;
     }
     for (const spec of specs) {

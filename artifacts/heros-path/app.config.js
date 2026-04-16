@@ -12,6 +12,9 @@ module.exports = ({ config }) => ({
   },
   ios: {
     ...config.ios,
+    config: {
+      googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+    },
     infoPlist: {
       ...config.ios?.infoPlist,
       CFBundleURLTypes: [

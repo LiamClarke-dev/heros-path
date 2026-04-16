@@ -923,7 +923,7 @@ export default function JourneyTab() {
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFillObject}
-          provider={Platform.OS === "android" && PROVIDER_GOOGLE ? PROVIDER_GOOGLE : undefined}
+          provider={!IS_WEB && PROVIDER_GOOGLE ? PROVIDER_GOOGLE : undefined}
           customMapStyle={Colors.mapDark}
           showsUserLocation={false}
           showsMyLocationButton={false}

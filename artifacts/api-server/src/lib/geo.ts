@@ -111,7 +111,7 @@ export async function snapRouteToRoadsChunked(coords: Coord[]): Promise<Coord[] 
     try {
       const url =
         `https://roads.googleapis.com/v1/snapToRoads` +
-        `?path=${encodeURIComponent(path)}&interpolate=true&key=${apiKey}`;
+        `?path=${encodeURIComponent(path)}&interpolate=false&key=${apiKey}`;
       const res = await fetch(url);
       if (!res.ok) {
         const text = await res.text().catch(() => "");
@@ -154,7 +154,7 @@ export async function snapRouteToRoads(coords: Coord[]): Promise<Coord[] | null>
   try {
     const url =
       `https://roads.googleapis.com/v1/snapToRoads` +
-      `?path=${encodeURIComponent(path)}&interpolate=true&key=${apiKey}`;
+      `?path=${encodeURIComponent(path)}&interpolate=false&key=${apiKey}`;
     const res = await fetch(url);
     if (!res.ok) {
       const text = await res.text().catch(() => "");

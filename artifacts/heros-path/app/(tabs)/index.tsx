@@ -114,9 +114,9 @@ type ClusterItem =
   | { kind: "cluster"; lat: number; lng: number; count: number; pins: MapPinPlace[] };
 
 const HISTORY_COLORS = [
-  "rgba(212,160,23,0.45)",
-  "rgba(212,160,23,0.30)",
-  "rgba(212,160,23,0.18)",
+  "rgba(101,245,156,0.80)",
+  "rgba(101,245,156,0.55)",
+  "rgba(101,245,156,0.30)",
 ];
 
 function formatDistance(m: number): string {
@@ -197,6 +197,7 @@ export default function JourneyTab() {
   const hasAutocenteredRef = useRef(false);
   const bypassQualityGateRef = useRef(false);
   const journeyIdRef = useRef<string | null>(null);
+  const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadZones = useCallback(
     async (loc?: { lat: number; lng: number }) => {
@@ -406,13 +407,16 @@ export default function JourneyTab() {
   }, []);
 
   function handleRegionChangeComplete(region: Region) {
-    const vp: ViewportRegion = {
-      swLat: region.latitude - region.latitudeDelta / 2,
-      swLng: region.longitude - region.longitudeDelta / 2,
-      neLat: region.latitude + region.latitudeDelta / 2,
-      neLng: region.longitude + region.longitudeDelta / 2,
-    };
-    setViewport(vp);
+    if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
+    viewportTimerRef.current = setTimeout(() => {
+      const vp: ViewportRegion = {
+        swLat: region.latitude - region.latitudeDelta / 2,
+        swLng: region.longitude - region.longitudeDelta / 2,
+        neLat: region.latitude + region.latitudeDelta / 2,
+        neLng: region.longitude + region.longitudeDelta / 2,
+      };
+      setViewport(vp);
+    }, 400);
   }
 
   async function handleLocateMe() {
@@ -1002,7 +1006,7 @@ export default function JourneyTab() {
                 longitude: currentLocation.lng,
               }}
               anchor={{ x: 0.5, y: 1.0 }}
-              tracksViewChanges={true}
+              tracksViewChanges={false}
               flat={false}
             >
               <CharacterMarker

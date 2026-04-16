@@ -16,7 +16,7 @@ import {
 import { AuthProvider, AuthContext } from "../lib/auth";
 import Colors from "../constants/colors";
 import { apiFetch } from "../lib/api";
-import OnboardingSheet from "../components/OnboardingSheet";
+import OnboardingSheet, { OnboardingPreferences } from "../components/OnboardingSheet";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -33,20 +33,28 @@ export { AuthContext };
 export { useAuth } from "../lib/auth";
 export type { AuthUser } from "../lib/auth";
 
-const ONBOARDING_KEY_PREFIX = "prefs_onboarded_";
-const DEFAULT_TYPES = ["restaurant", "cafe", "park", "museum"];
+const FULL_ONBOARDING_KEY_PREFIX = "full_onboarded_";
+const LEGACY_ONBOARDING_KEY_PREFIX = "prefs_onboarded_";
 
-async function getOnboardingKey(userId: string): Promise<string> {
-  return `${ONBOARDING_KEY_PREFIX}${userId}`;
-}
+const DEFAULT_TYPES = ["restaurant", "cafe", "park", "museum"];
 
 async function readOnboardingFlag(userId: string): Promise<boolean> {
   try {
+    const newKey = `${FULL_ONBOARDING_KEY_PREFIX}${userId}`;
+    const legacyKey = `${LEGACY_ONBOARDING_KEY_PREFIX}${userId}`;
+
     if (Platform.OS === "web") {
-      return localStorage.getItem(await getOnboardingKey(userId)) === "1";
+      return (
+        localStorage.getItem(newKey) === "1" ||
+        localStorage.getItem(legacyKey) === "1"
+      );
     }
-    const val = await SecureStore.getItemAsync(await getOnboardingKey(userId));
-    return val === "1";
+
+    const newVal = await SecureStore.getItemAsync(newKey);
+    if (newVal === "1") return true;
+
+    const legacyVal = await SecureStore.getItemAsync(legacyKey);
+    return legacyVal === "1";
   } catch {
     return false;
   }
@@ -54,11 +62,12 @@ async function readOnboardingFlag(userId: string): Promise<boolean> {
 
 async function writeOnboardingFlag(userId: string): Promise<void> {
   try {
+    const key = `${FULL_ONBOARDING_KEY_PREFIX}${userId}`;
     if (Platform.OS === "web") {
-      localStorage.setItem(await getOnboardingKey(userId), "1");
+      localStorage.setItem(key, "1");
       return;
     }
-    await SecureStore.setItemAsync(await getOnboardingKey(userId), "1");
+    await SecureStore.setItemAsync(key, "1");
   } catch {}
 }
 
@@ -90,15 +99,16 @@ function RootNavigator() {
   }, [isLoading, checkOnboarding]);
 
   const handleOnboardingComplete = useCallback(
-    async (selectedTypes: string[]) => {
+    async ({ placeTypes, minRating, maxDiscoveries }: OnboardingPreferences) => {
       if (!user || !token) return;
       try {
         await apiFetch("/api/me/preferences", {
           method: "PUT",
           token,
           body: JSON.stringify({
-            placeTypes: selectedTypes.length > 0 ? selectedTypes : DEFAULT_TYPES,
-            minRating: 0,
+            placeTypes: placeTypes.length > 0 ? placeTypes : DEFAULT_TYPES,
+            minRating,
+            maxDiscoveries,
           }),
         });
         await writeOnboardingFlag(user.id);
@@ -114,19 +124,6 @@ function RootNavigator() {
     [user, token]
   );
 
-  const handleOnboardingSkip = useCallback(async () => {
-    if (!user || !token) return;
-    try {
-      await apiFetch("/api/me/preferences", {
-        method: "PUT",
-        token,
-        body: JSON.stringify({ placeTypes: DEFAULT_TYPES, minRating: 0 }),
-      });
-      await writeOnboardingFlag(user.id);
-    } catch {}
-    setOnboardingVisible(false);
-  }, [user, token]);
-
   if (isLoading) return null;
 
   return (
@@ -141,7 +138,6 @@ function RootNavigator() {
       <OnboardingSheet
         visible={onboardingVisible}
         onComplete={handleOnboardingComplete}
-        onSkip={handleOnboardingSkip}
       />
     </>
   );

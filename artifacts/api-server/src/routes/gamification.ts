@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, userBadges, userQuests, users, journeys, journeyWaypoints, userDiscoveredPlaces } from "@workspace/db";
-import { eq, and, isNotNull, count, sql, sum } from "drizzle-orm";
+import { eq, and, isNotNull, count, sql, sum, max } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
   BADGE_DEFINITIONS,
@@ -55,17 +55,75 @@ router.get("/quests", async (req: Request, res: Response) => {
 router.get("/badges", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
 
-  const rows = await db
-    .select()
-    .from(userBadges)
-    .where(eq(userBadges.userId, user.id));
+  // Fetch earned badges, user stats, and journey data in parallel
+  const [
+    badgeRows,
+    [dbUser],
+    [journeyCountRow],
+    [placeCountRow],
+    allWaypoints,
+    [maxPingRow],
+  ] = await Promise.all([
+    db.select().from(userBadges).where(eq(userBadges.userId, user.id)),
+    db.select().from(users).where(eq(users.id, user.id)),
+    db.select({ c: count() }).from(journeys).where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt))),
+    db.select({ c: count() }).from(userDiscoveredPlaces).where(eq(userDiscoveredPlaces.userId, user.id)),
+    db.select({ lat: journeyWaypoints.lat, lng: journeyWaypoints.lng })
+      .from(journeyWaypoints)
+      .innerJoin(journeys, eq(journeyWaypoints.journeyId, journeys.id))
+      .where(eq(journeys.userId, user.id)),
+    db.select({ maxPing: max(journeys.pingCount) })
+      .from(journeys)
+      .where(and(eq(journeys.userId, user.id), isNotNull(journeys.endedAt))),
+  ]);
 
-  const earnedMap = new Map(rows.map((r) => [r.badgeKey, r.earnedAt]));
+  const earnedMap = new Map(badgeRows.map((r) => [r.badgeKey, r.earnedAt]));
+
+  // Compute cell-based stats
+  const CELL = 0.0005;
+  const AREA = 0.1;
+  const cellSet = new Set<string>();
+  const areaSet = new Set<string>();
+  for (const wp of allWaypoints) {
+    const lat = parseFloat(String(wp.lat));
+    const lng = parseFloat(String(wp.lng));
+    const cLat = Math.floor(lat / CELL) * CELL;
+    const cLng = Math.floor(lng / CELL) * CELL;
+    cellSet.add(`${cLat.toFixed(4)},${cLng.toFixed(4)}`);
+    const aLat = Math.floor(lat / AREA) * AREA;
+    const aLng = Math.floor(lng / AREA) * AREA;
+    areaSet.add(`${aLat.toFixed(1)},${aLng.toFixed(1)}`);
+  }
+
+  const totalNewCells = cellSet.size;
+  const totalPlaces = Number(placeCountRow?.c ?? 0);
+  const totalJourneys = Number(journeyCountRow?.c ?? 0);
+  const currentStreak = dbUser?.streakDays ?? 0;
+  const maxPingCount = Number(maxPingRow?.maxPing ?? 0);
+  const distinctAreas = areaSet.size;
+
+  // Badge progress values: progress value + target (null if no progress tracking)
+  const badgeProgress: Record<string, { progress: number; target: number } | null> = {
+    first_journey:   { progress: Math.min(totalJourneys, 1), target: 1 },
+    streets_10:      { progress: totalNewCells, target: 10 },
+    streets_50:      { progress: totalNewCells, target: 50 },
+    streets_200:     { progress: totalNewCells, target: 200 },
+    discovery_first: { progress: Math.min(totalPlaces, 1), target: 1 },
+    discovery_10:    { progress: totalPlaces, target: 10 },
+    discovery_50:    { progress: totalPlaces, target: 50 },
+    night_explorer:  null,
+    streak_3:        { progress: currentStreak, target: 3 },
+    streak_7:        { progress: currentStreak, target: 7 },
+    streak_30:       { progress: currentStreak, target: 30 },
+    ping_master:     { progress: maxPingCount, target: 5 },
+    globe_trotter:   { progress: distinctAreas, target: 3 },
+  };
 
   const earned = [];
   const available = [];
 
   for (const def of BADGE_DEFINITIONS) {
+    const prog = badgeProgress[def.key] ?? null;
     if (earnedMap.has(def.key)) {
       earned.push({
         key: def.key,
@@ -73,6 +131,7 @@ router.get("/badges", async (req: Request, res: Response) => {
         description: def.description,
         icon: def.icon,
         earnedAt: earnedMap.get(def.key),
+        progress: prog,
       });
     } else {
       available.push({
@@ -81,6 +140,7 @@ router.get("/badges", async (req: Request, res: Response) => {
         description: def.description,
         icon: def.icon,
         earnedAt: null,
+        progress: prog,
       });
     }
   }

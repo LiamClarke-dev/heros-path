@@ -283,6 +283,9 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       newBadges: [] as Array<{ key: string; name: string; description: string; icon: string }>,
       completedQuests: [] as Array<{ key: string; title: string; xpReward: number }>,
       newStreak: 0,
+      newCells: 0,
+      revisitCells: 0,
+      newPlacesThisJourney: 0,
     };
     try {
       gamificationResult = await awardJourneyGamification(
@@ -297,10 +300,17 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       logger.warn({ err }, "awardJourneyGamification failed");
     }
 
-    // Step 4: Store xpEarned on the journey
+    // Step 4: Store xpEarned and xpBreakdown on the journey
+    const xpBreakdown = JSON.stringify({
+      newCells: gamificationResult.newCells,
+      revisitCells: gamificationResult.revisitCells,
+      newPlaces: gamificationResult.newPlacesThisJourney,
+      completedQuests: gamificationResult.completedQuests,
+      newBadges: gamificationResult.newBadges,
+    });
     await db
       .update(journeys)
-      .set({ xpEarned: gamificationResult.xpGained })
+      .set({ xpEarned: gamificationResult.xpGained, xpBreakdown })
       .where(eq(journeys.id, journeyId));
 
     res.json({
@@ -312,6 +322,13 @@ router.patch("/:journeyId", async (req: Request, res: Response) => {
       newBadges: gamificationResult.newBadges,
       completedQuests: gamificationResult.completedQuests,
       newStreak: gamificationResult.newStreak,
+      xpBreakdown: {
+        newCells: gamificationResult.newCells,
+        revisitCells: gamificationResult.revisitCells,
+        newPlaces: gamificationResult.newPlacesThisJourney,
+        completedQuests: gamificationResult.completedQuests,
+        newBadges: gamificationResult.newBadges,
+      },
     });
     return;
   }
@@ -604,6 +621,21 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
       ? Math.round((journey.endedAt.getTime() - journey.startedAt.getTime()) / 1000)
       : null;
 
+  let xpBreakdown: {
+    newCells: number;
+    revisitCells: number;
+    newPlaces: number;
+    completedQuests: Array<{ key: string; title: string; xpReward: number }>;
+    newBadges: Array<{ key: string; name: string; description: string; icon: string }>;
+  } | null = null;
+  if (journey.xpBreakdown) {
+    try {
+      xpBreakdown = JSON.parse(journey.xpBreakdown);
+    } catch {
+      // ignore parse errors
+    }
+  }
+
   res.json({
     id: journey.id,
     name: journey.name ?? generateJourneyName(journey.startedAt),
@@ -617,6 +649,7 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
     waypoints,
     places,
     placeCount: places.length,
+    xpBreakdown,
   });
 });
 

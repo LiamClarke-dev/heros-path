@@ -12,7 +12,13 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Alert,
+  LayoutAnimation,
+  UIManager,
 } from "react-native";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -42,6 +48,14 @@ interface JourneyPlace {
   address: string | null;
 }
 
+interface XpBreakdown {
+  newCells: number;
+  revisitCells: number;
+  newPlaces: number;
+  completedQuests: Array<{ key: string; title: string; xpReward: number }>;
+  newBadges: Array<{ key: string; name: string; description: string; icon: string }>;
+}
+
 interface JourneyDetail {
   id: string;
   name: string;
@@ -55,6 +69,7 @@ interface JourneyDetail {
   waypoints: Array<{ lat: number; lng: number }>;
   places: JourneyPlace[];
   placeCount: number;
+  xpBreakdown: XpBreakdown | null;
 }
 
 function formatDurationSeconds(s: number | null): string {
@@ -109,6 +124,79 @@ function PlaceThumbnail({ place }: { place: JourneyPlace }) {
           </View>
         )}
       </View>
+    </View>
+  );
+}
+
+function XpBreakdownSection({ breakdown, xpEarned }: { breakdown: XpBreakdown; xpEarned: number }) {
+  const [expanded, setExpanded] = useState(false);
+
+  function toggle() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded((v) => !v);
+  }
+
+  const rows: Array<{ emoji: string; label: string; xp: number }> = [];
+  if (breakdown.newCells > 0) {
+    rows.push({ emoji: "🗺️", label: `${breakdown.newCells} new street${breakdown.newCells !== 1 ? "s" : ""} × 10 XP`, xp: breakdown.newCells * 10 });
+  }
+  if (breakdown.revisitCells > 0) {
+    rows.push({ emoji: "🔄", label: `${breakdown.revisitCells} revisited street${breakdown.revisitCells !== 1 ? "s" : ""} × 3 XP`, xp: breakdown.revisitCells * 3 });
+  }
+  if (breakdown.newPlaces > 0) {
+    rows.push({ emoji: "📍", label: `${breakdown.newPlaces} new place${breakdown.newPlaces !== 1 ? "s" : ""} × 25 XP`, xp: breakdown.newPlaces * 25 });
+  }
+  for (const quest of breakdown.completedQuests) {
+    rows.push({ emoji: "⚡", label: `Quest: ${quest.title}`, xp: quest.xpReward });
+  }
+
+  return (
+    <View style={styles.xpSection}>
+      <TouchableOpacity style={styles.xpSectionHeader} onPress={toggle} activeOpacity={0.8}>
+        <Feather name="zap" size={16} color={Colors.gold} />
+        <Text style={styles.xpSectionTitle}>XP Earned</Text>
+        <Text style={styles.xpSectionTotal}>+{xpEarned} XP</Text>
+        <Feather name={expanded ? "chevron-up" : "chevron-down"} size={16} color={Colors.parchmentDim} />
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={styles.xpSectionBody}>
+          {rows.length === 0 ? (
+            <Text style={styles.xpNoBreakdown}>No XP breakdown available</Text>
+          ) : (
+            <>
+              {rows.map((row, i) => (
+                <View key={i} style={styles.xpRow}>
+                  <Text style={styles.xpRowEmoji}>{row.emoji}</Text>
+                  <Text style={styles.xpRowLabel} numberOfLines={1}>{row.label}</Text>
+                  <Text style={styles.xpRowValue}>+{row.xp} XP</Text>
+                </View>
+              ))}
+              <View style={styles.xpDivider} />
+              <View style={styles.xpRow}>
+                <Text style={styles.xpRowEmoji}></Text>
+                <Text style={[styles.xpRowLabel, styles.xpTotalLabel]}>Total</Text>
+                <Text style={[styles.xpRowValue, styles.xpTotalValue]}>+{xpEarned} XP</Text>
+              </View>
+            </>
+          )}
+
+          {breakdown.newBadges.length > 0 && (
+            <View style={styles.newBadgesSection}>
+              <Text style={styles.newBadgesTitle}>Badges Unlocked</Text>
+              {breakdown.newBadges.map((badge) => (
+                <View key={badge.key} style={styles.newBadgeRow}>
+                  <Text style={styles.newBadgeIcon}>{badge.icon}</Text>
+                  <View style={styles.newBadgeInfo}>
+                    <Text style={styles.newBadgeName}>{badge.name}</Text>
+                    <Text style={styles.newBadgeDesc}>{badge.description}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -342,6 +430,11 @@ export default function JourneyDetailScreen() {
             </View>
           ))}
         </View>
+
+        {/* XP Breakdown */}
+        {journey.xpBreakdown && (
+          <XpBreakdownSection breakdown={journey.xpBreakdown} xpEarned={journey.xpEarned} />
+        )}
 
         {/* Discovery retry banner */}
         {showRetryBanner && (
@@ -742,5 +835,121 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 14,
     color: Colors.background,
+  },
+  xpSection: {
+    marginHorizontal: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: "hidden",
+  },
+  xpSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 14,
+  },
+  xpSectionTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: Colors.parchment,
+    flex: 1,
+  },
+  xpSectionTotal: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    color: Colors.gold,
+  },
+  xpSectionBody: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  xpRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  xpRowEmoji: {
+    fontSize: 14,
+    width: 22,
+    textAlign: "center",
+  },
+  xpRowLabel: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.parchmentMuted,
+  },
+  xpRowValue: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.parchment,
+    minWidth: 60,
+    textAlign: "right",
+  },
+  xpDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 4,
+  },
+  xpTotalLabel: {
+    fontFamily: "Inter_700Bold",
+    color: Colors.parchment,
+    fontSize: 13,
+  },
+  xpTotalValue: {
+    fontFamily: "Inter_700Bold",
+    color: Colors.gold,
+    fontSize: 14,
+  },
+  xpNoBreakdown: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.parchmentMuted,
+    textAlign: "center",
+    paddingVertical: 8,
+  },
+  newBadgesSection: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 10,
+    gap: 8,
+  },
+  newBadgesTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: Colors.gold,
+  },
+  newBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(212,160,23,0.08)",
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "rgba(212,160,23,0.3)",
+  },
+  newBadgeIcon: {
+    fontSize: 22,
+  },
+  newBadgeInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  newBadgeName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.parchment,
+  },
+  newBadgeDesc: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.parchmentMuted,
   },
 });

@@ -38,6 +38,7 @@ const STATEMENTS = [
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS ping_count INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS discovery_status TEXT NOT NULL DEFAULT 'pending'`,
   `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS name TEXT`,
+  `ALTER TABLE journeys ADD COLUMN IF NOT EXISTS xp_breakdown TEXT`,
 
   // ── PLACE_LISTS ─────────────────────────────────────────────
   `ALTER TABLE place_lists ADD COLUMN IF NOT EXISTS emoji TEXT`,

@@ -102,6 +102,9 @@ export interface GamificationResult {
   newBadges: Array<{ key: string; name: string; description: string; icon: string }>;
   completedQuests: Array<{ key: string; title: string; xpReward: number }>;
   newStreak: number;
+  newCells: number;
+  revisitCells: number;
+  newPlacesThisJourney: number;
 }
 
 // ─── Grid cell helpers ────────────────────────────────────────────────────────
@@ -374,5 +377,5 @@ export async function awardJourneyGamification(
     .set({ xp: newXp, level: newLevel, streakDays: newStreak, lastJourneyDate: todayUTC })
     .where(eq(users.id, userId));
 
-  return { xpGained, newLevel, newBadges, completedQuests, newStreak };
+  return { xpGained, newLevel, newBadges, completedQuests, newStreak, newCells, revisitCells, newPlacesThisJourney };
 }

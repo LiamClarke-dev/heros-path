@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Animated,
   Image,
+  Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -46,6 +47,18 @@ interface BadgeItem {
   description: string;
   icon: string;
   earnedAt: string | null;
+  progress: { progress: number; target: number } | null;
+}
+
+interface QuestItem {
+  key: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  progress: number;
+  target: number;
+  isCompleted: boolean;
+  completedAt: string | null;
 }
 
 function Avatar({ name, imageUrl, size = 64 }: { name: string; imageUrl?: string | null; size?: number }) {
@@ -102,7 +115,15 @@ function XpBar({ current, min, max }: { current: number; min: number; max: numbe
   );
 }
 
+function formatEarnedDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 function BadgeGridItem({ badge, earned }: { badge: BadgeItem; earned: boolean }) {
+  const prog = badge.progress;
+  const showProgress = !earned && prog !== null && prog.target > 1;
+  const progressRatio = showProgress ? Math.min(prog!.progress / prog!.target, 1) : 0;
+
   return (
     <View style={[styles.badgeGridItem, !earned && styles.badgeGridItemLocked]}>
       <View style={styles.badgeIconContainer}>
@@ -112,12 +133,26 @@ function BadgeGridItem({ badge, earned }: { badge: BadgeItem; earned: boolean })
             <Feather name="lock" size={12} color={Colors.parchmentMuted} />
           </View>
         )}
+        {earned && (
+          <View style={styles.badgeEarnedOverlay}>
+            <Feather name="check" size={10} color={Colors.background} />
+          </View>
+        )}
       </View>
       <Text style={[styles.badgeGridName, !earned && styles.badgeGridNameLocked]} numberOfLines={2}>
         {badge.name}
       </Text>
-      {earned && (
-        <Text style={styles.badgeGridDesc} numberOfLines={2}>{badge.description}</Text>
+      <Text style={styles.badgeGridDesc} numberOfLines={2}>{badge.description}</Text>
+      {earned && badge.earnedAt && (
+        <Text style={styles.badgeEarnedDate}>{formatEarnedDate(badge.earnedAt)}</Text>
+      )}
+      {showProgress && (
+        <View style={styles.badgeProgressContainer}>
+          <View style={styles.badgeProgressBar}>
+            <View style={[styles.badgeProgressFill, { width: `${Math.round(progressRatio * 100)}%` as `${number}%` }]} />
+          </View>
+          <Text style={styles.badgeProgressText}>{prog!.progress}/{prog!.target}</Text>
+        </View>
       )}
     </View>
   );
@@ -135,9 +170,11 @@ export default function ProfileTab() {
 
   const [stats, setStats] = useState<Stats | null>(null);
   const [badges, setBadges] = useState<{ earned: BadgeItem[]; available: BadgeItem[] } | null>(null);
+  const [quests, setQuests] = useState<{ active: QuestItem[]; completed: QuestItem[] } | null>(null);
   const [friendCount, setFriendCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [leveledUp, setLeveledUp] = useState(false);
+  const [xpInfoVisible, setXpInfoVisible] = useState(false);
   const [visitSummary, setVisitSummary] = useState<{
     total: number;
     recent: Array<{ googlePlaceId: string; name: string; photoUrl: string | null; reaction: string | null }>;
@@ -159,12 +196,16 @@ export default function ProfileTab() {
   const loadData = useCallback(async () => {
     if (!token) return;
     try {
-      const [statsData, badgesData, visitsData] = await Promise.all([
+      const [statsData, badgesData, questsData, visitsData] = await Promise.all([
         apiFetch("/api/me/stats", { headers: { Authorization: `Bearer ${token}` } }) as Promise<Stats>,
         apiFetch("/api/badges", { headers: { Authorization: `Bearer ${token}` } }) as Promise<{
           earned: BadgeItem[];
           available: BadgeItem[];
         }>,
+        apiFetch("/api/quests", { headers: { Authorization: `Bearer ${token}` } }).catch(() => null) as Promise<{
+          active: QuestItem[];
+          completed: QuestItem[];
+        } | null>,
         apiFetch("/api/me/visits?limit=3&sort=recent", { headers: { Authorization: `Bearer ${token}` } }).catch(() => null) as Promise<{
           visits: Array<{ googlePlaceId: string; name: string; photoUrl: string | null; reaction: string | null }>;
           total: number;
@@ -172,6 +213,7 @@ export default function ProfileTab() {
       ]);
       setStats(statsData);
       setBadges(badgesData);
+      if (questsData) setQuests(questsData);
       if (visitsData) {
         setVisitSummary({ total: visitsData.total, recent: visitsData.visits });
       }
@@ -252,9 +294,18 @@ export default function ProfileTab() {
       <View style={styles.xpCard}>
         <View style={styles.xpHeader}>
           <Text style={styles.xpLabel}>Level {stats.level}</Text>
-          <Text style={styles.xpNumbers}>
-            {stats.xp.toLocaleString()} XP
-          </Text>
+          <View style={styles.xpHeaderRight}>
+            <Text style={styles.xpNumbers}>
+              {stats.xp.toLocaleString()} XP
+            </Text>
+            <TouchableOpacity
+              onPress={() => setXpInfoVisible(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.xpInfoBtn}
+            >
+              <Feather name="info" size={14} color={Colors.parchmentDim} />
+            </TouchableOpacity>
+          </View>
         </View>
         <XpBar current={stats.xp} min={stats.xpCurrentLevel} max={stats.xpNextLevel} />
         <Text style={styles.xpCaption}>
@@ -365,11 +416,83 @@ export default function ProfileTab() {
         </View>
       )}
 
+      {quests && (quests.active.length > 0 || quests.completed.length > 0) && (
+        <View style={styles.questsSection}>
+          <Text style={styles.sectionTitle}>
+            Quests{" "}
+            <Text style={styles.sectionCount}>{quests.completed.length} completed</Text>
+          </Text>
+          {quests.active.map((quest) => {
+            const ratio = quest.target > 0 ? Math.min(quest.progress / quest.target, 1) : 0;
+            return (
+              <View key={quest.key} style={styles.questCard}>
+                <View style={styles.questHeader}>
+                  <Text style={styles.questTitle}>{quest.title}</Text>
+                  <Text style={styles.questXp}>+{quest.xpReward} XP</Text>
+                </View>
+                <Text style={styles.questDesc}>{quest.description}</Text>
+                <View style={styles.questProgressRow}>
+                  <View style={styles.questProgressBar}>
+                    <View style={[styles.questProgressFill, { width: `${Math.round(ratio * 100)}%` as `${number}%` }]} />
+                  </View>
+                  <Text style={styles.questProgressText}>{quest.progress}/{quest.target}</Text>
+                </View>
+              </View>
+            );
+          })}
+          {quests.active.length === 0 && (
+            <Text style={styles.questEmptyText}>All quests completed — check back soon!</Text>
+          )}
+        </View>
+      )}
+
       <TouchableOpacity style={styles.signOutBtn} onPress={logout}>
         <Feather name="log-out" size={16} color={Colors.error} />
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
     </ScrollView>
+
+    <Modal
+      visible={xpInfoVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setXpInfoVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.xpModalOverlay}
+        activeOpacity={1}
+        onPress={() => setXpInfoVisible(false)}
+      >
+        <TouchableOpacity activeOpacity={1} style={styles.xpModalBox}>
+          <View style={styles.xpModalHeader}>
+            <Feather name="zap" size={18} color={Colors.gold} />
+            <Text style={styles.xpModalTitle}>How XP Works</Text>
+            <TouchableOpacity onPress={() => setXpInfoVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="x" size={18} color={Colors.parchmentDim} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.xpModalRows}>
+            {[
+              { emoji: "🗺️", label: "Walk a new street", value: "+10 XP" },
+              { emoji: "🔄", label: "Revisit a street", value: "+3 XP" },
+              { emoji: "📍", label: "Discover a new place", value: "+25 XP" },
+              { emoji: "⚡", label: "Complete a quest", value: "+30–90 XP" },
+              { emoji: "🏅", label: "Unlock a badge", value: "bonus XP" },
+              { emoji: "🔥", label: "Daily streak bonus", value: "+20% XP" },
+            ].map((row) => (
+              <View key={row.label} style={styles.xpModalRow}>
+                <Text style={styles.xpModalEmoji}>{row.emoji}</Text>
+                <Text style={styles.xpModalLabel}>{row.label}</Text>
+                <Text style={styles.xpModalValue}>{row.value}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.xpModalFormula}>
+            Level = √(Total XP ÷ 100) + 1
+          </Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
     </SafeAreaView>
   );
 }
@@ -660,5 +783,173 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
     color: Colors.error,
+  },
+  xpHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  xpInfoBtn: {
+    padding: 2,
+  },
+  badgeEarnedOverlay: {
+    position: "absolute",
+    bottom: -4,
+    right: -8,
+    backgroundColor: Colors.gold,
+    borderRadius: 8,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: Colors.background,
+  },
+  badgeProgressContainer: {
+    width: "100%",
+    gap: 3,
+  },
+  badgeProgressBar: {
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  badgeProgressFill: {
+    height: "100%",
+    backgroundColor: Colors.gold,
+    borderRadius: 2,
+  },
+  badgeProgressText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: Colors.parchmentDim,
+    textAlign: "right",
+  },
+  badgeEarnedDate: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: Colors.gold,
+    textAlign: "center",
+  },
+  xpModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  xpModalBox: {
+    backgroundColor: Colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 20,
+    width: "100%",
+    gap: 16,
+  },
+  xpModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  xpModalTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 17,
+    color: Colors.parchment,
+    flex: 1,
+  },
+  xpModalRows: {
+    gap: 10,
+  },
+  xpModalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  xpModalEmoji: {
+    fontSize: 16,
+    width: 24,
+    textAlign: "center",
+  },
+  xpModalLabel: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.parchmentMuted,
+  },
+  xpModalValue: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: Colors.gold,
+  },
+  xpModalFormula: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: Colors.parchmentDim,
+    textAlign: "center",
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 12,
+  },
+  questsSection: {
+    gap: 10,
+  },
+  questCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    gap: 8,
+  },
+  questHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  questTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: Colors.parchment,
+    flex: 1,
+  },
+  questXp: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: Colors.gold,
+  },
+  questDesc: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.parchmentMuted,
+  },
+  questProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  questProgressBar: {
+    flex: 1,
+    height: 6,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  questProgressFill: {
+    height: "100%",
+    backgroundColor: Colors.gold,
+    borderRadius: 3,
+  },
+  questProgressText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: Colors.parchmentMuted,
+    minWidth: 36,
+    textAlign: "right",
+  },
+  questEmptyText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.parchmentMuted,
+    textAlign: "center",
+    paddingVertical: 8,
   },
 });

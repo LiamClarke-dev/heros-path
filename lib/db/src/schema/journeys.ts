@@ -21,6 +21,7 @@ export const journeys = pgTable("journeys", {
   pingCount: integer("ping_count").notNull().default(0),
   discoveryStatus: text("discovery_status").notNull().default("pending"),
   name: text("name"),
+  xpBreakdown: text("xp_breakdown"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

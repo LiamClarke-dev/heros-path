@@ -852,10 +852,17 @@ export default function JourneyTab() {
             const rings = boundaryToPolygonCoords(zone.boundary);
             const isCompleted = zone.coveragePct >= ZONE_COMPLETION_THRESHOLD;
             const isVisited = zone.coveragePct > 0;
-            const scaledOpacity = Math.round(zone.coveragePct * 0.55 * 100) / 100;
-            const scaledFill = isVisited
-              ? `rgba(106,221,147,${scaledOpacity})`
+            // Completed zones get a fixed fill; in-progress zones scale with coverage; untouched = transparent
+            const scaledFill = isCompleted
+              ? ZONE_COLORS.completedFill
+              : isVisited
+              ? `rgba(106,221,147,${Math.round(zone.coveragePct * 0.45 * 100) / 100})`
               : "transparent";
+            const strokeColor = isCompleted
+              ? ZONE_COLORS.completedStroke
+              : isVisited
+              ? ZONE_COLORS.inProgressStroke
+              : ZONE_COLORS.unvisitedStroke;
             const elements = [];
 
             for (let ri = 0; ri < rings.length; ri++) {
@@ -864,13 +871,7 @@ export default function JourneyTab() {
                   <Polygon
                     key={`zone-boundary-${zone.id}-${ri}`}
                     coordinates={rings[ri]}
-                    strokeColor={
-                      isCompleted
-                        ? ZONE_COLORS.completedStroke
-                        : isVisited
-                        ? ZONE_COLORS.boundaryStroke
-                        : ZONE_COLORS.boundaryStrokeMuted
-                    }
+                    strokeColor={strokeColor}
                     strokeWidth={isCompleted ? 2 : isVisited ? 1.5 : 1}
                     lineDashPattern={[8, 4]}
                     fillColor={scaledFill}

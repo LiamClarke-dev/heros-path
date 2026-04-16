@@ -248,19 +248,38 @@ function loadTokyo(): ZoneRecord[] {
     if (z.wardId) wardCounts.set(z.wardId, (wardCounts.get(z.wardId) ?? 0) + 1);
   }
 
-  const filtered = allZones.filter((z) => {
+  // Pass 1: remove tiny zones from dense wards
+  const afterAreaFilter = allZones.filter((z) => {
     if (!z.wardId) return true;
     const count = wardCounts.get(z.wardId) ?? 0;
     if (count > TOKYO_DENSE_WARD_THRESHOLD && z.areaKm2 < TOKYO_AREA_THRESHOLD_KM2) return false;
     return true;
   });
 
+  // Pass 2: enforce hard cap of 40 zones per ward (keep top-N by area, largest first)
+  const wardZones = new Map<string, ZoneWithArea[]>();
+  const uncappedZones: ZoneWithArea[] = [];
+  for (const z of afterAreaFilter) {
+    if (!z.wardId) { uncappedZones.push(z); continue; }
+    if (!wardZones.has(z.wardId)) wardZones.set(z.wardId, []);
+    wardZones.get(z.wardId)!.push(z);
+  }
+  const filtered: ZoneWithArea[] = [...uncappedZones];
+  for (const [, zones] of wardZones) {
+    if (zones.length <= TOKYO_DENSE_WARD_THRESHOLD) {
+      filtered.push(...zones);
+    } else {
+      const sorted = [...zones].sort((a, b) => b.areaKm2 - a.areaKm2);
+      filtered.push(...sorted.slice(0, TOKYO_DENSE_WARD_THRESHOLD));
+    }
+  }
+
   const afterCounts = new Map<string, number>();
   for (const z of filtered) {
     if (z.wardId) afterCounts.set(z.wardId, (afterCounts.get(z.wardId) ?? 0) + 1);
   }
 
-  console.log(`Tokyo: ${allZones.length} zones → ${filtered.length} after area filter`);
+  console.log(`Tokyo: ${allZones.length} zones → ${afterAreaFilter.length} after area filter → ${filtered.length} after 40-zone cap`);
   for (const [wardId, before] of wardCounts) {
     const after = afterCounts.get(wardId) ?? 0;
     if (before !== after) console.log(`  Ward ${wardId}: ${before} → ${after}`);

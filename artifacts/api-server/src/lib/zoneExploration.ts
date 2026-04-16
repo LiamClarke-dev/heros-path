@@ -90,36 +90,116 @@ function getWardBbox(ward: WardBoundary): { minLat: number; maxLat: number; minL
   };
 }
 
+// Point-to-line-segment distance (in coordinate degrees, not metres)
+function pointToSegmentDist(
+  px: number, py: number,
+  x1: number, y1: number,
+  x2: number, y2: number
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(px - x1, py - y1);
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+// Minimum distance from (lat, lng) to any edge of a polygon ring [lng, lat][]
+function pointToRingEdgeDist(lat: number, lng: number, ring: [number, number][]): number {
+  let min = Infinity;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[i + 1];
+    const d = pointToSegmentDist(lng, lat, x1, y1, x2, y2);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+// Minimum distance from (lat, lng) to any polygon edge of a WardBoundary (MultiPolygon or Polygon)
+function pointToWardEdgeDist(lat: number, lng: number, ward: WardBoundary): number {
+  const b = ward.boundary as { type: string; coordinates: unknown };
+  let min = Infinity;
+  if (b.type === "Polygon") {
+    const rings = b.coordinates as [number, number][][];
+    if (rings[0]) { const d = pointToRingEdgeDist(lat, lng, rings[0]); if (d < min) min = d; }
+  } else if (b.type === "MultiPolygon") {
+    const polys = b.coordinates as [number, number][][][];
+    for (const poly of polys) {
+      if (poly[0]) { const d = pointToRingEdgeDist(lat, lng, poly[0]); if (d < min) min = d; }
+    }
+  }
+  return min;
+}
+
+// All ward IDs whose polygon boundary is within thresholdDeg of (lat, lng)
 function getAdjacentWards(lat: number, lng: number, wards: WardBoundary[], thresholdDeg: number): string[] {
   const adjacent: string[] = [];
   for (const ward of wards) {
+    // Fast bbox pre-filter: skip wards whose bbox is far beyond threshold
     const bbox = getWardBbox(ward);
-    if (!bbox) continue;
-    const distLat = Math.max(0, bbox.minLat - lat, lat - bbox.maxLat);
-    const distLng = Math.max(0, bbox.minLng - lng, lng - bbox.maxLng);
-    if (distLat <= thresholdDeg && distLng <= thresholdDeg) {
+    if (bbox) {
+      const bboxDistLat = Math.max(0, bbox.minLat - lat, lat - bbox.maxLat);
+      const bboxDistLng = Math.max(0, bbox.minLng - lng, lng - bbox.maxLng);
+      if (bboxDistLat > thresholdDeg * 2 || bboxDistLng > thresholdDeg * 2) continue;
+    }
+    // Precise polygon-edge distance check
+    if (pointToWardEdgeDist(lat, lng, ward) <= thresholdDeg) {
       adjacent.push(ward.id);
     }
   }
   return adjacent;
 }
 
+// Build ward adjacency by checking polygon-vertex proximity between each pair of wards.
+// Two wards are considered adjacent when any vertex of one lies within TOL degrees of the
+// expanded bounding box of the other — far more precise than bbox-rectangle overlap.
 function computeWardAdjacency(wards: WardBoundary[]): Map<string, Set<string>> {
   const adj = new Map<string, Set<string>>();
   for (const w of wards) adj.set(w.id, new Set());
 
+  // Collect all polygon vertices per ward
+  const wardVerts = new Map<string, [number, number][]>();
+  for (const ward of wards) {
+    const b = ward.boundary as { type: string; coordinates: unknown };
+    const verts: [number, number][] = [];
+    if (b.type === "Polygon") {
+      for (const pt of (b.coordinates as [number, number][][])[0] ?? []) verts.push(pt);
+    } else if (b.type === "MultiPolygon") {
+      for (const poly of (b.coordinates as [number, number][][][])) {
+        for (const pt of poly[0] ?? []) verts.push(pt);
+      }
+    }
+    wardVerts.set(ward.id, verts);
+  }
+
   const bboxes = new Map<string, ReturnType<typeof getWardBbox>>();
   for (const w of wards) bboxes.set(w.id, getWardBbox(w));
 
-  const TOL = 0.01;
+  const TOL = 0.005; // ~500 m tolerance for shared/near-shared borders
   for (let i = 0; i < wards.length; i++) {
     for (let j = i + 1; j < wards.length; j++) {
-      const a = bboxes.get(wards[i].id);
-      const b = bboxes.get(wards[j].id);
-      if (!a || !b) continue;
-      const overlapLat = a.minLat - TOL <= b.maxLat && a.maxLat + TOL >= b.minLat;
-      const overlapLng = a.minLng - TOL <= b.maxLng && a.maxLng + TOL >= b.minLng;
-      if (overlapLat && overlapLng) {
+      const bboxA = bboxes.get(wards[i].id);
+      const bboxB = bboxes.get(wards[j].id);
+      if (!bboxA || !bboxB) continue;
+      // Expanded bbox overlap pre-filter
+      if (
+        bboxA.minLat - TOL > bboxB.maxLat || bboxA.maxLat + TOL < bboxB.minLat ||
+        bboxA.minLng - TOL > bboxB.maxLng || bboxA.maxLng + TOL < bboxB.minLng
+      ) continue;
+      // Check if any vertex of A falls inside the expanded bbox of B, or vice versa
+      let found = false;
+      for (const [lng, lat] of (wardVerts.get(wards[i].id) ?? [])) {
+        if (lat >= bboxB.minLat - TOL && lat <= bboxB.maxLat + TOL &&
+            lng >= bboxB.minLng - TOL && lng <= bboxB.maxLng + TOL) { found = true; break; }
+      }
+      if (!found) {
+        for (const [lng, lat] of (wardVerts.get(wards[j].id) ?? [])) {
+          if (lat >= bboxA.minLat - TOL && lat <= bboxA.maxLat + TOL &&
+              lng >= bboxA.minLng - TOL && lng <= bboxA.maxLng + TOL) { found = true; break; }
+        }
+      }
+      if (found) {
         adj.get(wards[i].id)!.add(wards[j].id);
         adj.get(wards[j].id)!.add(wards[i].id);
       }
@@ -454,12 +534,9 @@ export async function getZonesForLocation(
     if (currentWard) {
       targetWardIds.add(currentWard);
       const wardDef = wards.find((w) => w.id === currentWard);
-      const bbox = wardDef ? getWardBbox(wardDef) : null;
-      if (bbox) {
-        const distToEdge = Math.min(
-          lat - bbox.minLat, bbox.maxLat - lat,
-          lng - bbox.minLng, bbox.maxLng - lng
-        );
+      if (wardDef) {
+        // Use actual polygon-edge distance, not bbox-edge distance
+        const distToEdge = pointToWardEdgeDist(lat, lng, wardDef);
         if (distToEdge < PROXIMITY_DEG) {
           for (const adj of (adjacency.get(currentWard) ?? [])) targetWardIds.add(adj);
         }
@@ -482,12 +559,9 @@ export async function getZonesForLocation(
     if (currentLGA) {
       targetWardIds.add(currentLGA);
       const lgaDef = lgas.find((w) => w.id === currentLGA);
-      const bbox = lgaDef ? getWardBbox(lgaDef) : null;
-      if (bbox) {
-        const distToEdge = Math.min(
-          lat - bbox.minLat, bbox.maxLat - lat,
-          lng - bbox.minLng, bbox.maxLng - lng
-        );
+      if (lgaDef) {
+        // Use actual polygon-edge distance, not bbox-edge distance
+        const distToEdge = pointToWardEdgeDist(lat, lng, lgaDef);
         if (distToEdge < PROXIMITY_DEG) {
           for (const adj of (adjacency.get(currentLGA) ?? [])) targetWardIds.add(adj);
         }

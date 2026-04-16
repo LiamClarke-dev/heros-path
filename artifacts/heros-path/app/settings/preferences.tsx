@@ -48,6 +48,32 @@ const MAX_DISCOVERIES_OPTIONS = [
   { value: 0, label: "Unlimited" },
 ];
 
+const TOKYO_WARDS = [
+  { id: "adachi", label: "Adachi (足立区)" },
+  { id: "arakawa", label: "Arakawa (荒川区)" },
+  { id: "bunkyo", label: "Bunkyo (文京区)" },
+  { id: "chiyoda", label: "Chiyoda (千代田区)" },
+  { id: "chuo", label: "Chuo (中央区)" },
+  { id: "edogawa", label: "Edogawa (江戸川区)" },
+  { id: "itabashi", label: "Itabashi (板橋区)" },
+  { id: "katsushika", label: "Katsushika (葛飾区)" },
+  { id: "kita", label: "Kita (北区)" },
+  { id: "koto", label: "Koto (江東区)" },
+  { id: "meguro", label: "Meguro (目黒区)" },
+  { id: "minato", label: "Minato (港区)" },
+  { id: "nakano", label: "Nakano (中野区)" },
+  { id: "nerima", label: "Nerima (練馬区)" },
+  { id: "ota", label: "Ota (大田区)" },
+  { id: "setagaya", label: "Setagaya (世田谷区)" },
+  { id: "shibuya", label: "Shibuya (渋谷区)" },
+  { id: "shinagawa", label: "Shinagawa (品川区)" },
+  { id: "shinjuku", label: "Shinjuku (新宿区)" },
+  { id: "suginami", label: "Suginami (杉並区)" },
+  { id: "sumida", label: "Sumida (墨田区)" },
+  { id: "taito", label: "Taito (台東区)" },
+  { id: "toshima", label: "Toshima (豊島区)" },
+];
+
 export default function PreferencesScreen() {
   const router = useRouter();
   const { token } = useAuth();
@@ -57,16 +83,23 @@ export default function PreferencesScreen() {
   const [placeTypes, setPlaceTypes] = useState<string[]>([]);
   const [minRating, setMinRating] = useState(0);
   const [maxDiscoveries, setMaxDiscoveries] = useState(20);
+  const [tokyoWards, setTokyoWards] = useState<string[]>([]);
 
   const loadPrefs = useCallback(async () => {
     if (!token) { setLoading(false); return; }
     try {
-      const data = (await apiFetch("/api/me/preferences", {
-        headers: { Authorization: `Bearer ${token}` },
-      })) as { placeTypes: string[]; minRating: number; maxDiscoveries: number };
-      setPlaceTypes(data.placeTypes ?? []);
-      setMinRating(data.minRating ?? 0);
-      setMaxDiscoveries(data.maxDiscoveries ?? 20);
+      const [prefs, wardData] = await Promise.all([
+        apiFetch("/api/me/preferences", {
+          headers: { Authorization: `Bearer ${token}` },
+        }) as Promise<{ placeTypes: string[]; minRating: number; maxDiscoveries: number }>,
+        apiFetch("/api/map/preferences/tokyo-wards", {
+          headers: { Authorization: `Bearer ${token}` },
+        }) as Promise<{ wards: string[] }>,
+      ]);
+      setPlaceTypes(prefs.placeTypes ?? []);
+      setMinRating(prefs.minRating ?? 0);
+      setMaxDiscoveries(prefs.maxDiscoveries ?? 20);
+      setTokyoWards(wardData.wards ?? []);
     } catch (err) {
       console.warn("[Preferences] load failed", err);
     } finally {
@@ -84,16 +117,29 @@ export default function PreferencesScreen() {
     );
   }
 
+  function toggleWard(wardId: string) {
+    setTokyoWards((prev) =>
+      prev.includes(wardId) ? prev.filter((w) => w !== wardId) : [...prev, wardId]
+    );
+  }
+
   async function save() {
     if (!token) return;
     setSaving(true);
     try {
-      await apiFetch("/api/me/preferences", {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ placeTypes, minRating, maxDiscoveries }),
-      });
-      Alert.alert("Saved", "Your discovery preferences have been updated.");
+      await Promise.all([
+        apiFetch("/api/me/preferences", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ placeTypes, minRating, maxDiscoveries }),
+        }),
+        apiFetch("/api/map/preferences/tokyo-wards", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ wards: tokyoWards }),
+        }),
+      ]);
+      Alert.alert("Saved", "Your preferences have been updated.");
     } catch (err) {
       Alert.alert("Error", "Could not save preferences. Please try again.");
     } finally {
@@ -123,10 +169,10 @@ export default function PreferencesScreen() {
           >
             <Feather name="arrow-left" size={22} color={Colors.parchment} />
           </TouchableOpacity>
-          <Text style={styles.title}>Discovery Preferences</Text>
+          <Text style={styles.title}>Preferences</Text>
         </View>
         <Text style={styles.subtitle}>
-          Choose what types of places to find on your journeys.{"\n"}Leave all unchecked to discover everything.
+          Customise your discovery filters and map zones.
         </Text>
       </View>
 
@@ -201,6 +247,35 @@ export default function PreferencesScreen() {
                 >
                   {opt.label}
                 </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={[styles.sectionLabel, { marginTop: 24 }]}>Tokyo Pinned Wards</Text>
+        <Text style={styles.sectionSubtitle}>
+          When exploring Tokyo, map zones load for your current ward. Pin extra wards to always show their zones too.
+        </Text>
+        <View style={styles.grid}>
+          {TOKYO_WARDS.map((ward) => {
+            const selected = tokyoWards.includes(ward.id);
+            return (
+              <TouchableOpacity
+                key={ward.id}
+                style={[styles.typeChip, selected && styles.typeChipSelected]}
+                onPress={() => toggleWard(ward.id)}
+              >
+                <Text
+                  style={[
+                    styles.typeChipText,
+                    selected && styles.typeChipTextSelected,
+                  ]}
+                >
+                  {ward.label}
+                </Text>
+                {selected && (
+                  <Feather name="check" size={12} color={Colors.background} />
+                )}
               </TouchableOpacity>
             );
           })}

@@ -852,6 +852,10 @@ export default function JourneyTab() {
             const rings = boundaryToPolygonCoords(zone.boundary);
             const isCompleted = zone.coveragePct >= ZONE_COMPLETION_THRESHOLD;
             const isVisited = zone.coveragePct > 0;
+            const scaledOpacity = Math.round(zone.coveragePct * 0.55 * 100) / 100;
+            const scaledFill = isVisited
+              ? `rgba(106,221,147,${scaledOpacity})`
+              : "transparent";
             const elements = [];
 
             for (let ri = 0; ri < rings.length; ri++) {
@@ -868,14 +872,8 @@ export default function JourneyTab() {
                         : ZONE_COLORS.boundaryStrokeMuted
                     }
                     strokeWidth={isCompleted ? 2 : isVisited ? 1.5 : 1}
-                    lineDashPattern={isCompleted ? undefined : [8, 4]}
-                    fillColor={
-                      isCompleted
-                        ? ZONE_COLORS.completedFill
-                        : isVisited
-                        ? ZONE_COLORS.visitedFill
-                        : "transparent"
-                    }
+                    lineDashPattern={[8, 4]}
+                    fillColor={scaledFill}
                   />
                 );
               }

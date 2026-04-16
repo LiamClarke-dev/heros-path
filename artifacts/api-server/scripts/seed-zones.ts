@@ -6,7 +6,7 @@
  */
 
 import { db, zones } from "@workspace/db";
-import { eq, isNull, sql } from "drizzle-orm";
+import { eq, isNull, sql, inArray, notInArray } from "drizzle-orm";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -16,6 +16,68 @@ const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, "../src/data/zones");
 
 const CELL_DEG = 0.0005;
+
+const MELBOURNE_LGA_MAP: Record<string, string> = {
+  Abbotsford: "yarra",
+  "Albert Park": "port_phillip",
+  Alphington: "darebin",
+  "Ascot Vale": "moonee_valley",
+  Bentleigh: "glen_eira",
+  Brighton: "bayside",
+  "Brighton East": "bayside",
+  Brunswick: "moreland",
+  "Brunswick East": "moreland",
+  Camberwell: "boroondara",
+  Carlton: "melbourne",
+  Carnegie: "glen_eira",
+  Chadstone: "glen_eira",
+  "Clifton Hill": "yarra",
+  Coburg: "moreland",
+  Collingwood: "yarra",
+  Cremorne: "yarra",
+  Docklands: "melbourne",
+  "East Melbourne": "melbourne",
+  Elwood: "port_phillip",
+  Fairfield: "darebin",
+  Fitzroy: "yarra",
+  "Fitzroy North": "yarra",
+  Flemington: "moonee_valley",
+  Footscray: "maribyrnong",
+  "Glen Iris": "boroondara",
+  Hampton: "bayside",
+  Hawthorn: "boroondara",
+  "Hawthorn East": "boroondara",
+  Kew: "boroondara",
+  Malvern: "stonnington",
+  "Malvern East": "stonnington",
+  "Middle Park": "port_phillip",
+  "Moonee Ponds": "moonee_valley",
+  Murrumbeena: "glen_eira",
+  Newport: "hobsons_bay",
+  "North Melbourne": "melbourne",
+  Northcote: "darebin",
+  Oakleigh: "glen_eira",
+  Parkville: "melbourne",
+  "Port Melbourne": "port_phillip",
+  Prahran: "stonnington",
+  Preston: "darebin",
+  Reservoir: "darebin",
+  Richmond: "yarra",
+  Sandringham: "bayside",
+  Seddon: "maribyrnong",
+  "South Melbourne": "port_phillip",
+  "South Yarra": "stonnington",
+  Southbank: "melbourne",
+  "St Kilda": "port_phillip",
+  "St Kilda East": "port_phillip",
+  "Surrey Hills": "boroondara",
+  Thornbury: "darebin",
+  Toorak: "stonnington",
+  "West Melbourne": "melbourne",
+  Williamstown: "hobsons_bay",
+  Windsor: "stonnington",
+  Yarraville: "maribyrnong",
+};
 
 function pointInPolygon(lng: number, lat: number, ring: [number, number][]): boolean {
   let inside = false;
@@ -58,6 +120,24 @@ function computeBBox(boundary: { type: string; coordinates: unknown }): BBox {
   };
 }
 
+function computePolygonAreaDeg2(ring: [number, number][]): number {
+  let area = 0;
+  const n = ring.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    area += (xj + xi) * (yj - yi);
+  }
+  return Math.abs(area) / 2;
+}
+
+function computeZoneAreaKm2(ring: [number, number][], centroidLat: number): number {
+  const deg2 = computePolygonAreaDeg2(ring);
+  const latKmPerDeg = 111.32;
+  const lngKmPerDeg = 111.32 * Math.cos((centroidLat * Math.PI) / 180);
+  return deg2 * latKmPerDeg * lngKmPerDeg;
+}
+
 function computeTotalCells(boundary: { type: string; coordinates: unknown }, bbox: BBox): number {
   let rings: [number, number][][] = [];
 
@@ -92,6 +172,9 @@ interface ZoneRecord {
   centroidLng: number;
 }
 
+const TOKYO_AREA_THRESHOLD_KM2 = 0.08;
+const TOKYO_DENSE_WARD_THRESHOLD = 40;
+
 function loadTokyo(): ZoneRecord[] {
   const raw = JSON.parse(readFileSync(join(DATA_DIR, "tokyo.json"), "utf8")) as {
     zones: Array<{
@@ -104,14 +187,20 @@ function loadTokyo(): ZoneRecord[] {
     }>;
   };
 
-  return raw.zones.map((z): ZoneRecord | null => {
+  type ZoneWithArea = ZoneRecord & { areaKm2: number };
+
+  const allZones: ZoneWithArea[] = raw.zones.flatMap((z): ZoneWithArea[] => {
     const ring = z.ring;
-    if (!ring || ring.length < 3) return null;
+    if (!ring || ring.length < 3) return [];
+
+    const validRing = ring.filter(([lng, lat]) => lng != null && lat != null && !isNaN(lng) && !isNaN(lat));
+    if (validRing.length < 3) return [];
 
     const closed =
-      ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
-        ? ring
-        : [...ring, ring[0]];
+      validRing[0][0] === validRing[validRing.length - 1][0] &&
+      validRing[0][1] === validRing[validRing.length - 1][1]
+        ? validRing
+        : [...validRing, validRing[0]];
 
     const centroidLat = z.centroid?.[0] ?? null;
     const centroidLng = z.centroid?.[1] ?? null;
@@ -120,17 +209,19 @@ function loadTokyo(): ZoneRecord[] {
     let resolvedLng: number;
 
     if (centroidLat == null || centroidLng == null || isNaN(centroidLat) || isNaN(centroidLng)) {
-      const lats = ring.map((pt) => pt[1]);
-      const lngs = ring.map((pt) => pt[0]);
+      const lats = validRing.map((pt) => pt[1]);
+      const lngs = validRing.map((pt) => pt[0]);
       resolvedLat = (Math.min(...lats) + Math.max(...lats)) / 2;
       resolvedLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
-      if (isNaN(resolvedLat) || isNaN(resolvedLng)) return null;
+      if (isNaN(resolvedLat) || isNaN(resolvedLng)) return [];
     } else {
       resolvedLat = centroidLat;
       resolvedLng = centroidLng;
     }
 
-    return {
+    const areaKm2 = computeZoneAreaKm2(validRing, resolvedLat);
+
+    return [{
       id: `tokyo-${z.id.replace(/\//g, "-")}`,
       city: "tokyo",
       name: z.name,
@@ -139,8 +230,34 @@ function loadTokyo(): ZoneRecord[] {
       boundary: { type: "Polygon", coordinates: [closed] },
       centroidLat: resolvedLat,
       centroidLng: resolvedLng,
-    };
-  }).filter((z): z is ZoneRecord => z !== null);
+      areaKm2,
+    }];
+  });
+
+  const wardCounts = new Map<string, number>();
+  for (const z of allZones) {
+    if (z.wardId) wardCounts.set(z.wardId, (wardCounts.get(z.wardId) ?? 0) + 1);
+  }
+
+  const filtered = allZones.filter((z) => {
+    if (!z.wardId) return true;
+    const count = wardCounts.get(z.wardId) ?? 0;
+    if (count > TOKYO_DENSE_WARD_THRESHOLD && z.areaKm2 < TOKYO_AREA_THRESHOLD_KM2) return false;
+    return true;
+  });
+
+  const afterCounts = new Map<string, number>();
+  for (const z of filtered) {
+    if (z.wardId) afterCounts.set(z.wardId, (afterCounts.get(z.wardId) ?? 0) + 1);
+  }
+
+  console.log(`Tokyo: ${allZones.length} zones → ${filtered.length} after area filter`);
+  for (const [wardId, before] of wardCounts) {
+    const after = afterCounts.get(wardId) ?? 0;
+    if (before !== after) console.log(`  Ward ${wardId}: ${before} → ${after}`);
+  }
+
+  return filtered;
 }
 
 function loadGeoJsonCity(city: string, filename: string, nameKey: string): ZoneRecord[] {
@@ -167,12 +284,14 @@ function loadGeoJsonCity(city: string, filename: string, nameKey: string): ZoneR
     const centroidLat = (Math.min(...lats) + Math.max(...lats)) / 2;
     const centroidLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
 
+    const wardId = city === "melbourne" ? (MELBOURNE_LGA_MAP[name] ?? null) : null;
+
     return {
       id: `${prefix}-${slug}`,
       city,
       name,
       nameEn: null,
-      wardId: null,
+      wardId,
       boundary: f.geometry as { type: string; coordinates: unknown },
       centroidLat,
       centroidLng,
@@ -188,7 +307,7 @@ async function seedCity(city: string, records: ZoneRecord[]): Promise<void> {
 
   for (const rec of records) {
     const [existing] = await db
-      .select({ id: zones.id, bboxMinLat: zones.bboxMinLat })
+      .select({ id: zones.id, bboxMinLat: zones.bboxMinLat, wardId: zones.wardId })
       .from(zones)
       .where(eq(zones.id, rec.id));
 
@@ -196,16 +315,24 @@ async function seedCity(city: string, records: ZoneRecord[]): Promise<void> {
     const totalCells = computeTotalCells(rec.boundary, bbox);
 
     if (existing) {
-      if (existing.bboxMinLat == null) {
+      const needsBboxUpdate = existing.bboxMinLat == null;
+      const needsWardUpdate = existing.wardId == null && rec.wardId != null;
+
+      if (needsBboxUpdate || needsWardUpdate) {
         await db
           .update(zones)
           .set({
-            bboxMinLat: bbox.minLat,
-            bboxMaxLat: bbox.maxLat,
-            bboxMinLng: bbox.minLng,
-            bboxMaxLng: bbox.maxLng,
-            gridSize: CELL_DEG,
-            totalCells,
+            ...(needsBboxUpdate
+              ? {
+                  bboxMinLat: bbox.minLat,
+                  bboxMaxLat: bbox.maxLat,
+                  bboxMinLng: bbox.minLng,
+                  bboxMaxLng: bbox.maxLng,
+                  gridSize: CELL_DEG,
+                  totalCells,
+                }
+              : {}),
+            ...(needsWardUpdate ? { wardId: rec.wardId } : {}),
           })
           .where(eq(zones.id, rec.id));
         updated++;
@@ -268,6 +395,21 @@ async function main() {
         continue;
     }
     await seedCity(city, records);
+
+    if (city === "tokyo") {
+      const validIds = records.map((r) => r.id);
+      const existing = await db
+        .select({ id: zones.id })
+        .from(zones)
+        .where(eq(zones.city, "tokyo"));
+      const toDelete = existing.map((r) => r.id).filter((id) => !validIds.includes(id));
+      if (toDelete.length > 0) {
+        console.log(`Removing ${toDelete.length} filtered-out Tokyo zones from DB...`);
+        for (let i = 0; i < toDelete.length; i += 100) {
+          await db.delete(zones).where(inArray(zones.id, toDelete.slice(i, i + 100)));
+        }
+      }
+    }
   }
 
   console.log("\nSeeding complete.");

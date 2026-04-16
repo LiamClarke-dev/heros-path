@@ -107,30 +107,30 @@
         "coordinates": [
           [
             [
-              null,
-              null
+              139.7230781,
+              35.677985156
             ],
             [
-              null,
-              null
+              139.7758269,
+              35.677985156
             ],
             [
-              null,
-              null
+              139.7758269,
+              35.702235044000005
             ],
             [
-              null,
-              null
+              139.7230781,
+              35.702235044000005
             ],
             [
-              null,
-              null
+              139.7230781,
+              35.677985156
             ]
           ]
         ]
       },
-      "centroidLat": null,
-      "centroidLng": null
+      "centroidLat": 35.6901101,
+      "centroidLng": 139.74945250000002
     },
     {
       "id": "bunkyo",

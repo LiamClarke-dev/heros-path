@@ -47,6 +47,7 @@ function computeWardBoundaries(
       wardMap.set(z.wardId, entry);
     }
     for (const [lng, lat] of z.ring) {
+      if (lng == null || lat == null || isNaN(lng) || isNaN(lat)) continue;
       entry.lats.push(lat);
       entry.lngs.push(lng);
     }
@@ -54,6 +55,10 @@ function computeWardBoundaries(
 
   const wards: BBoxPoly[] = [];
   for (const [wardId, { lats, lngs }] of wardMap) {
+    if (lats.length === 0 || lngs.length === 0) {
+      console.warn(`Ward ${wardId} has no valid coordinates — skipped`);
+      continue;
+    }
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs);

@@ -97,7 +97,7 @@ export default function ListDetailScreen() {
   const redirectUri = makeRedirectUri(
     Platform.OS === "ios" && GOOGLE_IOS_REDIRECT
       ? { native: GOOGLE_IOS_REDIRECT }
-      : { scheme: "herospath" }
+      : { useProxy: true }
   );
 
   const [, , googlePromptAsync] = useAuthRequest(

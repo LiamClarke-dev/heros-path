@@ -9,7 +9,13 @@ import {
   Animated,
   Image,
   Modal,
+  TextInput,
+  Alert,
+  ActionSheetIOS,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -17,6 +23,12 @@ import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import Colors from "../../constants/colors";
+
+const API_BASE =
+  (process.env.EXPO_PUBLIC_API_BASE_URL as string | undefined) ??
+  (process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+    : "http://localhost:8080");
 
 const LAST_LEVEL_KEY = "@heros_path/last_known_level";
 
@@ -166,7 +178,7 @@ function formatDistanceM(m: number): string {
 export default function ProfileTab() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { token, logout } = useAuth();
+  const { token, logout, updateProfile, applyAuthResponse } = useAuth();
 
   const [stats, setStats] = useState<Stats | null>(null);
   const [badges, setBadges] = useState<{ earned: BadgeItem[]; available: BadgeItem[] } | null>(null);
@@ -179,6 +191,11 @@ export default function ProfileTab() {
     total: number;
     recent: Array<{ googlePlaceId: string; name: string; photoUrl: string | null; reaction: string | null }>;
   } | null>(null);
+
+  const [editNameVisible, setEditNameVisible] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const rankAnim = useRef(new Animated.Value(1)).current;
 
@@ -243,6 +260,118 @@ export default function ProfileTab() {
     }, [loadData])
   );
 
+  const handleAvatarPress = useCallback(() => {
+    const options = ["Take Photo", "Choose from Library", "Remove Photo", "Cancel"];
+    const cancelIdx = 3;
+    const destructiveIdx = 2;
+
+    const handleChoice = async (idx: number) => {
+      if (idx === cancelIdx) return;
+
+      if (idx === destructiveIdx) {
+        try {
+          await updateProfile({ profileImageUrl: null });
+          setStats((prev) => prev ? { ...prev, profileImageUrl: null } : prev);
+        } catch {
+          Alert.alert("Error", "Failed to remove photo. Please try again.");
+        }
+        return;
+      }
+
+      const pickerFn = idx === 0
+        ? ImagePicker.launchCameraAsync
+        : ImagePicker.launchImageLibraryAsync;
+
+      const permResult = idx === 0
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permResult.granted) {
+        Alert.alert("Permission Required", "Please allow access to continue.");
+        return;
+      }
+
+      const result = await pickerFn({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets[0]) return;
+
+      const asset = result.assets[0];
+      setUploadingAvatar(true);
+      try {
+        const formData = new FormData();
+        formData.append("avatar", {
+          uri: asset.uri,
+          name: "avatar.jpg",
+          type: asset.mimeType ?? "image/jpeg",
+        } as unknown as Blob);
+
+        const res = await fetch(`${API_BASE}/api/profile/avatar`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error ?? "Upload failed");
+        }
+
+        const data = (await res.json()) as {
+          profileImageUrl: string;
+          token: string;
+          user: { id: string; email: string | null; displayName: string; xp: number; level: number; profileImageUrl: string | null };
+        };
+
+        await applyAuthResponse({ token: data.token, user: data.user });
+        setStats((prev) =>
+          prev ? { ...prev, profileImageUrl: data.profileImageUrl } : prev
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        Alert.alert("Upload Failed", msg);
+      } finally {
+        setUploadingAvatar(false);
+      }
+    };
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex: cancelIdx, destructiveButtonIndex: destructiveIdx },
+        handleChoice
+      );
+    } else {
+      Alert.alert("Change Profile Photo", undefined, [
+        { text: "Take Photo", onPress: () => handleChoice(0) },
+        { text: "Choose from Library", onPress: () => handleChoice(1) },
+        { text: "Remove Photo", style: "destructive", onPress: () => handleChoice(2) },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  }, [token, updateProfile, applyAuthResponse]);
+
+  const handleSaveName = useCallback(async () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed) {
+      Alert.alert("Invalid Name", "Display name cannot be empty.");
+      return;
+    }
+    setSavingName(true);
+    try {
+      await updateProfile({ displayName: trimmed });
+      setStats((prev) => prev ? { ...prev, displayName: trimmed } : prev);
+      setEditNameVisible(false);
+    } catch {
+      Alert.alert("Error", "Failed to update display name. Please try again.");
+    } finally {
+      setSavingName(false);
+    }
+  }, [nameInput, updateProfile]);
+
   if (loading || !stats) {
     return (
       <SafeAreaView style={styles.loader} edges={['top']}>
@@ -271,9 +400,34 @@ export default function ProfileTab() {
       <Text style={styles.screenTitle}>Profile</Text>
 
       <View style={styles.heroCard}>
-        <Avatar name={stats.displayName} imageUrl={stats.profileImageUrl} size={72} />
+        <TouchableOpacity
+          onPress={handleAvatarPress}
+          activeOpacity={0.8}
+          style={styles.avatarWrapper}
+          disabled={uploadingAvatar}
+        >
+          <Avatar name={stats.displayName} imageUrl={stats.profileImageUrl} size={72} />
+          <View style={styles.avatarEditBadge}>
+            {uploadingAvatar
+              ? <ActivityIndicator size="small" color={Colors.background} />
+              : <Feather name="camera" size={13} color={Colors.background} />
+            }
+          </View>
+        </TouchableOpacity>
         <View style={styles.heroInfo}>
-          <Text style={styles.heroName}>{stats.displayName}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.heroName} numberOfLines={1}>{stats.displayName}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setNameInput(stats.displayName);
+                setEditNameVisible(true);
+              }}
+              style={styles.editNameBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Feather name="edit-2" size={14} color={Colors.parchmentMuted} />
+            </TouchableOpacity>
+          </View>
           {stats.email ? (
             <Text style={styles.heroEmail}>{stats.email}</Text>
           ) : null}
@@ -290,6 +444,52 @@ export default function ProfileTab() {
           </Animated.View>
         </View>
       </View>
+
+      <Modal
+        visible={editNameVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditNameVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalBackdrop}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit Display Name</Text>
+            <TextInput
+              style={styles.nameInput}
+              value={nameInput}
+              onChangeText={setNameInput}
+              placeholder="Your display name"
+              placeholderTextColor={Colors.parchmentMuted}
+              autoFocus
+              maxLength={40}
+              returnKeyType="done"
+              onSubmitEditing={handleSaveName}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setEditNameVisible(false)}
+                disabled={savingName}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, savingName && styles.modalBtnDisabled]}
+                onPress={handleSaveName}
+                disabled={savingName}
+              >
+                {savingName
+                  ? <ActivityIndicator size="small" color={Colors.background} />
+                  : <Text style={styles.modalSaveText}>Save</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <View style={styles.xpCard}>
         <View style={styles.xpHeader}>
@@ -784,6 +984,27 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.error,
   },
+  avatarWrapper: {
+    position: "relative",
+  },
+  avatarEditBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: Colors.gold,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.surface,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   xpHeaderRight: {
     flexDirection: "row",
     alignItems: "center",
@@ -951,5 +1172,73 @@ const styles = StyleSheet.create({
     color: Colors.parchmentMuted,
     textAlign: "center",
     paddingVertical: 8,
+  },
+  editNameBtn: {
+    padding: 2,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    gap: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    color: Colors.parchment,
+    textAlign: "center",
+  },
+  nameInput: {
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: "Inter_400Regular",
+    fontSize: 16,
+    color: Colors.parchment,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+  },
+  modalCancelText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 15,
+    color: Colors.parchmentMuted,
+  },
+  modalSaveBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: Colors.gold,
+    alignItems: "center",
+  },
+  modalSaveText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: Colors.background,
+  },
+  modalBtnDisabled: {
+    opacity: 0.6,
   },
 });

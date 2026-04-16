@@ -24,6 +24,7 @@ function signToken(user: typeof users.$inferSelect): string {
       displayName: user.displayName,
       xp: user.xp,
       level: user.level,
+      profileImageUrl: user.profileImageUrl ?? null,
     },
     getJwtSecret(),
     { expiresIn: JWT_EXPIRES }

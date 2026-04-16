@@ -37,8 +37,8 @@ artifacts/
 │       ├── app.ts      # Express setup (cors, pino-http, body-parser, cookie-parser)
 │       ├── index.ts    # Server entry
 │       ├── logger.ts   # Pino logger
-│       ├── routes/     # auth, journeys, places, lists, gamification
-│       ├── lib/        # geo, discovery, gamification, placesApi
+│       ├── routes/     # auth, journeys, places, lists, gamification, profile
+│       ├── lib/        # geo, discovery, gamification, placesApi, objectStorage
 │       └── middlewares/# requireAuth — JWT Bearer token validation
 ├── heros-path/         # Expo React Native app
 │   ├── app/
@@ -152,6 +152,21 @@ lib/
 - New-place detection uses `firstDiscoveredAt >= journeyStartedAt` (not `discoveryCount === 1`)
 - `computeLevel(xp)` = `Math.max(1, Math.floor(Math.sqrt(xp / 100)) + 1)`
 - `ErrorFallback` component must NEVER import or call `reloadAppAsync` from expo
+
+## Profile Editing (Task #27)
+
+- **Avatar upload**: `POST /api/profile/avatar` (multipart JPEG/PNG, max 5MB) stores in Replit Object Storage (GCS). Avatars are served publicly via `GET /api/avatars/:userId/:filename` (no auth required).
+- **Display name edit**: `PATCH /api/profile` accepts `{ displayName?, profileImageUrl? }`, returns a refreshed JWT.
+- **Object storage**: Provisioned at bucket `replit-objstore-b9e63e29-ae8a-4e8e-97c8-90c996abfd53`. Sidecar auth at `http://127.0.0.1:1106`. Object keys: `avatars/{userId}/{timestamp}.{ext}`.
+- **Profile screen**: Avatar shows camera edit badge; tapping opens action sheet (Take Photo / Choose from Library / Remove Photo). Display name shows pencil icon; tapping opens edit modal.
+- **Auth context**: Added `updateProfile()` (calls PATCH endpoint + persists new token) and `applyAuthResponse()` (directly stores a token+user from API response).
+- **Google My Maps redirect URI**: Fixed non-iOS OAuth redirect to use `{ useProxy: true }` → `https://auth.expo.io/@liamclarke-dev/herospath-replit`. GCP console must whitelist this URI and origin.
+- **GCP Console action required**: Go to [APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials?project=155152959717) → Web OAuth Client → add to Authorized redirect URIs:
+  - `https://auth.expo.io/@liamclarke-dev/herospath-replit`
+  - `https://ff0550f0-ceb2-4d52-a209-7054d365e4c2-00-1bh7yph6mfm94.expo.kirk.replit.dev`
+  Add to Authorized JavaScript Origins: `https://ff0550f0-ceb2-4d52-a209-7054d365e4c2-00-1bh7yph6mfm94.expo.kirk.replit.dev`
+  For iOS OAuth client: verify bundle ID is `com.herospath.app`.
+  Enable [Google Drive API](https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=155152959717).
 
 ## Known Limitations
 

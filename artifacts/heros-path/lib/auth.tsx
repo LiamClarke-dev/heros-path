@@ -69,6 +69,11 @@ export interface AuthContextValue {
   ) => Promise<void>;
   loginWithReplit: () => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (updates: {
+    displayName?: string;
+    profileImageUrl?: string | null;
+  }) => Promise<void>;
+  applyAuthResponse: (response: { token: string; user: AuthUser }) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
@@ -80,6 +85,8 @@ export const AuthContext = createContext<AuthContextValue>({
   registerWithEmail: async () => {},
   loginWithReplit: async () => {},
   logout: async () => {},
+  updateProfile: async () => {},
+  applyAuthResponse: async () => {},
 });
 
 export function useAuth() {
@@ -98,6 +105,7 @@ function decodePayload(token: string): AuthUser | null {
       displayName: payload.displayName ?? "Adventurer",
       xp: payload.xp ?? 0,
       level: payload.level ?? 1,
+      profileImageUrl: payload.profileImageUrl ?? null,
     };
   } catch {
     return null;
@@ -229,6 +237,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  const updateProfile = useCallback(
+    async (updates: { displayName?: string; profileImageUrl?: string | null }) => {
+      if (!token) throw new Error("Not authenticated");
+      const data = (await apiFetch("/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+        headers: { Authorization: `Bearer ${token}` },
+      })) as { token: string; user: AuthUser };
+      await persistToken(data.token, data.user);
+    },
+    [token]
+  );
+
+  const applyAuthResponse = useCallback(
+    async (response: { token: string; user: AuthUser }) => {
+      await persistToken(response.token, response.user);
+    },
+    []
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -240,6 +268,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         registerWithEmail,
         loginWithReplit,
         logout,
+        updateProfile,
+        applyAuthResponse,
       }}
     >
       {children}

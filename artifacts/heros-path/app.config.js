@@ -20,6 +20,9 @@ module.exports = ({ config }) => ({
             `com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID}`,
           ],
         },
+        {
+          CFBundleURLSchemes: ['herospath'],
+        },
       ],
     },
   },

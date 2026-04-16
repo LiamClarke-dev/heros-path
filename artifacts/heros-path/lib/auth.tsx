@@ -111,6 +111,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const discovery = useAutoDiscovery(REPLIT_ISSUER);
+  // NOTE: Expo Go is not supported — this app requires native modules (react-native-maps,
+  // expo-dev-client) that are not bundled in Expo Go. Use a custom EAS dev build instead.
+  // In a dev build, makeRedirectUri produces herospath://... which iOS handles via CFBundleURLTypes.
   const redirectUri = makeRedirectUri({ scheme: "herospath" });
 
   const [request, , promptAsync] = useAuthRequest(

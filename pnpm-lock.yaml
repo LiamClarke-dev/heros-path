@@ -231,11 +231,11 @@ importers:
         specifier: ^7.0.10
         version: 7.0.10(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       expo-clipboard:
-        specifier: ^55.0.13
-        version: 55.0.13(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        specifier: ~8.0.8
+        version: 8.0.8(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       expo-crypto:
-        specifier: ^55.0.10
-        version: 55.0.10(expo@54.0.33)
+        specifier: ~15.0.8
+        version: 15.0.8(expo@54.0.33)
       expo-dev-client:
         specifier: 6.0.20
         version: 6.0.20(expo@54.0.33)
@@ -3296,8 +3296,8 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-clipboard@55.0.13:
-    resolution: {integrity: sha512-PrOmmuVsGW4bAkNQmGKtxMXj3invsfN+jfIKmQxHwE/dn7ODqwFWviUTa+PMUjP3XZmYCDLyu/i0GLeu7HF9Ew==}
+  expo-clipboard@8.0.8:
+    resolution: {integrity: sha512-VKoBkHIpZZDJTB0jRO4/PZskHdMNOEz3P/41tmM6fDuODMpqhvyWK053X0ebspkxiawJX9lX33JXHBCvVsTTOA==}
     peerDependencies:
       expo: '*'
       react: '*'
@@ -3311,11 +3311,6 @@ packages:
 
   expo-crypto@15.0.8:
     resolution: {integrity: sha512-aF7A914TB66WIlTJvl5J6/itejfY78O7dq3ibvFltL9vnTALJ/7LYHvLT4fwmx9yUNS6ekLBtDGWivFWnj2Fcw==}
-    peerDependencies:
-      expo: '*'
-
-  expo-crypto@55.0.10:
-    resolution: {integrity: sha512-3emt67pWch07F7DPQutn7CUpaiCJI8OOFxCGiwmzeSqSjuWP9upGOXkLQNVWf+29KZQRTVgf88LhDC2GFshMNA==}
     peerDependencies:
       expo: '*'
 
@@ -9064,7 +9059,7 @@ snapshots:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
-  expo-clipboard@55.0.13(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  expo-clipboard@8.0.8(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       expo: 54.0.33(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react: 19.1.0
@@ -9082,10 +9077,6 @@ snapshots:
   expo-crypto@15.0.8(expo@54.0.33):
     dependencies:
       base64-js: 1.5.1
-      expo: 54.0.33(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
-
-  expo-crypto@55.0.10(expo@54.0.33):
-    dependencies:
       expo: 54.0.33(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
 
   expo-dev-client@6.0.20(expo@54.0.33):

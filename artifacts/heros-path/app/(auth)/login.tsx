@@ -10,9 +10,12 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../lib/auth";
 import Colors from "../../constants/colors";
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Tab = "signin" | "register";
 

@@ -67,7 +67,7 @@ const SLIDES = [
   {
     step: 1,
     title: "Uncover hidden gems",
-    body: "As you walk, Hero's Path tracks the places along your route. Tap the ⚡ button any time during a journey for an early reveal — or wait until the end to see everything at once. Save discoveries to lists, log a visit, or let them go.",
+    body: "As you walk, Hero's Path discovers the places along your route. Tap ⚡ Ping in a new area for an instant reveal of nearby gems — move 150m and you can Ping again. Or wait until the end of your journey to see everything at once.",
     icon: "compass" as keyof typeof Feather.glyphMap,
     iconColor: Colors.gold,
   },
@@ -610,18 +610,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   optionBtnWrapper: {
-    position: "relative",
+    paddingTop: 14,
   },
   recommendedTag: {
-    position: "absolute",
-    top: -10,
-    left: "50%",
-    transform: [{ translateX: -36 }],
+    alignSelf: "center",
+    marginBottom: 4,
     backgroundColor: Colors.gold,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    zIndex: 1,
   },
   recommendedTagText: {
     fontFamily: "Inter_700Bold",

@@ -21,6 +21,8 @@ export const users = pgTable("users", {
   level: integer("level").notNull().default(1),
   streakDays: integer("streak_days").notNull().default(0),
   lastJourneyDate: date("last_journey_date"),
+  dailyPingCount: integer("daily_ping_count").notNull().default(0),
+  dailyPingResetDate: date("daily_ping_reset_date"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

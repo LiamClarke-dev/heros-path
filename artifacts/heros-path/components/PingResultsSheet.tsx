@@ -167,6 +167,7 @@ interface PingResultsSheetProps {
   visible: boolean;
   places: PlaceResult[];
   newCount: number;
+  journeyActive: boolean;
   onClose: () => void;
 }
 
@@ -174,6 +175,7 @@ export default function PingResultsSheet({
   visible,
   places,
   newCount,
+  journeyActive,
   onClose,
 }: PingResultsSheetProps) {
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
@@ -213,6 +215,14 @@ export default function PingResultsSheet({
             { transform: [{ translateY: slideAnim }] },
           ]}
         >
+          {journeyActive && (
+            <View style={styles.journeyBanner}>
+              <Feather name="activity" size={12} color={Colors.amber} />
+              <Text style={styles.journeyBannerText}>
+                Journey in progress — GPS still recording
+              </Text>
+            </View>
+          )}
           <View style={styles.handle} />
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>
@@ -271,6 +281,21 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: "hidden",
+  },
+  journeyBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(151,200,217,0.12)",
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  journeyBannerText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.amber,
   },
   handle: {
     width: 36,

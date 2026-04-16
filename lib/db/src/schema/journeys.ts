@@ -22,6 +22,8 @@ export const journeys = pgTable("journeys", {
   discoveryStatus: text("discovery_status").notNull().default("pending"),
   name: text("name"),
   xpBreakdown: text("xp_breakdown"),
+  lastPingLat: numeric("last_ping_lat", { precision: 9, scale: 6 }),
+  lastPingLng: numeric("last_ping_lng", { precision: 9, scale: 6 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

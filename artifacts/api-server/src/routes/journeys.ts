@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, journeys, journeyWaypoints, journeyDiscoveredPlaces, placeCache, userPlaceStates } from "@workspace/db";
+import { db, journeys, journeyWaypoints, journeyDiscoveredPlaces, placeCache, userPlaceStates, users } from "@workspace/db";
 import { eq, and, desc, gte, lte, isNotNull, inArray, count, sql, isNull } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
@@ -700,6 +700,44 @@ router.post("/:journeyId/ping", async (req: Request, res: Response) => {
     return;
   }
 
+  // Movement gate — require 150m from last ping location
+  if (journey.lastPingLat !== null && journey.lastPingLng !== null) {
+    const dist = haversineDistance(
+      lat,
+      lng,
+      parseFloat(String(journey.lastPingLat)),
+      parseFloat(String(journey.lastPingLng))
+    );
+    if (dist < 150) {
+      res.status(429).json({
+        error: "too_close",
+        metersAway: Math.round(dist),
+        metersRequired: 150,
+      });
+      return;
+    }
+  }
+
+  // Daily backstop — silent ceiling of 20 pings per day
+  const [userRow] = await db
+    .select({ dailyPingCount: users.dailyPingCount, dailyPingResetDate: users.dailyPingResetDate })
+    .from(users)
+    .where(eq(users.id, user.id));
+
+  if (userRow) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (userRow.dailyPingResetDate === todayStr && userRow.dailyPingCount >= 20) {
+      res.status(429).json({ error: "daily_limit" });
+      return;
+    }
+    if (userRow.dailyPingResetDate !== todayStr) {
+      await db
+        .update(users)
+        .set({ dailyPingCount: 0, dailyPingResetDate: todayStr })
+        .where(eq(users.id, user.id));
+    }
+  }
+
   try {
     const { places, newCount, apiError, apiKeyMissing } = await discoverNearbyForPing(
       journeyId,
@@ -715,11 +753,19 @@ router.post("/:journeyId/ping", async (req: Request, res: Response) => {
       res.status(503).json({ error: "Places API unavailable — try again shortly" });
       return;
     }
-    // Increment ping count on journey
+    // Update ping location, count, and user daily count
     await db
       .update(journeys)
-      .set({ pingCount: sql`${journeys.pingCount} + 1` })
+      .set({
+        pingCount: sql`${journeys.pingCount} + 1`,
+        lastPingLat: String(lat),
+        lastPingLng: String(lng),
+      })
       .where(eq(journeys.id, journeyId));
+    await db
+      .update(users)
+      .set({ dailyPingCount: sql`${users.dailyPingCount} + 1` })
+      .where(eq(users.id, user.id));
     res.json({ places, newCount });
   } catch (err) {
     logger.warn({ err }, "Ping discovery failed");

@@ -168,6 +168,8 @@ export default function JourneyTab() {
   const [pingSheetVisible, setPingSheetVisible] = useState(false);
   const [pingPlaces, setPingPlaces] = useState<PingPlace[]>([]);
   const [pingNewCount, setPingNewCount] = useState(0);
+  const [lastPingLocation, setLastPingLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [pingDailyLimitReached, setPingDailyLimitReached] = useState(false);
 
   // List filter / map pin overlay
   const [userLists, setUserLists] = useState<ListInfo[]>([]);
@@ -570,6 +572,8 @@ export default function JourneyTab() {
     setWaypoints([]);
     waypointBufferRef.current = [];
     setJourneyStatus("idle");
+    setLastPingLocation(null);
+    setPingDailyLimitReached(false);
   }
 
   async function endJourney() {
@@ -672,6 +676,8 @@ export default function JourneyTab() {
       setCurrentHeading(null);
       setWaypoints([]);
       setJourneyStatus("idle");
+      setLastPingLocation(null);
+      setPingDailyLimitReached(false);
       loadHistory();
       loadQuests();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
@@ -729,9 +735,17 @@ export default function JourneyTab() {
       setPingPlaces(result.places ?? []);
       setPingNewCount(result.newCount ?? 0);
       setPingSheetVisible(true);
+      setLastPingLocation({ lat: currentLocation.lat, lng: currentLocation.lng });
     } catch (err) {
       const status = (err as { status?: number }).status;
-      if (status === 503) {
+      const body = (err as { body?: { error?: string } }).body;
+      if (status === 429) {
+        if (body?.error === "too_close") {
+          setLastPingLocation({ lat: currentLocation.lat, lng: currentLocation.lng });
+        } else if (body?.error === "daily_limit") {
+          setPingDailyLimitReached(true);
+        }
+      } else if (status === 503) {
         Alert.alert(
           "Places unavailable",
           "The places service is temporarily unavailable. Please try again shortly.",
@@ -758,6 +772,13 @@ export default function JourneyTab() {
       </View>
     );
   }
+
+  const pingDistanceM = useMemo(() => {
+    if (!lastPingLocation || !currentLocation) return null;
+    return Math.round(haversineM(currentLocation.lat, currentLocation.lng, lastPingLocation.lat, lastPingLocation.lng));
+  }, [lastPingLocation, currentLocation]);
+
+  const pingReady = pingDistanceM === null || pingDistanceM >= 150;
 
   const activePolyline = useMemo(() => {
     const raw = waypoints.map((wp) => ({
@@ -1139,16 +1160,27 @@ export default function JourneyTab() {
           {journeyStatus === "active" && (
             <View style={styles.activeButtons}>
               <TouchableOpacity
-                style={[styles.pingBtn, pingLoading && { opacity: 0.6 }]}
+                style={[
+                  styles.pingBtn,
+                  (!pingReady || pingDailyLimitReached || pingLoading) && styles.pingBtnDisabled,
+                ]}
                 onPress={handlePing}
-                disabled={pingLoading}
+                disabled={!pingReady || pingDailyLimitReached || pingLoading}
               >
                 {pingLoading ? (
                   <ActivityIndicator size="small" color={Colors.gold} />
                 ) : (
-                  <Feather name="zap" size={16} color={Colors.gold} />
+                  <Feather name="zap" size={16} color={(!pingReady || pingDailyLimitReached) ? Colors.parchmentDim : Colors.gold} />
                 )}
-                <Text style={styles.pingBtnText}>Ping</Text>
+                {!pingLoading && (
+                  <Text style={[styles.pingBtnText, (!pingReady || pingDailyLimitReached) && styles.pingBtnTextDisabled]}>
+                    {pingDailyLimitReached
+                      ? "Done for today"
+                      : !pingReady
+                      ? `${pingDistanceM}m away`
+                      : "Ping"}
+                  </Text>
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.endBtn}
@@ -1173,6 +1205,7 @@ export default function JourneyTab() {
         visible={pingSheetVisible}
         places={pingPlaces}
         newCount={pingNewCount}
+        journeyActive={!!journeyId}
         onClose={() => setPingSheetVisible(false)}
       />
 
@@ -1432,6 +1465,14 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
     color: Colors.gold,
+  },
+  pingBtnDisabled: {
+    borderColor: Colors.border,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    opacity: 0.7,
+  },
+  pingBtnTextDisabled: {
+    color: Colors.parchmentDim,
   },
   endBtn: {
     flexDirection: "row",

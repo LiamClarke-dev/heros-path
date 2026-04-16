@@ -17,7 +17,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LOCATION_TASK, WAYPOINT_BUFFER_KEY } from "../../lib/locationTask";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import type RNMapView from "react-native-maps";
 import type { MapViewProps, MapMarkerProps, MapPolylineProps, MapPolygonProps, Region, Provider } from "react-native-maps";
 import { useAuth } from "../../lib/auth";
@@ -153,6 +153,7 @@ export default function JourneyTab() {
   const [journeyId, setJourneyId] = useState<string | null>(null);
   const [journeyStartedAt, setJourneyStartedAt] = useState<string | null>(null);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
+  const [waypointBreakIndices, setWaypointBreakIndices] = useState<number[]>([]);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [currentHeading, setCurrentHeading] = useState<number | null>(null);
   const [historicalJourneys, setHistoricalJourneys] = useState<HistoricalJourney[]>([]);
@@ -185,6 +186,7 @@ export default function JourneyTab() {
   const questRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const waypointBufferRef = useRef<Waypoint[]>([]);
+  const renderedWaypointsRef = useRef<Waypoint[]>([]);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -345,6 +347,16 @@ export default function JourneyTab() {
     );
   }, [currentLocation]);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadUserLists();
+    }, [loadUserLists])
+  );
+
+  useEffect(() => {
+    renderedWaypointsRef.current = waypoints;
+  }, [waypoints]);
+
   useEffect(() => {
     return () => {
       locationSubscriptionRef.current?.remove();
@@ -369,6 +381,15 @@ export default function JourneyTab() {
             const bgWaypoints = JSON.parse(raw) as { lat: number; lng: number; recordedAt: string }[];
             if (bgWaypoints.length > 0) {
               await AsyncStorage.removeItem(WAYPOINT_BUFFER_KEY);
+              const currentRendered = renderedWaypointsRef.current;
+              const breakIdx = currentRendered.length;
+              if (currentRendered.length > 0 && bgWaypoints.length > 0) {
+                const last = currentRendered[currentRendered.length - 1];
+                const gap = haversineM(last.lat, last.lng, bgWaypoints[0].lat, bgWaypoints[0].lng);
+                if (gap > 100) {
+                  setWaypointBreakIndices((prev) => [...prev, breakIdx]);
+                }
+              }
               setWaypoints((prev) => [...prev, ...bgWaypoints]);
               waypointBufferRef.current.push(...bgWaypoints);
               flushWaypoints(jId);
@@ -503,6 +524,7 @@ export default function JourneyTab() {
     setJourneyStartedAt(data.startedAt);
     setElapsedDisplay("0:00");
     setWaypoints([]);
+    setWaypointBreakIndices([]);
     waypointBufferRef.current = [];
     setJourneyStatus("active");
 
@@ -563,6 +585,7 @@ export default function JourneyTab() {
     setJourneyStartedAt(null);
     setCurrentHeading(null);
     setWaypoints([]);
+    setWaypointBreakIndices([]);
     waypointBufferRef.current = [];
     setJourneyStatus("idle");
     setLastPingLocation(null);
@@ -668,6 +691,7 @@ export default function JourneyTab() {
       setJourneyStartedAt(null);
       setCurrentHeading(null);
       setWaypoints([]);
+      setWaypointBreakIndices([]);
       setJourneyStatus("idle");
       setLastPingLocation(null);
       setPingDailyLimitReached(false);
@@ -773,13 +797,25 @@ export default function JourneyTab() {
 
   const pingReady = pingDistanceM === null || pingDistanceM >= 150;
 
-  const activePolyline = useMemo(() => {
-    const raw = waypoints.map((wp) => ({
-      latitude: wp.lat,
-      longitude: wp.lng,
-    }));
-    return raw.length >= 3 ? rdpSimplify(raw, 0.00005) : raw;
-  }, [waypoints]);
+  const activePolylineSegments = useMemo((): { latitude: number; longitude: number }[][] => {
+    if (waypoints.length === 0) return [];
+    const breakSet = new Set(waypointBreakIndices);
+    const allCoords = waypoints.map((wp) => ({ latitude: wp.lat, longitude: wp.lng }));
+    const segments: { latitude: number; longitude: number }[][] = [];
+    let segStart = 0;
+    for (let i = 1; i <= allCoords.length; i++) {
+      if (i === allCoords.length || breakSet.has(i)) {
+        const seg = allCoords.slice(segStart, i);
+        if (seg.length >= 2) {
+          segments.push(seg.length >= 3 ? rdpSimplify(seg, 0.00005) : seg);
+        } else if (seg.length === 1) {
+          segments.push(seg);
+        }
+        segStart = i;
+      }
+    }
+    return segments;
+  }, [waypoints, waypointBreakIndices]);
 
 
   const clusteredPins = useMemo((): ClusterItem[] => {
@@ -856,7 +892,7 @@ export default function JourneyTab() {
             const scaledFill = isCompleted
               ? ZONE_COLORS.completedFill
               : isVisited
-              ? `rgba(56,204,246,${Math.round(zone.coveragePct * 0.45 * 100) / 100})`
+              ? `rgba(255,213,0,${Math.round(zone.coveragePct * 0.45 * 100) / 100})`
               : "transparent";
             const strokeColor = isCompleted
               ? ZONE_COLORS.completedStroke
@@ -918,18 +954,24 @@ export default function JourneyTab() {
             ) : null;
           })}
 
-          {journeyStatus === "active" && activePolyline.length >= 2 && Polyline && (
+          {journeyStatus === "active" && activePolylineSegments.some(s => s.length >= 2) && Polyline && (
             <>
-              <Polyline
-                coordinates={activePolyline}
-                strokeColor="rgba(106,221,147,0.35)"
-                strokeWidth={10}
-              />
-              <Polyline
-                coordinates={activePolyline}
-                strokeColor="#6add93"
-                strokeWidth={4}
-              />
+              {activePolylineSegments.map((seg, si) => seg.length >= 2 ? (
+                <Polyline
+                  key={`seg-${si}-glow`}
+                  coordinates={seg}
+                  strokeColor="rgba(106,221,147,0.35)"
+                  strokeWidth={10}
+                />
+              ) : null)}
+              {activePolylineSegments.map((seg, si) => seg.length >= 2 ? (
+                <Polyline
+                  key={`seg-${si}-line`}
+                  coordinates={seg}
+                  strokeColor="#6add93"
+                  strokeWidth={4}
+                />
+              ) : null)}
             </>
           )}
 

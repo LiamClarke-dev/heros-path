@@ -93,7 +93,7 @@ export function PlaceCard({
 
   const handleDismiss = useCallback(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver: false }),
       Animated.timing(maxHeight, { toValue: 0, duration: 300, useNativeDriver: false }),
     ]).start(() => onDismiss(place.googlePlaceId));
   }, [opacity, maxHeight, onDismiss, place.googlePlaceId]);

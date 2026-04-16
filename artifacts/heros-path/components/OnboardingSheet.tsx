@@ -359,7 +359,9 @@ export default function OnboardingSheet({
                       <View key={opt.value} style={styles.optionBtnWrapper}>
                         {isRecommended && (
                           <View style={styles.recommendedTag}>
-                            <Text style={styles.recommendedTagText}>Recommended</Text>
+                            <View style={styles.recommendedTagPill}>
+                              <Text style={styles.recommendedTagText}>Recommended</Text>
+                            </View>
                           </View>
                         )}
                         <TouchableOpacity
@@ -610,11 +612,17 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   optionBtnWrapper: {
-    paddingTop: 14,
+    marginTop: 20,
+    position: "relative",
   },
   recommendedTag: {
-    alignSelf: "center",
-    marginBottom: 4,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  recommendedTagPill: {
     backgroundColor: Colors.gold,
     borderRadius: 6,
     paddingHorizontal: 6,

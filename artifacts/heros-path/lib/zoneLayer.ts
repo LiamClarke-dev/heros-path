@@ -55,12 +55,12 @@ export function getZoneCompletionLabel(zone: ZoneData): string {
 
 export const ZONE_COLORS = {
   // Untouched zones — ghost outline only, no fill
-  unvisitedStroke: "rgba(56,204,246,0.33)",
+  unvisitedStroke: "rgba(255,213,0,0.30)",
   // In-progress zones — visible dashed outline, coverage-scaled fill
-  inProgressStroke: "rgba(56,204,246,0.95)",
+  inProgressStroke: "rgba(255,213,0,0.75)",
   // Completed zones — bright dashed outline, fixed fill
-  completedStroke: "rgba(56,204,246,1.0)",
-  completedFill: "rgba(56,204,246,0.20)",
+  completedStroke: "rgba(255,213,0,0.95)",
+  completedFill: "rgba(255,213,0,0.25)",
 } as const;
 
 export const ZONE_COMPLETION_THRESHOLD = 0.8;

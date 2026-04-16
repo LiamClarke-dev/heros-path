@@ -11,6 +11,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -142,7 +143,7 @@ export function VisitLogSheet({ visible, placeName, googlePlaceId, onClose, onSa
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
-      <TouchableWithoutFeedback onPress={handleClose}>
+      <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); handleClose(); }}>
         <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]} />
       </TouchableWithoutFeedback>
 
@@ -259,6 +260,9 @@ export function VisitLogSheet({ visible, placeName, googlePlaceId, onClose, onSa
                 value={notes}
                 onChangeText={setNotes}
                 textAlignVertical="top"
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={() => Keyboard.dismiss()}
               />
               <Text style={styles.charCount}>{notes.length}/{MAX_NOTES}</Text>
 

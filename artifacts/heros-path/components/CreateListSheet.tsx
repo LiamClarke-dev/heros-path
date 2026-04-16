@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
   TouchableWithoutFeedback,
   ScrollView,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
 } from "react-native";
 import Colors from "../constants/colors";
 
@@ -73,10 +76,13 @@ export function CreateListSheet({ visible, onClose, onCreate }: Props) {
       animationType="slide"
       onRequestClose={onClose}
     >
-      <TouchableWithoutFeedback onPress={onClose}>
+      <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); onClose(); }}>
         <View style={styles.overlay} />
       </TouchableWithoutFeedback>
 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <Text style={styles.title}>New List</Text>
@@ -123,6 +129,8 @@ export function CreateListSheet({ visible, onClose, onCreate }: Props) {
           placeholderTextColor={Colors.parchmentDim}
           autoFocus
           maxLength={60}
+          returnKeyType="done"
+          onSubmitEditing={() => Keyboard.dismiss()}
         />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -139,6 +147,7 @@ export function CreateListSheet({ visible, onClose, onCreate }: Props) {
           )}
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

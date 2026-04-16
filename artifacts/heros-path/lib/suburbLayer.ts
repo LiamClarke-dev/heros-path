@@ -75,7 +75,7 @@ export function getCompletionLabel(suburb: SuburbData): string {
 }
 
 export const SUBURB_COLORS = {
-  boundaryStroke: "#2C4030",
+  boundaryStroke: "rgba(159,193,132,0.55)",
   unexploredSegment: "rgba(180,180,180,0.25)",
   exploredSegment: "rgba(212,160,23,0.65)",
   completedFill: "rgba(159,193,132,0.18)",

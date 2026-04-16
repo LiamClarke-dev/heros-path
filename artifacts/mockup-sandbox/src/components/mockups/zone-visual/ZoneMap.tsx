@@ -36,7 +36,6 @@ interface TokyoZoneEntry {
   ring:    Array<[number, number]>;
 }
 
-// ── Zone shape ────────────────────────────────────────────────────────────────
 interface Zone {
   name: string;
   ring: Array<[number, number]>;
@@ -57,7 +56,7 @@ async function overpassPost(query: string): Promise<OverpassElem[]> {
     method:  "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body:    new URLSearchParams({ data: query }),
-    signal:  AbortSignal.timeout(30_000),
+    signal:  AbortSignal.timeout(12_000),
   });
   if (!r.ok) throw new Error(`Overpass ${r.status}`);
   const j = await r.json() as { elements: OverpassElem[] };
@@ -76,19 +75,36 @@ function ringFromElem(el: OverpassElem): Array<[number, number]> | null {
   return ring;
 }
 
-// ── Melbourne fetch ───────────────────────────────────────────────────────────
+// ── Fallback zone builders ────────────────────────────────────────────────────
+function melbourneFallbackZones(): Zone[] {
+  return (melbourneFallback.features as NamedFeature[])
+    .map(f => ({ name: f.properties.name, ring: f.geometry.coordinates[0] }));
+}
+
+function sfFallbackZones(): Zone[] {
+  return (sfFallback.features as NhoodFeature[])
+    .map(f => ({ name: f.properties.nhood, ring: f.geometry.coordinates[0] }));
+}
+
+function tokyoFallbackZones(): Zone[] {
+  return (tokyoFallback.zones as TokyoZoneEntry[])
+    .filter(z => z.wardId === "shibuya")
+    .map(z => ({ name: z.nameEn || z.name, ring: z.ring }));
+}
+
+// ── Live Overpass fetchers (upgrade fallback data if possible) ────────────────
 const MELB_TARGET = new Set([
   "Fitzroy","Collingwood","Richmond","Carlton","Brunswick","Fitzroy North",
-  "Northcote","Abbotsford","Cremorne","Windsor","South Yarra","Prahran",
+  "Northcote","Abbotsford","Windsor","South Yarra","Prahran",
   "St Kilda","Thornbury","Clifton Hill","Hawthorn","Kew","East Melbourne",
   "North Melbourne","West Melbourne","Southbank","Parkville","Alphington",
-  "Fairfield","Docklands",
+  "Fairfield","Docklands","Cremorne",
 ]);
 
-async function loadMelbourne(): Promise<Zone[]> {
+async function upgradeMelbourne(): Promise<Zone[] | null> {
   try {
     const elems = await overpassPost(
-      `[out:json][timeout:30];
+      `[out:json][timeout:12];
 (way["place"="suburb"](-37.87,144.90,-37.74,145.05);
  relation["place"="suburb"](-37.87,144.90,-37.74,145.05););
 out body geom;`
@@ -101,19 +117,16 @@ out body geom;`
       const ring = ringFromElem(el);
       if (ring) { zones.push({ name, ring }); seen.add(name); }
     }
-    if (zones.length >= 15) return zones;
-    throw new Error("too few");
+    return zones.length >= 15 ? zones : null;
   } catch {
-    return (melbourneFallback.features as NamedFeature[])
-      .map(f => ({ name: f.properties.name, ring: f.geometry.coordinates[0] }));
+    return null;
   }
 }
 
-// ── San Francisco fetch ───────────────────────────────────────────────────────
-async function loadSF(): Promise<Zone[]> {
+async function upgradeSF(): Promise<Zone[] | null> {
   try {
     const elems = await overpassPost(
-      `[out:json][timeout:30];
+      `[out:json][timeout:12];
 (way["place"="neighbourhood"](37.70,-122.52,37.82,-122.36);
  relation["place"="neighbourhood"](37.70,-122.52,37.82,-122.36););
 out body geom;`
@@ -125,24 +138,18 @@ out body geom;`
       const ring = ringFromElem(el);
       if (ring) zones.push({ name, ring });
     }
-    if (zones.length >= 20) return zones;
-    throw new Error("too few");
+    return zones.length >= 20 ? zones : null;
   } catch {
-    return (sfFallback.features as NhoodFeature[])
-      .map(f => ({ name: f.properties.nhood, ring: f.geometry.coordinates[0] }));
+    return null;
   }
 }
 
-// ── Tokyo fetch ───────────────────────────────────────────────────────────────
-// OSM place=neighbourhood in Tokyo returns ~260 chōme (丁目) subdivisions.
-// We query anyway, filter out chōme names, and fall back to pre-processed
-// admin-level-9 data (Shibuya ward, 27 zones) when OSM coverage is insufficient.
 const CHOME_RE = /[一二三四五六七八九十\d]丁目/;
 
-async function loadTokyo(): Promise<Zone[]> {
+async function upgradeTokyo(): Promise<Zone[] | null> {
   try {
     const elems = await overpassPost(
-      `[out:json][timeout:30];
+      `[out:json][timeout:12];
 (way["place"="neighbourhood"](35.62,139.68,35.70,139.73);
  relation["place"="neighbourhood"](35.62,139.68,35.70,139.73);
  way["place"="quarter"](35.62,139.68,35.70,139.73);
@@ -156,13 +163,9 @@ out body geom;`
       const ring = ringFromElem(el);
       if (ring) zones.push({ name: el.tags?.["name:en"] ?? name, ring });
     }
-    if (zones.length >= 8) return zones;
-    throw new Error("OSM coverage insufficient for named Tokyo zones");
+    return zones.length >= 8 ? zones : null;
   } catch {
-    const shibuya = (tokyoFallback.zones as TokyoZoneEntry[])
-      .filter(z => z.wardId === "shibuya")
-      .map(z => ({ name: z.nameEn || z.name, ring: z.ring }));
-    return shibuya;
+    return null;
   }
 }
 
@@ -243,39 +246,42 @@ function StatsBar({ zones }: { zones: Zone[] }) {
 // ── City config ───────────────────────────────────────────────────────────────
 const CITY_CONFIG = {
   tokyo:        { label:"🗼 Tokyo",         center:[35.663, 139.704] as [number,number], zoom:14, sub:"Shibuya Ward" },
-  melbourne:    { label:"🦘 Melbourne",     center:[-37.808, 144.989] as [number,number], zoom:13, sub:"Inner Suburbs" },
+  melbourne:    { label:"🦘 Melbourne",     center:[-37.808, 144.989] as [number,number], zoom:13, sub:"Inner Suburbs (SAL 2021)" },
   sanfrancisco: { label:"🌉 San Francisco", center:[37.762, -122.428] as [number,number], zoom:13, sub:"Neighbourhoods" },
 } as const;
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function ZoneMap() {
-  const [activeCity, setActiveCity] = useState<CityKey>("tokyo");
-  const [zonesMap,   setZonesMap]   = useState<Partial<Record<CityKey, Zone[]>>>({});
-  const [loading,    setLoading]    = useState<Partial<Record<CityKey, boolean>>>({ tokyo:true, melbourne:true, sanfrancisco:true });
+  const [activeCity, setActiveCity] = useState<CityKey>("melbourne");
+
+  // Initialize immediately with fallback data — no loading spinner
+  const [zonesMap, setZonesMap] = useState<Record<CityKey, Zone[]>>({
+    tokyo:        tokyoFallbackZones(),
+    melbourne:    melbourneFallbackZones(),
+    sanfrancisco: sfFallbackZones(),
+  });
 
   const mapRef        = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
 
-  // Fetch all city data on mount
+  // Attempt live Overpass upgrade in the background
   useEffect(() => {
-    loadTokyo().then(zones => {
-      setZonesMap(m => ({ ...m, tokyo: zones }));
-      setLoading(l => ({ ...l, tokyo: false }));
+    upgradeTokyo().then(zones => {
+      if (zones) setZonesMap(m => ({ ...m, tokyo: zones }));
     });
-    loadMelbourne().then(zones => {
-      setZonesMap(m => ({ ...m, melbourne: zones }));
-      setLoading(l => ({ ...l, melbourne: false }));
+    upgradeMelbourne().then(zones => {
+      if (zones) setZonesMap(m => ({ ...m, melbourne: zones }));
     });
-    loadSF().then(zones => {
-      setZonesMap(m => ({ ...m, sanfrancisco: zones }));
-      setLoading(l => ({ ...l, sanfrancisco: false }));
+    upgradeSF().then(zones => {
+      if (zones) setZonesMap(m => ({ ...m, sanfrancisco: zones }));
     });
   }, []);
 
   // Init Leaflet map once
   useEffect(() => {
     if (mapRef.current) return;
-    const map = L.map("zone-map-el", { center: [35.663, 139.704], zoom: 14, zoomControl: true });
+    const cfg = CITY_CONFIG.melbourne;
+    const map = L.map("zone-map-el", { center: cfg.center, zoom: cfg.zoom, zoomControl: true });
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       attribution: "© CARTO © OpenStreetMap", maxZoom: 19,
     }).addTo(map);
@@ -291,7 +297,7 @@ export function ZoneMap() {
     if (!map || !group) return;
 
     const cfg   = CITY_CONFIG[activeCity];
-    const zones = zonesMap[activeCity] ?? [];
+    const zones = zonesMap[activeCity];
     map.flyTo(cfg.center, cfg.zoom, { duration: 0.7 });
     group.clearLayers();
 
@@ -319,9 +325,8 @@ export function ZoneMap() {
     }
   }, [activeCity, zonesMap]);
 
-  const zones      = zonesMap[activeCity] ?? [];
-  const isLoading  = loading[activeCity] ?? false;
-  const cfg        = CITY_CONFIG[activeCity];
+  const zones = zonesMap[activeCity];
+  const cfg   = CITY_CONFIG[activeCity];
 
   return (
     <div style={{ width:"100vw", height:"100vh", background:C.bg, display:"flex", flexDirection:"column", overflow:"hidden" }}>
@@ -332,14 +337,11 @@ export function ZoneMap() {
           <span style={{ fontSize:16, fontWeight:700, color:C.text, fontFamily:"system-ui" }}>Hero's Path — Territory Zones</span>
           <span style={{ fontSize:10, color:C.muted, background:C.card, border:`1px solid ${C.border}`, borderRadius:5, padding:"2px 7px", fontFamily:"system-ui" }}>Visual Prototype</span>
         </div>
-        {isLoading
-          ? <span style={{ color:C.muted, fontSize:12, fontFamily:"system-ui" }}>Loading zones…</span>
-          : <StatsBar zones={zones} />
-        }
+        <StatsBar zones={zones} />
       </div>
 
       {/* City tabs */}
-      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, display:"flex", gap:4, padding:"7px 14px 7px", flexShrink:0, alignItems:"center" }}>
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, display:"flex", gap:4, padding:"7px 14px", flexShrink:0, alignItems:"center" }}>
         {(Object.keys(CITY_CONFIG) as CityKey[]).map(key => {
           const active = key === activeCity;
           return (
@@ -354,7 +356,7 @@ export function ZoneMap() {
           );
         })}
         <span style={{ marginLeft:8, color:C.muted, fontSize:11, fontFamily:"system-ui" }}>
-          {cfg.sub}{!isLoading && ` · ${zones.length} zones`}
+          {cfg.sub} · {zones.length} zones
         </span>
       </div>
 

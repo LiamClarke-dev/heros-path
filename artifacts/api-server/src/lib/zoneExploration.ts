@@ -93,6 +93,42 @@ function getAdjacentWards(lat: number, lng: number, wards: WardBoundary[], thres
   }
   return adjacent;
 }
+
+function computeWardAdjacency(wards: WardBoundary[]): Map<string, Set<string>> {
+  const adj = new Map<string, Set<string>>();
+  for (const w of wards) adj.set(w.id, new Set());
+
+  const bboxes = new Map<string, ReturnType<typeof getWardBbox>>();
+  for (const w of wards) bboxes.set(w.id, getWardBbox(w));
+
+  const TOL = 0.01;
+  for (let i = 0; i < wards.length; i++) {
+    for (let j = i + 1; j < wards.length; j++) {
+      const a = bboxes.get(wards[i].id);
+      const b = bboxes.get(wards[j].id);
+      if (!a || !b) continue;
+      const overlapLat = a.minLat - TOL <= b.maxLat && a.maxLat + TOL >= b.minLat;
+      const overlapLng = a.minLng - TOL <= b.maxLng && a.maxLng + TOL >= b.minLng;
+      if (overlapLat && overlapLng) {
+        adj.get(wards[i].id)!.add(wards[j].id);
+        adj.get(wards[j].id)!.add(wards[i].id);
+      }
+    }
+  }
+  return adj;
+}
+
+let _tokyoAdjacency: Map<string, Set<string>> | null = null;
+function getTokyoAdjacency(): Map<string, Set<string>> {
+  if (!_tokyoAdjacency) _tokyoAdjacency = computeWardAdjacency(loadTokyoWards());
+  return _tokyoAdjacency;
+}
+
+let _melbourneAdjacency: Map<string, Set<string>> | null = null;
+function getMelbourneAdjacency(): Map<string, Set<string>> {
+  if (!_melbourneAdjacency) _melbourneAdjacency = computeWardAdjacency(loadMelbourneLGAs());
+  return _melbourneAdjacency;
+}
 const ZONE_THRESHOLD = 0.8;
 
 function pointInPolygon(lat: number, lng: number, ring: [number, number][]): boolean {
@@ -130,6 +166,8 @@ function pointInBoundary(lat: number, lng: number, boundary: Record<string, unkn
 
 type ZoneRow = typeof zones.$inferSelect;
 
+const DEFAULT_GRID_SIZE = 20;
+
 function cellIndex(lat: number, lng: number, zone: ZoneRow): number | null {
   if (
     zone.bboxMinLat == null ||
@@ -139,12 +177,16 @@ function cellIndex(lat: number, lng: number, zone: ZoneRow): number | null {
   ) {
     return null;
   }
-  const gridSize = zone.gridSize ?? 0.0005;
-  const row = Math.floor((lat - zone.bboxMinLat) / gridSize);
-  const col = Math.floor((lng - zone.bboxMinLng) / gridSize);
-  const numCols = Math.ceil((zone.bboxMaxLng - zone.bboxMinLng) / gridSize);
-  if (row < 0 || col < 0 || col >= numCols) return null;
-  return row * numCols + col;
+  const G = zone.gridSize ?? DEFAULT_GRID_SIZE;
+  const latRange = zone.bboxMaxLat - zone.bboxMinLat;
+  const lngRange = zone.bboxMaxLng - zone.bboxMinLng;
+  if (latRange <= 0 || lngRange <= 0) return null;
+  const normLat = (lat - zone.bboxMinLat) / latRange;
+  const normLng = (lng - zone.bboxMinLng) / lngRange;
+  if (normLat < 0 || normLat >= 1 || normLng < 0 || normLng >= 1) return null;
+  const row = Math.min(Math.floor(normLat * G), G - 1);
+  const col = Math.min(Math.floor(normLng * G), G - 1);
+  return row * G + col;
 }
 
 interface WaypointCoord {
@@ -397,8 +439,25 @@ export async function getZonesForLocation(
 
   if (city === "tokyo") {
     const wards = loadTokyoWards();
-    const adjacentWards = getAdjacentWards(lat, lng, wards, PROXIMITY_DEG);
-    for (const w of adjacentWards) targetWardIds.add(w);
+    const adjacency = getTokyoAdjacency();
+    const currentWard = detectWardForPoint(lat, lng, wards);
+    if (currentWard) {
+      targetWardIds.add(currentWard);
+      const wardDef = wards.find((w) => w.id === currentWard);
+      const bbox = wardDef ? getWardBbox(wardDef) : null;
+      if (bbox) {
+        const distToEdge = Math.min(
+          lat - bbox.minLat, bbox.maxLat - lat,
+          lng - bbox.minLng, bbox.maxLng - lng
+        );
+        if (distToEdge < PROXIMITY_DEG) {
+          for (const adj of (adjacency.get(currentWard) ?? [])) targetWardIds.add(adj);
+        }
+      }
+    } else {
+      const nearby = getAdjacentWards(lat, lng, wards, PROXIMITY_DEG);
+      for (const w of nearby) targetWardIds.add(w);
+    }
 
     const [prefs] = await db
       .select({ tokyoWards: userPreferences.tokyoWards })
@@ -408,8 +467,25 @@ export async function getZonesForLocation(
 
   } else if (city === "melbourne") {
     const lgas = loadMelbourneLGAs();
-    const adjacentLGAs = getAdjacentWards(lat, lng, lgas, PROXIMITY_DEG);
-    for (const w of adjacentLGAs) targetWardIds.add(w);
+    const adjacency = getMelbourneAdjacency();
+    const currentLGA = detectWardForPoint(lat, lng, lgas);
+    if (currentLGA) {
+      targetWardIds.add(currentLGA);
+      const lgaDef = lgas.find((w) => w.id === currentLGA);
+      const bbox = lgaDef ? getWardBbox(lgaDef) : null;
+      if (bbox) {
+        const distToEdge = Math.min(
+          lat - bbox.minLat, bbox.maxLat - lat,
+          lng - bbox.minLng, bbox.maxLng - lng
+        );
+        if (distToEdge < PROXIMITY_DEG) {
+          for (const adj of (adjacency.get(currentLGA) ?? [])) targetWardIds.add(adj);
+        }
+      }
+    } else {
+      const nearby = getAdjacentWards(lat, lng, lgas, PROXIMITY_DEG);
+      for (const w of nearby) targetWardIds.add(w);
+    }
   }
 
   if (targetWardIds.size === 0) {

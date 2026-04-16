@@ -43,7 +43,7 @@ router.get("/preferences/tokyo-wards", async (req: Request, res: Response) => {
     .select({ tokyoWards: userPreferences.tokyoWards })
     .from(userPreferences)
     .where(eq(userPreferences.userId, user.id));
-  res.json({ tokyoWards: prefs?.tokyoWards ?? [] });
+  res.json({ wards: prefs?.tokyoWards ?? [] });
 });
 
 router.put("/preferences/tokyo-wards", async (req: Request, res: Response) => {
@@ -66,7 +66,7 @@ router.put("/preferences/tokyo-wards", async (req: Request, res: Response) => {
       set: { tokyoWards: wards, updatedAt: new Date() },
     });
 
-  res.json({ tokyoWards: wards });
+  res.json({ wards });
 });
 
 export default router;

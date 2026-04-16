@@ -16,6 +16,8 @@ const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, "../src/data/zones");
 
 const CELL_DEG = 0.0005;
+const GRID_SIZE = 20;
+const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
 
 const MELBOURNE_LGA_MAP: Record<string, string> = {
   Abbotsford: "yarra",
@@ -138,28 +140,6 @@ function computeZoneAreaKm2(ring: [number, number][], centroidLat: number): numb
   return deg2 * latKmPerDeg * lngKmPerDeg;
 }
 
-function computeTotalCells(boundary: { type: string; coordinates: unknown }, bbox: BBox): number {
-  let rings: [number, number][][] = [];
-
-  if (boundary.type === "Polygon") {
-    rings = [(boundary.coordinates as [number, number][][])[0]];
-  } else if (boundary.type === "MultiPolygon") {
-    rings = (boundary.coordinates as [number, number][][][]).map((poly) => poly[0]);
-  }
-
-  if (rings.length === 0) return 1;
-
-  let count = 0;
-  for (let lat = bbox.minLat; lat <= bbox.maxLat; lat += CELL_DEG) {
-    for (let lng = bbox.minLng; lng <= bbox.maxLng; lng += CELL_DEG) {
-      const cellCenterLat = lat + CELL_DEG / 2;
-      const cellCenterLng = lng + CELL_DEG / 2;
-      const inAny = rings.some((ring) => pointInPolygon(cellCenterLng, cellCenterLat, ring));
-      if (inAny) count++;
-    }
-  }
-  return Math.max(count, 1);
-}
 
 interface ZoneRecord {
   id: string;
@@ -307,18 +287,18 @@ async function seedCity(city: string, records: ZoneRecord[]): Promise<void> {
 
   for (const rec of records) {
     const [existing] = await db
-      .select({ id: zones.id, bboxMinLat: zones.bboxMinLat, wardId: zones.wardId })
+      .select({ id: zones.id, bboxMinLat: zones.bboxMinLat, wardId: zones.wardId, gridSize: zones.gridSize })
       .from(zones)
       .where(eq(zones.id, rec.id));
 
     const bbox = computeBBox(rec.boundary);
-    const totalCells = computeTotalCells(rec.boundary, bbox);
 
     if (existing) {
       const needsBboxUpdate = existing.bboxMinLat == null;
       const needsWardUpdate = existing.wardId == null && rec.wardId != null;
+      const needsGridUpdate = existing.gridSize == null || existing.gridSize < 1;
 
-      if (needsBboxUpdate || needsWardUpdate) {
+      if (needsBboxUpdate || needsWardUpdate || needsGridUpdate) {
         await db
           .update(zones)
           .set({
@@ -328,11 +308,10 @@ async function seedCity(city: string, records: ZoneRecord[]): Promise<void> {
                   bboxMaxLat: bbox.maxLat,
                   bboxMinLng: bbox.minLng,
                   bboxMaxLng: bbox.maxLng,
-                  gridSize: CELL_DEG,
-                  totalCells,
                 }
               : {}),
             ...(needsWardUpdate ? { wardId: rec.wardId } : {}),
+            ...(needsGridUpdate ? { gridSize: GRID_SIZE, totalCells: TOTAL_CELLS } : {}),
           })
           .where(eq(zones.id, rec.id));
         updated++;
@@ -351,12 +330,12 @@ async function seedCity(city: string, records: ZoneRecord[]): Promise<void> {
       boundaryGeoJSON: rec.boundary as unknown as Record<string, unknown>,
       centroidLat: rec.centroidLat,
       centroidLng: rec.centroidLng,
-      totalCells,
+      totalCells: TOTAL_CELLS,
       bboxMinLat: bbox.minLat,
       bboxMaxLat: bbox.maxLat,
       bboxMinLng: bbox.minLng,
       bboxMaxLng: bbox.maxLng,
-      gridSize: CELL_DEG,
+      gridSize: GRID_SIZE,
     });
 
     inserted++;

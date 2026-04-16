@@ -32,12 +32,12 @@ export const zones = pgTable("zones", {
   boundaryGeoJSON: jsonb("boundary_geo_json").notNull(),
   centroidLat: real("centroid_lat").notNull(),
   centroidLng: real("centroid_lng").notNull(),
-  totalCells: integer("total_cells").notNull().default(0),
+  totalCells: integer("total_cells").notNull().default(400),
   bboxMinLat: real("bbox_min_lat"),
   bboxMaxLat: real("bbox_max_lat"),
   bboxMinLng: real("bbox_min_lng"),
   bboxMaxLng: real("bbox_max_lng"),
-  gridSize: real("grid_size").notNull().default(0.0005),
+  gridSize: integer("grid_size").notNull().default(20),
 });
 
 export const zoneCoverage = pgTable(

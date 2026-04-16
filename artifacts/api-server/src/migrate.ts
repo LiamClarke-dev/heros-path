@@ -143,6 +143,13 @@ const STATEMENTS = [
   `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS max_discoveries INTEGER NOT NULL DEFAULT 20`,
   `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS tokyo_wards text[] NOT NULL DEFAULT '{}'`,
 
+  // ── ZONES: normalized grid model (G×G, G=20) ─────────────────
+  `UPDATE zones SET grid_size = 20, total_cells = 400 WHERE grid_size IS NULL OR grid_size < 1`,
+  `ALTER TABLE zones ALTER COLUMN grid_size TYPE integer USING ROUND(COALESCE(grid_size, 20))::integer`,
+  `ALTER TABLE zones ALTER COLUMN grid_size SET DEFAULT 20`,
+  `ALTER TABLE zones ALTER COLUMN total_cells SET DEFAULT 400`,
+  `DELETE FROM zone_coverage WHERE visited_cells IS NOT NULL AND array_length(visited_cells, 1) > 0`,
+
   // ── NOTIFICATIONS (new table) ────────────────────────────────
   `CREATE TABLE IF NOT EXISTS notifications (
      id         TEXT PRIMARY KEY,

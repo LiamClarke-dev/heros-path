@@ -45,6 +45,7 @@ export const userPreferences = pgTable(
       .notNull()
       .default("0"),
     maxDiscoveries: integer("max_discoveries").notNull().default(20),
+    tokyoWards: text("tokyo_wards").array().notNull().default(sql`'{}'`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [uniqueIndex("user_preferences_user_id_unique").on(t.userId)]

@@ -141,6 +141,7 @@ const STATEMENTS = [
 
   // ── USER_PREFERENCES additions ───────────────────────────────
   `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS max_discoveries INTEGER NOT NULL DEFAULT 20`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS tokyo_wards text[] NOT NULL DEFAULT '{}'`,
 
   // ── NOTIFICATIONS (new table) ────────────────────────────────
   `CREATE TABLE IF NOT EXISTS notifications (

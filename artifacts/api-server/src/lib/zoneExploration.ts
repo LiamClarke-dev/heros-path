@@ -5,12 +5,64 @@ import {
   zoneCompletions,
   users,
   userBadges,
+  userPreferences,
 } from "@workspace/db";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, or, sql, inArray } from "drizzle-orm";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import logger from "../logger.js";
-import { computeLevel, xpForCurrentLevel, xpForNextLevel } from "./gamification.js";
 
 const ZONE_COMPLETION_XP = 500;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DATA_DIR = join(__dirname, "../data/zones");
+
+const PROXIMITY_DEG = 0.009;
+
+interface WardBoundary {
+  id: string;
+  name: string;
+  boundary: { type: string; coordinates: unknown };
+  centroidLat: number;
+  centroidLng: number;
+}
+
+let _tokyoWards: WardBoundary[] | null = null;
+function loadTokyoWards(): WardBoundary[] {
+  if (!_tokyoWards) {
+    try {
+      const raw = JSON.parse(readFileSync(join(DATA_DIR, "tokyo-wards.json"), "utf8")) as { wards: WardBoundary[] };
+      _tokyoWards = raw.wards;
+    } catch {
+      _tokyoWards = [];
+    }
+  }
+  return _tokyoWards;
+}
+
+let _melbourneLGAs: WardBoundary[] | null = null;
+function loadMelbourneLGAs(): WardBoundary[] {
+  if (!_melbourneLGAs) {
+    try {
+      const raw = JSON.parse(readFileSync(join(DATA_DIR, "melbourne-lgas.json"), "utf8")) as { lgas: WardBoundary[] };
+      _melbourneLGAs = raw.lgas;
+    } catch {
+      _melbourneLGAs = [];
+    }
+  }
+  return _melbourneLGAs;
+}
+
+function detectWardForPoint(lat: number, lng: number, wards: WardBoundary[]): string | null {
+  for (const ward of wards) {
+    if (pointInBoundary(lat, lng, ward.boundary as Record<string, unknown>)) {
+      return ward.id;
+    }
+  }
+  return null;
+}
 const ZONE_THRESHOLD = 0.8;
 
 function pointInPolygon(lat: number, lng: number, ring: [number, number][]): boolean {
@@ -33,14 +85,14 @@ function pointInBoundary(lat: number, lng: number, boundary: Record<string, unkn
     const coords = boundary.coordinates as [number, number][][];
     const outer = coords[0];
     if (!outer) return false;
-    return pointInPolygon(lng, lat, outer.map(([x, y]) => [x, y]));
+    return pointInPolygon(lat, lng, outer.map(([x, y]) => [x, y] as [number, number]));
   }
   if (type === "MultiPolygon") {
     const coords = boundary.coordinates as [number, number][][][];
     return coords.some((poly) => {
       const outer = poly[0];
       if (!outer) return false;
-      return pointInPolygon(lng, lat, outer.map(([x, y]) => [x, y]));
+      return pointInPolygon(lat, lng, outer.map(([x, y]) => [x, y] as [number, number]));
     });
   }
   return false;
@@ -97,18 +149,19 @@ export async function processZoneCoverage(
     return { newZoneCompletions: [], zoneXpGained: 0, newZoneBadges: [] };
   }
 
-  const padding = 0.001;
-  const minLat = Math.min(...waypoints.map((w) => w.lat)) - padding;
-  const maxLat = Math.max(...waypoints.map((w) => w.lat)) + padding;
-  const minLng = Math.min(...waypoints.map((w) => w.lng)) - padding;
-  const maxLng = Math.max(...waypoints.map((w) => w.lng)) + padding;
+  const routeMinLat = Math.min(...waypoints.map((w) => w.lat));
+  const routeMaxLat = Math.max(...waypoints.map((w) => w.lat));
+  const routeMinLng = Math.min(...waypoints.map((w) => w.lng));
+  const routeMaxLng = Math.max(...waypoints.map((w) => w.lng));
 
   const nearbyZones = await db
     .select()
     .from(zones)
     .where(
-      sql`${zones.centroidLat} >= ${minLat} AND ${zones.centroidLat} <= ${maxLat}
-          AND ${zones.centroidLng} >= ${minLng} AND ${zones.centroidLng} <= ${maxLng}`
+      sql`${zones.bboxMinLat} <= ${routeMaxLat}
+          AND ${zones.bboxMaxLat} >= ${routeMinLat}
+          AND ${zones.bboxMinLng} <= ${routeMaxLng}
+          AND ${zones.bboxMaxLng} >= ${routeMinLng}`
     );
 
   if (nearbyZones.length === 0) {
@@ -241,10 +294,15 @@ export async function processZoneCoverage(
   return { newZoneCompletions, zoneXpGained, newZoneBadges };
 }
 
-export async function getAllZonesForUser(
-  userId: string,
-  city: string
-): Promise<Array<{
+export function inferCityFromCoords(lat: number, lng: number): string | null {
+  if (lat >= 34.8 && lat <= 36.2 && lng >= 138.5 && lng <= 140.5) return "tokyo";
+  if (lat >= -38.5 && lat <= -37.0 && lng >= 144.0 && lng <= 145.5) return "melbourne";
+  if (lat >= -38.5 && lat <= -37.5 && lng >= 143.5 && lng <= 145.0) return "geelong";
+  if (lat >= 37.0 && lat <= 38.0 && lng >= -123.0 && lng <= -122.0) return "san_francisco";
+  return null;
+}
+
+type ZoneApiRow = {
   id: string;
   name: string;
   nameEn: string | null;
@@ -254,25 +312,25 @@ export async function getAllZonesForUser(
   boundary: Record<string, unknown>;
   coveragePct: number;
   completedAt: string | null;
-}>> {
-  const cityZones = await db
-    .select()
-    .from(zones)
-    .where(eq(zones.city, city));
+};
 
+async function attachCoverage(
+  userId: string,
+  cityZones: (typeof zones.$inferSelect)[]
+): Promise<ZoneApiRow[]> {
   if (cityZones.length === 0) return [];
-
   const zoneIds = cityZones.map((z) => z.id);
 
-  const coverageRows = await db
-    .select({ zoneId: zoneCoverage.zoneId, coveragePct: zoneCoverage.coveragePct })
-    .from(zoneCoverage)
-    .where(and(eq(zoneCoverage.userId, userId), inArray(zoneCoverage.zoneId, zoneIds)));
-
-  const completionRows = await db
-    .select({ zoneId: zoneCompletions.zoneId, completedAt: zoneCompletions.completedAt })
-    .from(zoneCompletions)
-    .where(and(eq(zoneCompletions.userId, userId), inArray(zoneCompletions.zoneId, zoneIds)));
+  const [coverageRows, completionRows] = await Promise.all([
+    db
+      .select({ zoneId: zoneCoverage.zoneId, coveragePct: zoneCoverage.coveragePct })
+      .from(zoneCoverage)
+      .where(and(eq(zoneCoverage.userId, userId), inArray(zoneCoverage.zoneId, zoneIds))),
+    db
+      .select({ zoneId: zoneCompletions.zoneId, completedAt: zoneCompletions.completedAt })
+      .from(zoneCompletions)
+      .where(and(eq(zoneCompletions.userId, userId), inArray(zoneCompletions.zoneId, zoneIds))),
+  ]);
 
   const coverageMap = new Map(coverageRows.map((r) => [r.zoneId, r.coveragePct]));
   const completionMap = new Map(completionRows.map((r) => [r.zoneId, r.completedAt]));
@@ -290,10 +348,57 @@ export async function getAllZonesForUser(
   }));
 }
 
-export function inferCityFromCoords(lat: number, lng: number): string | null {
-  if (lat >= 34.8 && lat <= 36.2 && lng >= 138.5 && lng <= 140.5) return "tokyo";
-  if (lat >= -38.5 && lat <= -37.0 && lng >= 144.0 && lng <= 145.5) return "melbourne";
-  if (lat >= -38.5 && lat <= -37.5 && lng >= 143.5 && lng <= 145.0) return "geelong";
-  if (lat >= 37.0 && lat <= 38.0 && lng >= -123.0 && lng <= -122.0) return "san_francisco";
-  return null;
+export async function getAllZonesForUser(userId: string, city: string): Promise<ZoneApiRow[]> {
+  const cityZones = await db.select().from(zones).where(eq(zones.city, city));
+  return attachCoverage(userId, cityZones);
+}
+
+export async function getZonesForLocation(
+  userId: string,
+  city: string,
+  lat: number | null,
+  lng: number | null
+): Promise<ZoneApiRow[]> {
+  if (city === "geelong" || city === "san_francisco" || lat == null || lng == null) {
+    return getAllZonesForUser(userId, city);
+  }
+
+  const targetWardIds = new Set<string>();
+
+  if (city === "tokyo") {
+    const wards = loadTokyoWards();
+    const currentWard = detectWardForPoint(lat, lng, wards);
+    if (currentWard) targetWardIds.add(currentWard);
+
+    const [prefs] = await db
+      .select({ tokyoWards: userPreferences.tokyoWards })
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userId));
+    for (const w of prefs?.tokyoWards ?? []) targetWardIds.add(w);
+
+  } else if (city === "melbourne") {
+    const lgas = loadMelbourneLGAs();
+    const currentLGA = detectWardForPoint(lat, lng, lgas);
+    if (currentLGA) targetWardIds.add(currentLGA);
+  }
+
+  const cityZones = await db
+    .select()
+    .from(zones)
+    .where(
+      and(
+        eq(zones.city, city),
+        or(
+          targetWardIds.size > 0 ? inArray(zones.wardId, [...targetWardIds]) : sql`false`,
+          and(
+            sql`${zones.centroidLat} >= ${lat - PROXIMITY_DEG}`,
+            sql`${zones.centroidLat} <= ${lat + PROXIMITY_DEG}`,
+            sql`${zones.centroidLng} >= ${lng - PROXIMITY_DEG}`,
+            sql`${zones.centroidLng} <= ${lng + PROXIMITY_DEG}`
+          )
+        )
+      )
+    );
+
+  return attachCoverage(userId, cityZones);
 }

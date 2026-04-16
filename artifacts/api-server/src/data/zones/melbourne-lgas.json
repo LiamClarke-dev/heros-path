@@ -1,0 +1,461 @@
+{
+  "lgas": [
+    {
+      "id": "yarra",
+      "name": "City of Yarra",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.97231433820005,
+              -37.83573958399994
+            ],
+            [
+              145.0177447518001,
+              -37.83573958399994
+            ],
+            [
+              145.0177447518001,
+              -37.772276495999975
+            ],
+            [
+              144.97231433820005,
+              -37.772276495999975
+            ],
+            [
+              144.97231433820005,
+              -37.83573958399994
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.80400803999996,
+      "centroidLng": 144.99502954500008
+    },
+    {
+      "id": "melbourne",
+      "name": "City of Melbourne",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.90373445760008,
+              -37.832636003999966
+            ],
+            [
+              144.99306902240005,
+              -37.832636003999966
+            ],
+            [
+              144.99306902240005,
+              -37.772637155999945
+            ],
+            [
+              144.90373445760008,
+              -37.772637155999945
+            ],
+            [
+              144.90373445760008,
+              -37.832636003999966
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.802636579999955,
+      "centroidLng": 144.94840174000007
+    },
+    {
+      "id": "darebin",
+      "name": "City of Darebin",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.96885223660004,
+              -37.80591325019995
+            ],
+            [
+              145.04674217340002,
+              -37.80591325019995
+            ],
+            [
+              145.04674217340002,
+              -37.68874579979993
+            ],
+            [
+              144.96885223660004,
+              -37.68874579979993
+            ],
+            [
+              144.96885223660004,
+              -37.80591325019995
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.74732952499994,
+      "centroidLng": 145.00779720500003
+    },
+    {
+      "id": "boroondara",
+      "name": "City of Boroondara",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.99698656720005,
+              -37.86908226119993
+            ],
+            [
+              145.11577187280005,
+              -37.86908226119993
+            ],
+            [
+              145.11577187280005,
+              -37.78395663879997
+            ],
+            [
+              144.99698656720005,
+              -37.78395663879997
+            ],
+            [
+              144.99698656720005,
+              -37.86908226119993
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.82651944999995,
+      "centroidLng": 145.05637922000005
+    },
+    {
+      "id": "stonnington",
+      "name": "City of Stonnington",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.97400973280003,
+              -37.89426901939998
+            ],
+            [
+              145.09451906720005,
+              -37.89426901939998
+            ],
+            [
+              145.09451906720005,
+              -37.827054370599974
+            ],
+            [
+              144.97400973280003,
+              -37.827054370599974
+            ],
+            [
+              144.97400973280003,
+              -37.89426901939998
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.860661694999976,
+      "centroidLng": 145.03426440000004
+    },
+    {
+      "id": "moreland",
+      "name": "City of Moreland",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.94528215760008,
+              -37.781161193999935
+            ],
+            [
+              144.98768048240007,
+              -37.781161193999935
+            ],
+            [
+              144.98768048240007,
+              -37.73160498599998
+            ],
+            [
+              144.94528215760008,
+              -37.73160498599998
+            ],
+            [
+              144.94528215760008,
+              -37.781161193999935
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.75638308999996,
+      "centroidLng": 144.96648132000007
+    },
+    {
+      "id": "port_phillip",
+      "name": "City of Port Phillip",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.89482433580008,
+              -37.89317075899998
+            ],
+            [
+              145.01279019420008,
+              -37.89317075899998
+            ],
+            [
+              145.01279019420008,
+              -37.81859657099995
+            ],
+            [
+              144.89482433580008,
+              -37.81859657099995
+            ],
+            [
+              144.89482433580008,
+              -37.89317075899998
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.855883664999965,
+      "centroidLng": 144.95380726500008
+    },
+    {
+      "id": "moonee_valley",
+      "name": "City of Moonee Valley",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.8949590232001,
+              -37.79592540439993
+            ],
+            [
+              144.94125237680004,
+              -37.79592540439993
+            ],
+            [
+              144.94125237680004,
+              -37.75617533559997
+            ],
+            [
+              144.8949590232001,
+              -37.75617533559997
+            ],
+            [
+              144.8949590232001,
+              -37.79592540439993
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.77605036999995,
+      "centroidLng": 144.91810570000007
+    },
+    {
+      "id": "glen_eira",
+      "name": "City of Glen Eira",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              145.02069353900012,
+              -37.93592742239997
+            ],
+            [
+              145.112443431,
+              -37.93592742239997
+            ],
+            [
+              145.112443431,
+              -37.87163969759996
+            ],
+            [
+              145.02069353900012,
+              -37.87163969759996
+            ],
+            [
+              145.02069353900012,
+              -37.93592742239997
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.903783559999965,
+      "centroidLng": 145.06656848500006
+    },
+    {
+      "id": "bayside",
+      "name": "City of Bayside",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.9823618444001,
+              -37.964784535199946
+            ],
+            [
+              145.0353932956001,
+              -37.964784535199946
+            ],
+            [
+              145.0353932956001,
+              -37.88167526479993
+            ],
+            [
+              144.9823618444001,
+              -37.88167526479993
+            ],
+            [
+              144.9823618444001,
+              -37.964784535199946
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.92322989999994,
+      "centroidLng": 145.0088775700001
+    },
+    {
+      "id": "maribyrnong",
+      "name": "City of Maribyrnong",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.85661469700008,
+              -37.827813022799944
+            ],
+            [
+              144.91767533300012,
+              -37.827813022799944
+            ],
+            [
+              144.91767533300012,
+              -37.78555091719994
+            ],
+            [
+              144.85661469700008,
+              -37.78555091719994
+            ],
+            [
+              144.85661469700008,
+              -37.827813022799944
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.80668196999994,
+      "centroidLng": 144.8871450150001
+    },
+    {
+      "id": "hobsons_bay",
+      "name": "City of Hobsons Bay",
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              144.85049940680005,
+              -37.87354642319998
+            ],
+            [
+              144.91679905320007,
+              -37.87354642319998
+            ],
+            [
+              144.91679905320007,
+              -37.83228789679997
+            ],
+            [
+              144.85049940680005,
+              -37.83228789679997
+            ],
+            [
+              144.85049940680005,
+              -37.87354642319998
+            ]
+          ]
+        ]
+      },
+      "centroidLat": -37.852917159999976,
+      "centroidLng": 144.88364923000006
+    }
+  ],
+  "suburbToLga": {
+    "Abbotsford": "yarra",
+    "Albert Park": "port_phillip",
+    "Alphington": "darebin",
+    "Ascot Vale": "moonee_valley",
+    "Bentleigh": "glen_eira",
+    "Brighton": "bayside",
+    "Brighton East": "bayside",
+    "Brunswick": "moreland",
+    "Brunswick East": "moreland",
+    "Camberwell": "boroondara",
+    "Carlton": "melbourne",
+    "Carnegie": "glen_eira",
+    "Chadstone": "glen_eira",
+    "Clifton Hill": "yarra",
+    "Coburg": "moreland",
+    "Collingwood": "yarra",
+    "Cremorne": "yarra",
+    "Docklands": "melbourne",
+    "East Melbourne": "melbourne",
+    "Elwood": "port_phillip",
+    "Fairfield": "darebin",
+    "Fitzroy": "yarra",
+    "Fitzroy North": "yarra",
+    "Flemington": "moonee_valley",
+    "Footscray": "maribyrnong",
+    "Glen Iris": "boroondara",
+    "Hampton": "bayside",
+    "Hawthorn": "boroondara",
+    "Hawthorn East": "boroondara",
+    "Kew": "boroondara",
+    "Malvern": "stonnington",
+    "Malvern East": "stonnington",
+    "Middle Park": "port_phillip",
+    "Moonee Ponds": "moonee_valley",
+    "Murrumbeena": "glen_eira",
+    "Newport": "hobsons_bay",
+    "North Melbourne": "melbourne",
+    "Northcote": "darebin",
+    "Oakleigh": "glen_eira",
+    "Parkville": "melbourne",
+    "Port Melbourne": "port_phillip",
+    "Prahran": "stonnington",
+    "Preston": "darebin",
+    "Reservoir": "darebin",
+    "Richmond": "yarra",
+    "Sandringham": "bayside",
+    "Seddon": "maribyrnong",
+    "South Melbourne": "port_phillip",
+    "South Yarra": "stonnington",
+    "Southbank": "melbourne",
+    "St Kilda": "port_phillip",
+    "St Kilda East": "port_phillip",
+    "Surrey Hills": "boroondara",
+    "Thornbury": "darebin",
+    "Toorak": "stonnington",
+    "West Melbourne": "melbourne",
+    "Williamstown": "hobsons_bay",
+    "Windsor": "stonnington",
+    "Yarraville": "maribyrnong"
+  }
+}

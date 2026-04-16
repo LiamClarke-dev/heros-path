@@ -487,6 +487,7 @@ const styles = StyleSheet.create({
   },
   filterScrollContainer: {
     flexGrow: 0,
+    flexShrink: 0,
     marginBottom: 4,
   },
   filterRow: {
@@ -505,6 +506,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
+    minHeight: 38,
   },
   chipActive: {
     backgroundColor: Colors.goldGlow,
@@ -513,6 +515,7 @@ const styles = StyleSheet.create({
   chipText: {
     fontFamily: "Inter_500Medium",
     fontSize: 13,
+    lineHeight: 13,
     color: Colors.parchmentMuted,
     includeFontPadding: false,
     textAlignVertical: "center",

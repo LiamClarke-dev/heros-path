@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -19,9 +19,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import type RNMapView from "react-native-maps";
-import type { MapViewProps, MapMarkerProps, MapPolylineProps, MapCircleProps, Provider } from "react-native-maps";
+import type { MapViewProps, MapMarkerProps, MapPolylineProps, Provider } from "react-native-maps";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
+import { rdpSimplify } from "../../lib/geo";
 import Colors from "../../constants/colors";
 
 const IS_WEB = Platform.OS === "web";
@@ -29,7 +30,6 @@ const IS_WEB = Platform.OS === "web";
 let MapView: React.ComponentClass<MapViewProps> | null = null;
 let Marker: React.ComponentType<MapMarkerProps> | null = null;
 let Polyline: React.ComponentType<MapPolylineProps> | null = null;
-let Circle: React.ComponentType<MapCircleProps> | null = null;
 let PROVIDER_GOOGLE: Provider | null = null;
 
 if (!IS_WEB) {
@@ -37,7 +37,6 @@ if (!IS_WEB) {
   MapView = Maps.default;
   Marker = Maps.Marker;
   Polyline = Maps.Polyline;
-  Circle = Maps.Circle;
   PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
 }
 
@@ -210,7 +209,7 @@ export default function JourneyTab() {
       setLocationPermission(granted ? "granted" : "denied");
 
       if (granted) {
-        const last = await Location.getLastKnownPositionAsync();
+        const last = await Location.getLastKnownPositionAsync().catch(() => null);
         if (last) {
           const loc = { lat: last.coords.latitude, lng: last.coords.longitude };
           setCurrentLocation(loc);
@@ -281,7 +280,7 @@ export default function JourneyTab() {
     if (IS_WEB) return;
     let loc = currentLocation;
     if (!loc) {
-      const last = await Location.getLastKnownPositionAsync();
+      const last = await Location.getLastKnownPositionAsync().catch(() => null);
       if (last) {
         loc = { lat: last.coords.latitude, lng: last.coords.longitude };
       } else {
@@ -327,7 +326,7 @@ export default function JourneyTab() {
 
   const locationWatchOptions: Location.LocationOptions = {
     accuracy: Location.Accuracy.BestForNavigation,
-    distanceInterval: 5,
+    distanceInterval: 10,
     timeInterval: 2000,
   };
 
@@ -625,10 +624,13 @@ export default function JourneyTab() {
     );
   }
 
-  const activePolyline = waypoints.map((wp) => ({
-    latitude: wp.lat,
-    longitude: wp.lng,
-  }));
+  const activePolyline = useMemo(() => {
+    const raw = waypoints.map((wp) => ({
+      latitude: wp.lat,
+      longitude: wp.lng,
+    }));
+    return raw.length >= 3 ? rdpSimplify(raw, 0.00005) : raw;
+  }, [waypoints]);
 
   return (
     <View style={styles.container}>
@@ -657,30 +659,6 @@ export default function JourneyTab() {
                 }
           }
         >
-          {exploredCells.map((cell) => (
-            Circle && (
-              <Circle
-                key={`exp-${cell.lat}-${cell.lng}`}
-                center={{ latitude: cell.lat, longitude: cell.lng }}
-                radius={26}
-                fillColor="rgba(212,160,23,0.12)"
-                strokeColor="transparent"
-              />
-            )
-          ))}
-
-          {unexploredCells.map((cell) => (
-            Circle && (
-              <Circle
-                key={`unexp-${cell.lat}-${cell.lng}`}
-                center={{ latitude: cell.lat, longitude: cell.lng }}
-                radius={30}
-                fillColor="rgba(41,182,246,0.12)"
-                strokeColor="transparent"
-              />
-            )
-          ))}
-
           {historicalJourneys.map((j, idx) => {
             const color = HISTORY_COLORS[Math.min(idx, HISTORY_COLORS.length - 1)];
             return Polyline ? (
@@ -711,7 +689,7 @@ export default function JourneyTab() {
                 longitude: currentLocation.lng,
               }}
               anchor={{ x: 0.5, y: 1.0 }}
-              tracksViewChanges={journeyStatus === "active"}
+              tracksViewChanges={true}
               flat={false}
             >
               <CharacterMarker

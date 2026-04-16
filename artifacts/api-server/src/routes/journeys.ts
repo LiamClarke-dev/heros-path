@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, journeys, journeyWaypoints, journeyDiscoveredPlaces, placeCache, userPlaceStates } from "@workspace/db";
-import { eq, and, desc, gte, lte, isNotNull, inArray, count, sql } from "drizzle-orm";
+import { eq, and, desc, gte, lte, isNotNull, inArray, count, sql, isNull } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
 import {
   haversineDistance,
@@ -48,6 +48,27 @@ function makePhotoUrl(ref: string | null | undefined, width = 400): string | nul
   return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${width}&photoreference=${ref}&key=${key}`;
 }
 
+const JOURNEY_ACTIVITIES = ["Walk", "Expedition", "Stroll", "Adventure"];
+
+function generateJourneyName(startedAt: Date): string {
+  const hour = startedAt.getHours();
+  let prefix: string;
+  if (hour >= 5 && hour < 12) prefix = "Morning";
+  else if (hour >= 12 && hour < 17) prefix = "Afternoon";
+  else if (hour >= 17 && hour < 21) prefix = "Evening";
+  else prefix = "Night";
+
+  const activity = JOURNEY_ACTIVITIES[hour % JOURNEY_ACTIVITIES.length];
+
+  const timeStr = startedAt.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  return `${prefix} ${activity} · ${timeStr}`;
+}
+
 // GET /api/journeys — list of completed journeys with thumbnails
 router.get("/", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
@@ -81,6 +102,7 @@ router.get("/", async (req: Request, res: Response) => {
         : null;
     return {
       id: j.id,
+      name: j.name ?? generateJourneyName(j.startedAt),
       startedAt: j.startedAt,
       endedAt: j.endedAt,
       durationSeconds,
@@ -98,9 +120,11 @@ router.get("/", async (req: Request, res: Response) => {
 router.post("/", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const id = crypto.randomUUID();
+  const now = new Date();
+  const name = generateJourneyName(now);
   const [journey] = await db
     .insert(journeys)
-    .values({ id, userId: user.id })
+    .values({ id, userId: user.id, name })
     .returning();
   res.json({ id: journey.id, startedAt: journey.startedAt });
 });
@@ -404,6 +428,102 @@ router.get("/explored-cells", async (req: Request, res: Response) => {
   res.json({ explored, unexplored });
 });
 
+// PATCH /api/journeys/:journeyId/rename — rename a journey
+router.patch("/:journeyId/rename", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const journeyId = req.params.journeyId as string;
+  const body = req.body as { name?: unknown };
+
+  if (typeof body.name !== "string" || body.name.trim().length === 0) {
+    res.status(400).json({ error: "name must be a non-empty string" });
+    return;
+  }
+
+  const trimmedName = body.name.trim().slice(0, 120);
+
+  const [existing] = await db
+    .select({ id: journeys.id })
+    .from(journeys)
+    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Journey not found" });
+    return;
+  }
+
+  await db
+    .update(journeys)
+    .set({ name: trimmedName })
+    .where(eq(journeys.id, journeyId));
+
+  res.json({ id: journeyId, name: trimmedName });
+});
+
+// DELETE /api/journeys/:journeyId — delete a journey
+router.delete("/:journeyId", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+  const journeyId = req.params.journeyId as string;
+
+  const [existing] = await db
+    .select({ id: journeys.id })
+    .from(journeys)
+    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Journey not found" });
+    return;
+  }
+
+  // Cascade deletes journey_waypoints and journey_discovered_places via FK constraints
+  await db.delete(journeys).where(eq(journeys.id, journeyId));
+
+  res.json({ deleted: true });
+});
+
+// POST /api/journeys/backfill-maps — regenerate static map URLs for journeys missing them
+router.post("/backfill-maps", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+
+  const needsBackfill = await db
+    .select()
+    .from(journeys)
+    .where(
+      and(
+        eq(journeys.userId, user.id),
+        isNotNull(journeys.endedAt),
+        isNull(journeys.polylineEncoded)
+      )
+    )
+    .limit(50);
+
+  let updated = 0;
+  for (const j of needsBackfill) {
+    const raw = await db
+      .select({ lat: journeyWaypoints.lat, lng: journeyWaypoints.lng })
+      .from(journeyWaypoints)
+      .where(eq(journeyWaypoints.journeyId, j.id))
+      .orderBy(journeyWaypoints.recordedAt);
+
+    if (raw.length < 2) continue;
+
+    const coords: Array<{ lat: number; lng: number }> = raw.map((wp) => ({
+      lat: parseFloat(String(wp.lat)),
+      lng: parseFloat(String(wp.lng)),
+    }));
+
+    const polylineEncoded = encodePolyline(coords);
+
+    await db
+      .update(journeys)
+      .set({ polylineEncoded })
+      .where(eq(journeys.id, j.id));
+
+    updated++;
+  }
+
+  res.json({ updated });
+});
+
 router.get("/:journeyId", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const journeyId = req.params.journeyId as string;
@@ -481,6 +601,7 @@ router.get("/:journeyId", async (req: Request, res: Response) => {
 
   res.json({
     id: journey.id,
+    name: journey.name ?? generateJourneyName(journey.startedAt),
     startedAt: journey.startedAt,
     endedAt: journey.endedAt,
     durationSeconds,

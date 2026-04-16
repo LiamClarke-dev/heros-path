@@ -525,6 +525,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 20,
   },
   center: {

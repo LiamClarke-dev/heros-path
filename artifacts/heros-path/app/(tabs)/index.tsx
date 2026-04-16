@@ -67,6 +67,7 @@ interface HistoricalJourney {
   id: string;
   startedAt: string;
   waypoints: Array<{ lat: number; lng: number }>;
+  snappedRoute?: Array<{ lat: number; lng: number }>;
 }
 
 interface ExploredCell {
@@ -959,13 +960,14 @@ export default function JourneyTab() {
           })}
           {historicalJourneys.map((j, idx) => {
             const color = HISTORY_COLORS[Math.min(idx, HISTORY_COLORS.length - 1)];
+            const coords = (j.snappedRoute ?? j.waypoints).map((w) => ({
+              latitude: w.lat,
+              longitude: w.lng,
+            }));
             return Polyline ? (
               <Polyline
                 key={j.id}
-                coordinates={j.waypoints.map((wp) => ({
-                  latitude: wp.lat,
-                  longitude: wp.lng,
-                }))}
+                coordinates={coords}
                 strokeColor={color}
                 strokeWidth={3}
               />
@@ -1224,7 +1226,7 @@ export default function JourneyTab() {
                 {pingLoading ? (
                   <ActivityIndicator size="small" color={Colors.gold} />
                 ) : (
-                  <Feather name="zap" size={16} color={(!pingReady || pingDailyLimitReached) ? Colors.parchmentDim : Colors.gold} />
+                  <Feather name="zap" size={16} color={(!pingReady || pingDailyLimitReached) ? "rgba(255,255,255,0.35)" : Colors.gold} />
                 )}
                 {!pingLoading && (
                   <Text style={[styles.pingBtnText, (!pingReady || pingDailyLimitReached) && styles.pingBtnTextDisabled]}>
@@ -1528,12 +1530,11 @@ const styles = StyleSheet.create({
     color: Colors.gold,
   },
   pingBtnDisabled: {
-    borderColor: Colors.border,
-    backgroundColor: "rgba(0,0,0,0.1)",
-    opacity: 0.7,
+    borderColor: "rgba(255,255,255,0.35)",
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
   pingBtnTextDisabled: {
-    color: Colors.parchmentDim,
+    color: "rgba(255,255,255,0.7)",
   },
   endBtn: {
     flexDirection: "row",

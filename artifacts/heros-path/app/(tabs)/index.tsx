@@ -162,7 +162,6 @@ export default function JourneyTab() {
   const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
   const [suburbsData, setSuburbsData] = useState<SuburbData[]>([]);
   const [viewport, setViewport] = useState<ViewportRegion | null>(null);
-  const suburbLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [elapsedDisplay, setElapsedDisplay] = useState("0:00");
   const [pingLoading, setPingLoading] = useState(false);
   const [pingSheetVisible, setPingSheetVisible] = useState(false);
@@ -196,20 +195,20 @@ export default function JourneyTab() {
   const bypassQualityGateRef = useRef(false);
   const journeyIdRef = useRef<string | null>(null);
 
-  const loadSuburbs = useCallback(
-    async (vp: ViewportRegion) => {
+  const loadAllSuburbs = useCallback(
+    async (loc?: { lat: number; lng: number }) => {
       if (!token || IS_WEB) return;
-      const latSpan = vp.neLat - vp.swLat;
-      const lngSpan = vp.neLng - vp.swLng;
-      if (latSpan > 2 || lngSpan > 2) return;
       try {
+        const params = loc
+          ? `?center_lat=${loc.lat}&center_lng=${loc.lng}`
+          : "";
         const data = (await apiFetch(
-          `/api/map/suburbs?sw_lat=${vp.swLat}&sw_lng=${vp.swLng}&ne_lat=${vp.neLat}&ne_lng=${vp.neLng}`,
+          `/api/map/suburbs/all${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
         )) as { suburbs: SuburbData[] };
         setSuburbsData(data.suburbs ?? []);
       } catch (err) {
-        console.warn("[JourneyMap] loadSuburbs failed", err);
+        console.warn("[JourneyMap] loadAllSuburbs failed", err);
       }
     },
     [token]
@@ -319,16 +318,19 @@ export default function JourneyTab() {
           setCurrentLocation(loc);
           await loadHistory();
           await loadExploredCells(loc.lat, loc.lng);
+          loadAllSuburbs(loc);
         } else {
           await loadHistory();
+          loadAllSuburbs();
         }
       } else {
         await loadHistory();
+        loadAllSuburbs();
       }
       loadQuests();
       loadUserLists();
     })();
-  }, [token, loadHistory, loadExploredCells, loadQuests, loadUserLists]);
+  }, [token, loadHistory, loadExploredCells, loadQuests, loadUserLists, loadAllSuburbs]);
 
   useEffect(() => {
     if (!currentLocation || hasAutocenteredRef.current || IS_WEB) return;
@@ -350,10 +352,6 @@ export default function JourneyTab() {
       if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (questRefreshRef.current) clearInterval(questRefreshRef.current);
-      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)
-        .then((running) => { if (running) Location.stopLocationUpdatesAsync(LOCATION_TASK); })
-        .catch(() => {});
-      if (suburbLoadTimerRef.current) clearTimeout(suburbLoadTimerRef.current);
       Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)
         .then((running) => { if (running) Location.stopLocationUpdatesAsync(LOCATION_TASK); })
         .catch(() => {});
@@ -393,10 +391,6 @@ export default function JourneyTab() {
       neLng: region.longitude + region.longitudeDelta / 2,
     };
     setViewport(vp);
-    if (suburbLoadTimerRef.current) clearTimeout(suburbLoadTimerRef.current);
-    suburbLoadTimerRef.current = setTimeout(() => {
-      loadSuburbs(vp);
-    }, 600);
   }
 
   async function handleLocateMe() {
@@ -681,7 +675,7 @@ export default function JourneyTab() {
       loadHistory();
       loadQuests();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
-      if (viewport) loadSuburbs(viewport);
+      loadAllSuburbs(currentLocation ?? undefined);
 
       if ((result.xpGained ?? 0) > 0) {
         const gamResult: GamificationResult = {
@@ -893,7 +887,7 @@ export default function JourneyTab() {
               }
             }
 
-            if (Marker) {
+            if (Marker && !journeyId) {
               elements.push(
                 <Marker
                   key={`suburb-label-${suburb.id}`}

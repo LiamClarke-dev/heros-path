@@ -1,10 +1,27 @@
 import { Router, type Request, type Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.js";
-import { getSuburbsInViewport } from "../lib/suburbExploration.js";
+import { getSuburbsInViewport, getAllSuburbsForUser } from "../lib/suburbExploration.js";
 import { seedSuburbsForViewport } from "../lib/osmSeeder.js";
 import logger from "../logger.js";
 
 const router = Router();
+
+// Load-once endpoint: returns all suburbs for a user in 4 flat DB queries.
+// Client calls this once at app open and caches for the session.
+router.get("/suburbs/all", async (req: Request, res: Response) => {
+  const { user } = req as AuthenticatedRequest;
+
+  const centerLat = req.query.center_lat ? parseFloat(req.query.center_lat as string) : undefined;
+  const centerLng = req.query.center_lng ? parseFloat(req.query.center_lng as string) : undefined;
+
+  try {
+    const data = await getAllSuburbsForUser(user.id, centerLat, centerLng);
+    res.json({ suburbs: data });
+  } catch (err) {
+    logger.warn({ err }, "getAllSuburbsForUser failed");
+    res.status(500).json({ error: "Failed to load suburb data" });
+  }
+});
 
 router.get("/suburbs", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;

@@ -31,6 +31,7 @@ import { useAuth } from "../../lib/auth";
 import { VisitLogSheet } from "../../components/VisitLogSheet";
 import { SharingManagementSheet } from "../../components/SharingManagementSheet";
 import { EditListSheet, type ListToEdit } from "../../components/EditListSheet";
+import { ListMapCard } from "../../components/ListMapCard";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -556,6 +557,16 @@ export default function ListDetailScreen() {
           keyExtractor={(p) => p.googlePlaceId}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            <ListMapCard
+              places={places}
+              listEmoji={list?.emoji ?? "📍"}
+              listColor={list?.color ?? "rgba(159,193,132,0.85)"}
+              onViewPlaceDetail={(googlePlaceId) =>
+                router.push(`/place-detail?googlePlaceId=${googlePlaceId}`)
+              }
+            />
+          }
           ListEmptyComponent={
             <View style={styles.empty}>
               <Feather name="map-pin" size={32} color={Colors.parchmentDim} style={{ marginBottom: 12 }} />

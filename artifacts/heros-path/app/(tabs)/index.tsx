@@ -50,7 +50,7 @@ if (!IS_WEB) {
   PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
 }
 
-import { CharacterMarker } from "../../components/CharacterMarker";
+import { CharacterMarker, headingToDirection } from "../../components/CharacterMarker";
 import PingResultsSheet, { type PlaceResult as PingPlace } from "../../components/PingResultsSheet";
 import QuestProgressBar from "../../components/QuestProgressBar";
 import { EmojiPin } from "../../components/EmojiPin";
@@ -178,8 +178,6 @@ export default function JourneyTab() {
   const [mapPins, setMapPins] = useState<MapPinPlace[]>([]);
   const [selectedPin, setSelectedPin] = useState<MapPinPlace | null>(null);
 
-  // Character sprite loaded state — keeps tracksViewChanges=true until first frame paints
-  const [spriteLoaded, setSpriteLoaded] = useState(false);
 
   // Zoom level (latDelta) tracked separately from full viewport to avoid
   // re-running the O(n²) clustering memo on every pan
@@ -1066,21 +1064,20 @@ export default function JourneyTab() {
             </>
           )}
 
-          {characterCoord && Marker && (
-            <Marker
-              key="character-marker"
-              coordinate={characterCoord}
-              anchor={{ x: 0.5, y: 1.0 }}
-              tracksViewChanges={!spriteLoaded}
-              flat={false}
-            >
-              <CharacterMarker
-                journeyActive={journeyStatus === "active"}
-                heading={currentHeading}
-                onLoad={() => setSpriteLoaded(true)}
-              />
-            </Marker>
-          )}
+          {characterCoord && Marker && (() => {
+            const direction = headingToDirection(journeyStatus === "active" ? currentHeading : null);
+            return (
+              <Marker
+                key={`character-${direction}`}
+                coordinate={characterCoord}
+                anchor={{ x: 0.5, y: 1.0 }}
+                tracksViewChanges={false}
+                flat={false}
+              >
+                <CharacterMarker direction={direction} />
+              </Marker>
+            );
+          })()}
 
           {Marker && clusteredPins.map((item) => {
             if (item.kind === "cluster") {

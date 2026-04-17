@@ -1,5 +1,5 @@
 import { db, zones } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { readFileSync } from "fs";
 import { join } from "path";
 import logger from "../logger.js";
@@ -398,15 +398,26 @@ export async function seedAllCities(): Promise<void> {
   }
 }
 
+// Expected minimum zone count across all 4 cities (geelong=31, melbourne=77, sf=41, tokyo~774)
+// after area/cap filtering. If the table has fewer than this, the previous seed was
+// incomplete (e.g. killed mid-run) and we need to finish it.
+const MINIMUM_EXPECTED_ZONES = 800;
+
 export async function seedZonesIfEmpty(): Promise<void> {
   try {
-    const [first] = await db.select({ id: zones.id }).from(zones).limit(1);
-    if (first) {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(zones);
+    const count = row?.count ?? 0;
+    if (count >= MINIMUM_EXPECTED_ZONES) {
       return;
     }
-    logger.info("[seed-zones] Zones table is empty — running first-time seed");
+    logger.info(
+      { count, minimum: MINIMUM_EXPECTED_ZONES },
+      "[seed-zones] Zone count below threshold — running seed to fill gaps"
+    );
     await seedAllCities();
-    logger.info("[seed-zones] First-time seed complete");
+    logger.info("[seed-zones] Seed complete");
   } catch (err) {
     logger.error({ err }, "[seed-zones] Auto-seed failed — server will still start");
   }

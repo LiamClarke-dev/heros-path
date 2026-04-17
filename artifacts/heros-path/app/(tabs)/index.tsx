@@ -109,9 +109,7 @@ interface GamificationResult {
   newStreak: number;
 }
 
-type ClusterItem =
-  | { kind: "pin"; pin: MapPinPlace }
-  | { kind: "cluster"; lat: number; lng: number; count: number; pins: MapPinPlace[] };
+type ClusterItem = { kind: "pin"; pin: MapPinPlace };
 
 // Journey polylines stay bright BotW-green regardless of palette changes
 const JOURNEY_GREEN       = "#4efeb5";
@@ -936,35 +934,10 @@ export default function JourneyTab() {
     [currentLocation]
   );
 
-  const clusteredPins = useMemo((): ClusterItem[] => {
-    if (mapPins.length === 0) return [];
-    // Use zoomLatDelta (not full viewport) so panning doesn't trigger re-clustering
-    const clusterRadiusDeg = zoomLatDelta * 0.08;
-    const used = new Set<number>();
-    const result: ClusterItem[] = [];
-    for (let i = 0; i < mapPins.length; i++) {
-      if (used.has(i)) continue;
-      const group: MapPinPlace[] = [mapPins[i]];
-      for (let j = i + 1; j < mapPins.length; j++) {
-        if (used.has(j)) continue;
-        const dLat = Math.abs(mapPins[i].lat - mapPins[j].lat);
-        const dLng = Math.abs(mapPins[i].lng - mapPins[j].lng);
-        if (dLat <= clusterRadiusDeg && dLng <= clusterRadiusDeg) {
-          group.push(mapPins[j]);
-          used.add(j);
-        }
-      }
-      used.add(i);
-      if (group.length === 1) {
-        result.push({ kind: "pin", pin: group[0] });
-      } else {
-        const avgLat = group.reduce((s, p) => s + p.lat, 0) / group.length;
-        const avgLng = group.reduce((s, p) => s + p.lng, 0) / group.length;
-        result.push({ kind: "cluster", lat: avgLat, lng: avgLng, count: group.length, pins: group });
-      }
-    }
-    return result;
-  }, [mapPins, zoomLatDelta]);
+  const clusteredPins = useMemo(
+    (): ClusterItem[] => mapPins.map((pin) => ({ kind: "pin", pin })),
+    [mapPins]
+  );
 
   const listMap = useMemo(
     () => Object.fromEntries(userLists.map((l) => [l.id, l])),
@@ -1116,37 +1089,6 @@ export default function JourneyTab() {
           })}
 
           {Marker && clusteredPins.map((item) => {
-            if (item.kind === "cluster") {
-              // Key encodes lat/lng/count so remount (and thus re-snapshot) only
-              // occurs when the cluster content actually changes, not on every pan
-              const clusterKey = `cluster-${item.lat.toFixed(4)}-${item.lng.toFixed(4)}-${item.count}`;
-              return (
-                <Marker
-                  key={clusterKey}
-                  coordinate={{ latitude: item.lat, longitude: item.lng }}
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  tracksViewChanges={false}
-                  onPress={() => {
-                    const latDelta = viewport ? (viewport.neLat - viewport.swLat) / 2.5 : 0.004;
-                    const lngDelta = viewport ? (viewport.neLng - viewport.swLng) / 2.5 : 0.004;
-                    mapRef.current?.animateToRegion(
-                      {
-                        latitude: item.lat,
-                        longitude: item.lng,
-                        latitudeDelta: Math.max(latDelta, 0.001),
-                        longitudeDelta: Math.max(lngDelta, 0.001),
-                      },
-                      400
-                    );
-                    setSelectedPin(null);
-                  }}
-                >
-                  <View style={styles.clusterBubble}>
-                    <Text style={styles.clusterCount}>{item.count}</Text>
-                  </View>
-                </Marker>
-              );
-            }
             const list = listMap[item.pin.listId];
             if (!list) return null;
             const isSelected = selectedPin?.googlePlaceId === item.pin.googlePlaceId;
@@ -1520,26 +1462,6 @@ const styles = StyleSheet.create({
     right: 16,
     alignItems: "center",
     zIndex: 30,
-  },
-  clusterBubble: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.gold,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: Colors.background,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
-    elevation: 4,
-  },
-  clusterCount: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: Colors.background,
   },
   permissionBanner: {
     position: "absolute",

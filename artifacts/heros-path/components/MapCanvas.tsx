@@ -31,7 +31,7 @@ if (!IS_WEB) {
   PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
 }
 
-const MARKER_ARROW = require("../assets/sprites/marker_arrow2x.png");
+const MARKER_ARROW = require("../assets/sprites/marker_arrow.png");
 
 // Stable references — see notes in app/(tabs)/index.tsx
 const DASH_PATTERN: number[] = [8, 4];

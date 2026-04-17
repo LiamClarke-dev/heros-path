@@ -183,9 +183,9 @@ export default function JourneyTab() {
   const bypassQualityGateRef = useRef(false);
   const journeyIdRef = useRef<string | null>(null);
 
-  // Arrow marker smooth-rotation refs
-  const characterMarkerRef = useRef<any>(null);
-  const headingAnimRef = useRef(new Animated.Value(0));
+  // Arrow marker rotation — driven by React state so Google Maps
+  // re-renders the GMSMarker (setNativeProps doesn't work on Google Maps iOS).
+  const [markerRotation, setMarkerRotation] = useState(0);
   const displayedHeadingRef = useRef(0);
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zonesFingerprintRef = useRef<string>("");
@@ -372,36 +372,20 @@ export default function JourneyTab() {
     };
   }, []);
 
-  // Smooth arrow-marker rotation via setNativeProps — no React re-renders
+  // Update marker rotation when heading changes — uses shortest-path
+  // interpolation across the 0/360 boundary, then sets React state so
+  // the Google Maps Marker re-renders with the new rotation value.
   useEffect(() => {
     if (!currentLocation) return;
     const targetRaw = (journeyStatus === "active" && currentHeading !== null)
       ? currentHeading
       : displayedHeadingRef.current;
-    // Shortest-path interpolation across the 0/360 boundary
     const current = displayedHeadingRef.current;
     let diff = ((targetRaw - current) % 360 + 360) % 360;
     if (diff > 180) diff -= 360;
     const target = current + diff;
-
-    headingAnimRef.current.setValue(current);
-    const anim = Animated.timing(headingAnimRef.current, {
-      toValue: target,
-      duration: 280,
-      useNativeDriver: false,
-    });
-    const listenerId = headingAnimRef.current.addListener(({ value }) => {
-      displayedHeadingRef.current = value;
-      characterMarkerRef.current?.setNativeProps({ rotation: value });
-    });
-    anim.start(() => {
-      headingAnimRef.current.removeListener(listenerId);
-      displayedHeadingRef.current = target;
-    });
-    return () => {
-      headingAnimRef.current.removeListener(listenerId);
-      anim.stop();
-    };
+    displayedHeadingRef.current = target;
+    setMarkerRotation(target);
   }, [currentHeading, journeyStatus, currentLocation]);
 
   useEffect(() => {
@@ -1013,7 +997,6 @@ export default function JourneyTab() {
       {!IS_WEB && (
         <MapCanvas
           mapRef={mapRef}
-          characterMarkerRef={characterMarkerRef}
           initialRegion={initialRegion}
           onRegionChangeComplete={handleRegionChangeComplete}
           zoneRenderData={zoneRenderData}
@@ -1024,6 +1007,7 @@ export default function JourneyTab() {
           activeSegmentGlow={activeSegmentGlow}
           activeSegmentLine={activeSegmentLine}
           characterCoord={characterCoord}
+          characterRotation={markerRotation}
           pinRenderData={pinRenderData}
           pinSetVersion={pinSetVersion}
           listMap={listMap}

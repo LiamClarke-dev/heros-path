@@ -78,7 +78,6 @@ export interface PinRenderItem {
 
 interface MapCanvasProps {
   mapRef: React.RefObject<RNMapView | null>;
-  characterMarkerRef: React.MutableRefObject<any>;
   initialRegion: Region;
   onRegionChangeComplete: (region: Region) => void;
 
@@ -93,6 +92,7 @@ interface MapCanvasProps {
   activeSegmentLine: SegmentRenderItem[];
 
   characterCoord: { latitude: number; longitude: number } | null;
+  characterRotation: number;
 
   pinRenderData: PinRenderItem[];
   pinSetVersion: number;
@@ -103,7 +103,6 @@ interface MapCanvasProps {
 
 function MapCanvasInner({
   mapRef,
-  characterMarkerRef,
   initialRegion,
   onRegionChangeComplete,
   zoneRenderData,
@@ -114,6 +113,7 @@ function MapCanvasInner({
   activeSegmentGlow,
   activeSegmentLine,
   characterCoord,
+  characterRotation,
   pinRenderData,
   pinSetVersion,
   listMap,
@@ -213,13 +213,12 @@ function MapCanvasInner({
       )}
 
       {characterCoord && Marker && React.createElement(Marker as React.ElementType, {
-        ref: characterMarkerRef,
         key: "character-arrow",
         coordinate: characterCoord,
         anchor: CHARACTER_ANCHOR,
-        tracksViewChanges: false,
-        flat: false,
-        rotation: 0,
+        tracksViewChanges: isJourneyActive,
+        flat: true,
+        rotation: characterRotation,
         image: MARKER_ARROW,
       })}
 

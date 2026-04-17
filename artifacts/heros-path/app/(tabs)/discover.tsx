@@ -515,10 +515,7 @@ const styles = StyleSheet.create({
   chipText: {
     fontFamily: "Inter_500Medium",
     fontSize: 13,
-    lineHeight: 13,
     color: Colors.parchmentMuted,
-    includeFontPadding: false,
-    textAlignVertical: "center",
   },
   chipTextActive: {
     color: Colors.gold,

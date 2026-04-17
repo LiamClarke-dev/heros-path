@@ -152,6 +152,8 @@ export function VisitLogSheet({ visible, placeName, googlePlaceId, onClose, onSa
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.flex}
         >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={styles.flex}>
           <View style={styles.handle} />
 
           <View style={styles.header}>
@@ -250,7 +252,12 @@ export function VisitLogSheet({ visible, placeName, googlePlaceId, onClose, onSa
           )}
 
           {step === 3 && (
-            <View style={styles.step3Container}>
+            <ScrollView
+              style={styles.step3Container}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets={true}
+              showsVerticalScrollIndicator={false}
+            >
               <TextInput
                 style={styles.notesInput}
                 placeholder="Add a note… (optional)"
@@ -303,8 +310,10 @@ export function VisitLogSheet({ visible, placeName, googlePlaceId, onClose, onSa
                   {saving ? "Saving…" : "Save Visit"}
                 </Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           )}
+            </View>
+          </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </Animated.View>
     </Modal>

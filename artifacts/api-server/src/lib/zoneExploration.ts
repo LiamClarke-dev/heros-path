@@ -24,12 +24,6 @@ const TOKYO_ZONE_CAP = 40;
 // Fallback radius when user is not inside any ward (parks, stations, rivers)
 const FALLBACK_RADIUS_DEG = 0.015; // ~1.5 km
 
-// Approximate squared distance in degrees (cosine-corrected lng) — good enough for proximity sorting
-function approxDistSq(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const dLat = lat1 - lat2;
-  const dLng = (lng1 - lng2) * Math.cos(lat1 * (Math.PI / 180));
-  return dLat * dLat + dLng * dLng;
-}
 
 interface WardBoundary {
   id: string;
@@ -602,22 +596,24 @@ export async function getZonesForLocation(
     return attachCoverage(userId, fallbackZones);
   }
 
-  let cityZones = await db
-    .select()
-    .from(zones)
-    .where(and(eq(zones.city, city), inArray(zones.wardId, [...targetWardIds])));
-
-  // Hard cap: for dense cities, limit the render budget by keeping only the
-  // N zones closest to the user. This prevents sending 100+ zones when the
-  // user is near a ward with many small neighbourhoods.
-  if (city === "tokyo" && cityZones.length > TOKYO_ZONE_CAP) {
-    cityZones = cityZones
-      .map((z) => ({ z, d: approxDistSq(lat, lng, z.centroidLat, z.centroidLng) }))
-      .sort((a, b) => a.d - b.d)
-      .slice(0, TOKYO_ZONE_CAP)
-      .map(({ z }) => z);
-    logger.debug({ userId, city, cap: TOKYO_ZONE_CAP }, "zone hard cap applied");
-  }
+  // Hard cap for Tokyo: push the ordering and LIMIT into the DB so PostgreSQL
+  // fetches at most TOKYO_ZONE_CAP rows rather than pulling everything into JS.
+  // The distance expression is a fast cosine-corrected Euclidean approximation
+  // (accurate enough for proximity ranking within a city).
+  const cosLat = Math.cos(lat * (Math.PI / 180));
+  const cityZones = city === "tokyo"
+    ? await db
+        .select()
+        .from(zones)
+        .where(and(eq(zones.city, city), inArray(zones.wardId, [...targetWardIds])))
+        .orderBy(
+          sql`(${zones.centroidLat} - ${lat})^2 + ((${zones.centroidLng} - ${lng}) * ${cosLat})^2`
+        )
+        .limit(TOKYO_ZONE_CAP)
+    : await db
+        .select()
+        .from(zones)
+        .where(and(eq(zones.city, city), inArray(zones.wardId, [...targetWardIds])));
 
   return attachCoverage(userId, cityZones);
 }

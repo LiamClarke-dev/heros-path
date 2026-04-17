@@ -62,68 +62,24 @@ const Colors = {
   tabBarActive:   "#EDC870",  // Gold active
   tabBarInactive: "#2A3F5E",  // Dark slate inactive
 
-  // ── Map: Hyrule-style dark cartography (unchanged) ───────────
+  // ── Map: Zelda Breath of the Wild warm parchment cartography ─
   mapDark: [
-    // Base land — forest floor
-    { elementType: "geometry",
-      stylers: [{ color: "#152218" }] },
-    { elementType: "labels.text.stroke",
-      stylers: [{ color: "#0D1A10" }] },
-    { elementType: "labels.text.fill",
-      stylers: [{ color: "#86A5A9" }] },
-
-    // Town / locality labels — sage green
-    { featureType: "administrative.locality",
-      elementType: "labels.text.fill",
-      stylers: [{ color: "#9FC184" }] },
-
-    // Roads — warm olive earth path
-    { featureType: "road",
-      elementType: "geometry",
-      stylers: [{ color: "#243820" }] },
-    { featureType: "road",
-      elementType: "geometry.stroke",
-      stylers: [{ color: "#152218" }] },
-    { featureType: "road",
-      elementType: "labels.text.fill",
-      stylers: [{ color: "#86A5A9" }] },
-
-    // Highways — lighter earthy trail
-    { featureType: "road.highway",
-      elementType: "geometry",
-      stylers: [{ color: "#2E4828" }] },
-    { featureType: "road.highway",
-      elementType: "geometry.stroke",
-      stylers: [{ color: "#152218" }] },
-    { featureType: "road.highway",
-      elementType: "labels.text.fill",
-      stylers: [{ color: "#9FC184" }] },
-
-    // Transit
-    { featureType: "transit",
-      elementType: "geometry",
-      stylers: [{ color: "#152218" }] },
-
-    // Water — deep Hyrule lake
-    { featureType: "water",
-      elementType: "geometry",
-      stylers: [{ color: "#0A1E28" }] },
-    { featureType: "water",
-      elementType: "labels.text.fill",
-      stylers: [{ color: "#97C8D9" }] },
-
-    // POI
-    { featureType: "poi",
-      elementType: "geometry",
-      stylers: [{ color: "#152218" }] },
-
-    // Parks — lush Hyrule field
-    { featureType: "poi.park",
-      elementType: "geometry",
-      stylers: [{ color: "#182A18" }] },
-    { featureType: "poi.park",
-      elementType: "labels.text.fill",
-      stylers: [{ color: "#9FC184" }] },
+    { featureType: "administrative", elementType: "all", stylers: [{ visibility: "on" }] },
+    { featureType: "administrative", elementType: "labels.text.fill", stylers: [{ color: "#9d935e" }] },
+    { featureType: "administrative", elementType: "labels.text.stroke", stylers: [{ color: "#3f3b28" }] },
+    { featureType: "landscape", elementType: "geometry.fill", stylers: [{ color: "#5a5335" }] },
+    { featureType: "landscape.man_made", elementType: "geometry.fill", stylers: [{ color: "#4d4329" }] },
+    { featureType: "landscape.man_made", elementType: "geometry.stroke", stylers: [{ visibility: "off" }] },
+    { featureType: "landscape.natural.terrain", elementType: "geometry.fill", stylers: [{ color: "#6e6950" }] },
+    { featureType: "poi", elementType: "geometry.fill", stylers: [{ color: "#372f14" }] },
+    { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+    { featureType: "poi.park", elementType: "geometry.fill", stylers: [{ color: "#372f14" }] },
+    { featureType: "road", elementType: "all", stylers: [{ saturation: -100 }, { lightness: 45 }, { color: "#959358" }] },
+    { featureType: "road", elementType: "labels.text", stylers: [{ visibility: "off" }] },
+    { featureType: "road.highway", elementType: "all", stylers: [{ visibility: "simplified" }] },
+    { featureType: "road.arterial", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+    { featureType: "transit", elementType: "all", stylers: [{ visibility: "off" }] },
+    { featureType: "water", elementType: "geometry.fill", stylers: [{ color: "#344144" }] },
   ],
 };
 

@@ -38,9 +38,7 @@ export function boundaryToPolygonCoords(boundary: ZoneData["boundary"]): RNCoord
 
 export function isZoneInViewport(zone: ZoneData, bounds: ViewportBounds): boolean {
   const { centroidLat, centroidLng } = zone;
-  // 0.005° (~500 m) buffer catches zones that straddle the viewport edge
-  // without letting in zones 10+ km away like the old 0.1° pad did.
-  const pad = 0.005;
+  const pad = 0.1;
   return (
     centroidLat >= bounds.swLat - pad &&
     centroidLat <= bounds.neLat + pad &&

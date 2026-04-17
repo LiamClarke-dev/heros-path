@@ -21,9 +21,10 @@ function headingToDirection(heading: number | null): Direction {
 interface CharacterMarkerProps {
   journeyActive: boolean;
   heading: number | null;
+  onLoad?: () => void;
 }
 
-export function CharacterMarker({ journeyActive, heading }: CharacterMarkerProps) {
+export function CharacterMarker({ journeyActive, heading, onLoad }: CharacterMarkerProps) {
   const direction = journeyActive ? headingToDirection(heading) : "idle";
   return (
     <Image
@@ -31,6 +32,7 @@ export function CharacterMarker({ journeyActive, heading }: CharacterMarkerProps
       style={{ width: 32, height: 48 }}
       contentFit="contain"
       cachePolicy="memory"
+      onLoad={onLoad}
     />
   );
 }

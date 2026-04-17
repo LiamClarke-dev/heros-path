@@ -178,6 +178,13 @@ export default function JourneyTab() {
   const [mapPins, setMapPins] = useState<MapPinPlace[]>([]);
   const [selectedPin, setSelectedPin] = useState<MapPinPlace | null>(null);
 
+  // Character sprite loaded state — keeps tracksViewChanges=true until first frame paints
+  const [spriteLoaded, setSpriteLoaded] = useState(false);
+
+  // Zoom level (latDelta) tracked separately from full viewport to avoid
+  // re-running the O(n²) clustering memo on every pan
+  const [zoomLatDelta, setZoomLatDelta] = useState<number>(0.05);
+
   // Gamification
   const [quests, setQuests] = useState<QuestItem[]>([]);
   const [questPanelExpanded, setQuestPanelExpanded] = useState(false);
@@ -416,6 +423,8 @@ export default function JourneyTab() {
     return () => subscription.remove();
   }, []);
 
+  const zoomLatDeltaRef = useRef<number>(0.05);
+
   function handleRegionChangeComplete(region: Region) {
     if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
     viewportTimerRef.current = setTimeout(() => {
@@ -426,6 +435,13 @@ export default function JourneyTab() {
         neLng: region.longitude + region.longitudeDelta / 2,
       };
       setViewport(vp);
+      // Only trigger re-clustering when zoom level changes meaningfully (>5%)
+      const newLatDelta = region.latitudeDelta;
+      const prev = zoomLatDeltaRef.current;
+      if (Math.abs(newLatDelta - prev) / Math.max(prev, 0.0001) > 0.05) {
+        zoomLatDeltaRef.current = newLatDelta;
+        setZoomLatDelta(newLatDelta);
+      }
     }, 400);
   }
 
@@ -884,8 +900,8 @@ export default function JourneyTab() {
 
   const clusteredPins = useMemo((): ClusterItem[] => {
     if (mapPins.length === 0) return [];
-    const latSpan = viewport ? viewport.neLat - viewport.swLat : 0.05;
-    const clusterRadiusDeg = latSpan * 0.08;
+    // Use zoomLatDelta (not full viewport) so panning doesn't trigger re-clustering
+    const clusterRadiusDeg = zoomLatDelta * 0.08;
     const used = new Set<number>();
     const result: ClusterItem[] = [];
     for (let i = 0; i < mapPins.length; i++) {
@@ -910,7 +926,7 @@ export default function JourneyTab() {
       }
     }
     return result;
-  }, [mapPins, viewport]);
+  }, [mapPins, zoomLatDelta]);
 
   const listMap = useMemo(
     () => Object.fromEntries(userLists.map((l) => [l.id, l])),
@@ -963,18 +979,35 @@ export default function JourneyTab() {
               : isVisited
               ? ZONE_COLORS.inProgressStroke
               : ZONE_COLORS.unvisitedStroke;
+            const strokeWidth = isCompleted ? 2 : isVisited ? 1.5 : 1;
             const elements = [];
 
             for (let ri = 0; ri < rings.length; ri++) {
               if (Polygon) {
+                // Fill polygon — stroke suppressed so PROVIDER_GOOGLE's solid-line
+                // override doesn't bleed through; the dashed border is drawn via Polyline below
                 elements.push(
                   <Polygon
-                    key={`zone-boundary-${zone.id}-${ri}`}
+                    key={`zone-fill-${zone.id}-${ri}`}
                     coordinates={rings[ri]}
-                    strokeColor={strokeColor}
-                    strokeWidth={isCompleted ? 2 : isVisited ? 1.5 : 1}
-                    lineDashPattern={[8, 4]}
+                    strokeColor="transparent"
+                    strokeWidth={0}
                     fillColor={scaledFill}
+                  />
+                );
+              }
+              if (Polyline) {
+                // Dashed border — lineDashPattern works on Polyline for both Apple Maps
+                // and Google Maps iOS; close the ring by appending the first coordinate
+                const ring = rings[ri];
+                const closed = ring.length > 0 ? [...ring, ring[0]] : ring;
+                elements.push(
+                  <Polyline
+                    key={`zone-border-${zone.id}-${ri}`}
+                    coordinates={closed}
+                    strokeColor={strokeColor}
+                    strokeWidth={strokeWidth}
+                    lineDashPattern={[8, 4]}
                   />
                 );
               }
@@ -1038,21 +1071,25 @@ export default function JourneyTab() {
               key="character-marker"
               coordinate={characterCoord}
               anchor={{ x: 0.5, y: 1.0 }}
-              tracksViewChanges={false}
+              tracksViewChanges={!spriteLoaded}
               flat={false}
             >
               <CharacterMarker
                 journeyActive={journeyStatus === "active"}
                 heading={currentHeading}
+                onLoad={() => setSpriteLoaded(true)}
               />
             </Marker>
           )}
 
-          {Marker && clusteredPins.map((item, idx) => {
+          {Marker && clusteredPins.map((item) => {
             if (item.kind === "cluster") {
+              // Key encodes lat/lng/count so remount (and thus re-snapshot) only
+              // occurs when the cluster content actually changes, not on every pan
+              const clusterKey = `cluster-${item.lat.toFixed(4)}-${item.lng.toFixed(4)}-${item.count}`;
               return (
                 <Marker
-                  key={`cluster-${idx}`}
+                  key={clusterKey}
                   coordinate={{ latitude: item.lat, longitude: item.lng }}
                   anchor={{ x: 0.5, y: 0.5 }}
                   tracksViewChanges={false}

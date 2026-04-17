@@ -113,10 +113,13 @@ type ClusterItem =
   | { kind: "pin"; pin: MapPinPlace }
   | { kind: "cluster"; lat: number; lng: number; count: number; pins: MapPinPlace[] };
 
+// Journey polylines stay bright BotW-green regardless of palette changes
+const JOURNEY_GREEN       = "#4efeb5";
+const JOURNEY_GREEN_GLOW  = "rgba(78,254,181,0.35)";
 const HISTORY_COLORS = [
-  Colors.amberGlow80,
-  Colors.amberGlow55,
-  Colors.amberGlow30,
+  "rgba(78,254,181,0.80)",
+  "rgba(78,254,181,0.55)",
+  "rgba(78,254,181,0.30)",
 ];
 
 function formatDistance(m: number): string {
@@ -997,7 +1000,7 @@ export default function JourneyTab() {
           }
         >
 
-          {zonesData.flatMap((zone) => {
+          {zoomLatDelta <= 0.12 && zonesData.flatMap((zone) => {
             if (viewport && !isZoneInViewport(zone, viewport)) return [];
 
             const rings = boundaryToPolygonCoords(zone.boundary);
@@ -1076,7 +1079,7 @@ export default function JourneyTab() {
               key={p.key}
               coordinates={p.coords}
               strokeColor={p.color}
-              strokeWidth={3}
+              strokeWidth={4}
             />
           ))}
 
@@ -1086,7 +1089,7 @@ export default function JourneyTab() {
                 <Polyline
                   key={s.key}
                   coordinates={s.coords}
-                  strokeColor={Colors.amberGlow}
+                  strokeColor={JOURNEY_GREEN_GLOW}
                   strokeWidth={10}
                 />
               ))}
@@ -1094,7 +1097,7 @@ export default function JourneyTab() {
                 <Polyline
                   key={s.key}
                   coordinates={s.coords}
-                  strokeColor={Colors.amber}
+                  strokeColor={JOURNEY_GREEN}
                   strokeWidth={4}
                 />
               ))}
@@ -1251,38 +1254,41 @@ export default function JourneyTab() {
         </View>
       )}
 
-      {journeyStatus === "active" && newTerritoryNearby && (
-        <View style={[styles.nudgeBanner, { top: insets.top + 64 }]}>
-          <Feather name="zap" size={14} color={Colors.info} />
-          <Text style={styles.nudgeText}>New territory ahead!</Text>
-        </View>
-      )}
-
-      {journeyStatus === "active" && quests.length > 0 && (
-        <View style={[styles.questPanel, { top: insets.top + 56 }]}>
-          <TouchableOpacity
-            style={styles.questPanelHeader}
-            onPress={() => setQuestPanelExpanded((v) => !v)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.questPanelTitle}>⚔️ Active Quests</Text>
-            <Feather
-              name={questPanelExpanded ? "chevron-up" : "chevron-down"}
-              size={14}
-              color={Colors.parchmentMuted}
-            />
-          </TouchableOpacity>
-          {questPanelExpanded && (
-            <View style={styles.questList}>
-              {quests.map((q) => (
-                <QuestProgressBar
-                  key={q.key}
-                  title={q.title}
-                  progress={q.progress}
-                  target={q.target}
-                  xpReward={q.xpReward}
+      {journeyStatus === "active" && (quests.length > 0 || newTerritoryNearby) && (
+        <View style={[styles.topHUD, { top: insets.top + 56 }]}>
+          {quests.length > 0 && (
+            <View style={styles.questPanel}>
+              <TouchableOpacity
+                style={styles.questPanelHeader}
+                onPress={() => setQuestPanelExpanded((v) => !v)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.questPanelTitle}>⚔️ Active Quests</Text>
+                <Feather
+                  name={questPanelExpanded ? "chevron-up" : "chevron-down"}
+                  size={14}
+                  color={Colors.parchmentMuted}
                 />
-              ))}
+              </TouchableOpacity>
+              {questPanelExpanded && (
+                <View style={styles.questList}>
+                  {quests.map((q) => (
+                    <QuestProgressBar
+                      key={q.key}
+                      title={q.title}
+                      progress={q.progress}
+                      target={q.target}
+                      xpReward={q.xpReward}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+          {newTerritoryNearby && (
+            <View style={styles.nudgeBanner}>
+              <Feather name="zap" size={14} color={Colors.info} />
+              <Text style={styles.nudgeText}>New territory ahead!</Text>
             </View>
           )}
         </View>
@@ -1565,10 +1571,15 @@ const styles = StyleSheet.create({
   primaryBtnDisabled: {
     backgroundColor: Colors.goldGlow45,
   },
-  nudgeBanner: {
+  topHUD: {
     position: "absolute",
-    left: 16,
-    right: 16,
+    left: 12,
+    right: 12,
+    zIndex: 15,
+    flexDirection: "column",
+    gap: 8,
+  },
+  nudgeBanner: {
     backgroundColor: Colors.backgroundAlpha85,
     borderWidth: 1,
     borderColor: Colors.info,
@@ -1578,7 +1589,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    zIndex: 15,
   },
   nudgeText: {
     fontFamily: "Inter_500Medium",
@@ -1625,7 +1635,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    backgroundColor: Colors.goldGlow12,
+    backgroundColor: Colors.backgroundAlpha88,
   },
   pingBtnText: {
     fontFamily: "Inter_600SemiBold",
@@ -1648,6 +1658,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 28,
+    backgroundColor: Colors.backgroundAlpha88,
   },
   endBtnText: {
     fontFamily: "Inter_600SemiBold",
@@ -1665,14 +1676,10 @@ const styles = StyleSheet.create({
     color: Colors.parchmentMuted,
   },
   questPanel: {
-    position: "absolute",
-    left: 12,
-    right: 12,
     backgroundColor: Colors.backgroundAlpha88,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 12,
-    zIndex: 15,
     overflow: "hidden",
   },
   questPanelHeader: {

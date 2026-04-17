@@ -38,7 +38,7 @@ export function boundaryToPolygonCoords(boundary: ZoneData["boundary"]): RNCoord
 
 export function isZoneInViewport(zone: ZoneData, bounds: ViewportBounds): boolean {
   const { centroidLat, centroidLng } = zone;
-  const pad = 0.05;
+  const pad = 0.1;
   return (
     centroidLat >= bounds.swLat - pad &&
     centroidLat <= bounds.neLat + pad &&
@@ -55,7 +55,7 @@ export function getZoneCompletionLabel(zone: ZoneData): string {
 
 export const ZONE_COLORS = {
   // Untouched zones — ghost outline only, no fill
-  unvisitedStroke: "rgba(56,204,246,0.33)",
+  unvisitedStroke: "rgba(56,204,246,0.95)",
   // In-progress zones — visible dashed outline, coverage-scaled fill
   inProgressStroke: "rgba(56,204,246,0.95)",
   // Completed zones — bright dashed outline, fixed fill

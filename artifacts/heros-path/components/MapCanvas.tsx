@@ -212,11 +212,16 @@ function MapCanvasInner({
         </>
       )}
 
+      {/* Character arrow marker.
+          tracksViewChanges MUST stay true on Google Maps iOS — when it's
+          false at mount, GMSMarker captures its visual state before the
+          `image` PNG is applied, leaving an invisible marker that never
+          repaints. Single marker + tiny PNG = negligible perf cost. */}
       {characterCoord && Marker && React.createElement(Marker as React.ElementType, {
         key: "character-arrow",
         coordinate: characterCoord,
         anchor: CHARACTER_ANCHOR,
-        tracksViewChanges: isJourneyActive,
+        tracksViewChanges: true,
         flat: true,
         rotation: characterRotation,
         image: MARKER_ARROW,

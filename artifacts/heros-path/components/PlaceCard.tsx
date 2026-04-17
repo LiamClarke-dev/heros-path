@@ -402,8 +402,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(34,197,94,0.08)",
   },
   actionBtnListed: {
-    borderColor: "rgba(212,160,23,0.4)",
-    backgroundColor: "rgba(212,160,23,0.1)",
+    borderColor: Colors.goldGlow40,
+    backgroundColor: Colors.goldGlow10,
   },
   actionLabel: {
     fontFamily: "Inter_400Regular",

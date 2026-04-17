@@ -205,7 +205,7 @@ export default function PlaceDetailScreen() {
             </View>
           )}
           <LinearGradient
-            colors={["transparent", "rgba(13,10,11,0.85)"]}
+            colors={["transparent", Colors.backgroundAlpha85]}
             style={styles.heroGradient}
           />
           <TouchableOpacity
@@ -518,7 +518,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: "rgba(13,10,11,0.7)",
+    backgroundColor: Colors.backgroundAlpha70,
     alignItems: "center",
     justifyContent: "center",
   },

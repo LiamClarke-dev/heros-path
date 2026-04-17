@@ -966,11 +966,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "rgba(212,160,23,0.08)",
+    backgroundColor: Colors.goldGlow08,
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: "rgba(212,160,23,0.3)",
+    borderColor: Colors.goldGlow30,
   },
   newBadgeIcon: {
     fontSize: 22,

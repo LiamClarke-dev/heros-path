@@ -561,7 +561,7 @@ export default function ListDetailScreen() {
             <ListMapCard
               places={places}
               listEmoji={list?.emoji ?? "📍"}
-              listColor={list?.color ?? "rgba(159,193,132,0.85)"}
+              listColor={list?.color ?? Colors.amberGlow80}
               onViewPlaceDetail={(googlePlaceId) =>
                 router.push(`/place-detail?googlePlaceId=${googlePlaceId}`)
               }

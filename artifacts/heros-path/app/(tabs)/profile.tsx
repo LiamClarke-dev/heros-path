@@ -737,7 +737,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   avatar: {
-    backgroundColor: "rgba(212,160,23,0.2)",
+    backgroundColor: Colors.goldGlow20,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -929,7 +929,7 @@ const styles = StyleSheet.create({
   },
   badgeGridItem: {
     width: "47%",
-    backgroundColor: "rgba(212,160,23,0.1)",
+    backgroundColor: Colors.goldGlow10,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.gold,

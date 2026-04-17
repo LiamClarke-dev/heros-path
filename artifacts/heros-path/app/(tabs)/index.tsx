@@ -114,9 +114,9 @@ type ClusterItem =
   | { kind: "cluster"; lat: number; lng: number; count: number; pins: MapPinPlace[] };
 
 const HISTORY_COLORS = [
-  "rgba(101,245,156,0.80)",
-  "rgba(101,245,156,0.55)",
-  "rgba(101,245,156,0.30)",
+  Colors.amberGlow80,
+  Colors.amberGlow55,
+  Colors.amberGlow30,
 ];
 
 function formatDistance(m: number): string {
@@ -1051,7 +1051,7 @@ export default function JourneyTab() {
                 <Polyline
                   key={s.key}
                   coordinates={s.coords}
-                  strokeColor="rgba(106,221,147,0.35)"
+                  strokeColor={Colors.amberGlow}
                   strokeWidth={10}
                 />
               ))}
@@ -1059,7 +1059,7 @@ export default function JourneyTab() {
                 <Polyline
                   key={s.key}
                   coordinates={s.coords}
-                  strokeColor="#6add93"
+                  strokeColor={Colors.amber}
                   strokeWidth={4}
                 />
               ))}
@@ -1149,7 +1149,7 @@ export default function JourneyTab() {
       })()}
 
       <LinearGradient
-        colors={["rgba(13,10,11,0.92)", "rgba(13,10,11,0.4)", "transparent"]}
+        colors={[Colors.backgroundAlpha92, Colors.backgroundAlpha40, "transparent"]}
         style={[styles.topGradient, { paddingTop: insets.top + 8 }]}
         pointerEvents="none"
       >
@@ -1259,7 +1259,7 @@ export default function JourneyTab() {
       )}
 
       <LinearGradient
-        colors={["transparent", "rgba(13,10,11,0.5)", "rgba(13,10,11,0.95)"]}
+        colors={["transparent", Colors.backgroundAlpha50, Colors.backgroundAlpha92]}
         style={[
           styles.bottomGradient,
           { paddingBottom: insets.bottom + 80 },
@@ -1450,7 +1450,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(13,10,11,0.75)",
+    backgroundColor: Colors.backgroundAlpha75,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1458,7 +1458,7 @@ const styles = StyleSheet.create({
   },
   iconBtnActive: {
     borderColor: Colors.gold,
-    backgroundColor: "rgba(159,193,132,0.15)",
+    backgroundColor: Colors.goldGlow15,
   },
   filterBadge: {
     position: "absolute",
@@ -1509,7 +1509,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    backgroundColor: "rgba(13,10,11,0.90)",
+    backgroundColor: Colors.backgroundAlpha92,
     borderWidth: 1,
     borderColor: Colors.error,
     borderRadius: 10,
@@ -1533,13 +1533,13 @@ const styles = StyleSheet.create({
     color: Colors.error,
   },
   primaryBtnDisabled: {
-    backgroundColor: "rgba(212,160,23,0.45)",
+    backgroundColor: Colors.goldGlow45,
   },
   nudgeBanner: {
     position: "absolute",
     left: 16,
     right: 16,
-    backgroundColor: "rgba(13,10,11,0.85)",
+    backgroundColor: Colors.backgroundAlpha85,
     borderWidth: 1,
     borderColor: Colors.info,
     borderRadius: 10,
@@ -1595,7 +1595,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    backgroundColor: "rgba(212,160,23,0.12)",
+    backgroundColor: Colors.goldGlow12,
   },
   pingBtnText: {
     fontFamily: "Inter_600SemiBold",
@@ -1638,7 +1638,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 12,
     right: 12,
-    backgroundColor: "rgba(13,10,11,0.88)",
+    backgroundColor: Colors.backgroundAlpha88,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 12,
@@ -1701,7 +1701,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   badgeChip: {
-    backgroundColor: "rgba(212,160,23,0.18)",
+    backgroundColor: Colors.goldGlow18,
     borderWidth: 1,
     borderColor: Colors.gold,
     borderRadius: 20,
@@ -1709,9 +1709,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   questChip: {
-    backgroundColor: "rgba(76,175,80,0.18)",
+    backgroundColor: Colors.amberGlow,
     borderWidth: 1,
-    borderColor: "#4CAF50",
+    borderColor: Colors.amber,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -1722,12 +1722,12 @@ const styles = StyleSheet.create({
     color: Colors.parchment,
   },
   suburbLabelChip: {
-    backgroundColor: "rgba(13,10,11,0.72)",
+    backgroundColor: Colors.backgroundAlpha72,
     borderRadius: 10,
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: "#2C4030",
+    borderColor: Colors.border,
   },
   suburbLabelText: {
     fontFamily: "Inter_500Medium",

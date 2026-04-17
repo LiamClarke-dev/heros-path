@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "rgba(212,160,23,0.15)",
+    backgroundColor: Colors.goldGlow15,
     borderWidth: 2,
     borderColor: Colors.gold,
     alignItems: "center",

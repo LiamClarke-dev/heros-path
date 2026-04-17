@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
   },
   reactionCardActive: {
     borderColor: Colors.gold,
-    backgroundColor: "rgba(212,160,23,0.12)",
+    backgroundColor: Colors.goldGlow12,
   },
   reactionEmoji: { fontSize: 40 },
   reactionLabel: {
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   },
   chipActive: {
     borderColor: Colors.gold,
-    backgroundColor: "rgba(212,160,23,0.15)",
+    backgroundColor: Colors.goldGlow15,
   },
   chipDisabled: { opacity: 0.4 },
   chipEmoji: { fontSize: 14 },

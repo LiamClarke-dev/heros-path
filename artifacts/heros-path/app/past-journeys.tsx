@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
     color: Colors.parchment,
   },
   xpBadge: {
-    backgroundColor: "rgba(212,160,23,0.15)",
+    backgroundColor: Colors.goldGlow15,
     borderColor: Colors.gold,
   },
   xpBadgeText: {

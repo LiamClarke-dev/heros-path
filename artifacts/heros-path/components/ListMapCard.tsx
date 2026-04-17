@@ -51,7 +51,7 @@ interface Props {
   onViewPlaceDetail: (googlePlaceId: string) => void;
 }
 
-const PIN_COLOR = "rgba(159,193,132,0.85)";
+const PIN_COLOR = Colors.amberGlow80;
 const CARD_HEIGHT = 200;
 
 function computeRegion(places: MapPlace[]): Region {

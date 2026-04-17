@@ -6,10 +6,12 @@ import { seedZonesIfEmpty } from "./lib/seedZones.js";
 const PORT = Number(process.env.PORT ?? 8080);
 
 runMigrations()
-  .then(() => seedZonesIfEmpty())
   .then(() => {
     app.listen(PORT, "0.0.0.0", () => {
       logger.info({ port: PORT }, "API server started");
+    });
+    seedZonesIfEmpty().catch((err) => {
+      logger.error({ err }, "[seed-zones] Background seed failed");
     });
   })
   .catch((err) => {

@@ -353,7 +353,11 @@ export default function JourneyTab() {
   useFocusEffect(
     useCallback(() => {
       loadUserLists();
-    }, [loadUserLists])
+      // Refresh zones too — the user may have changed their Tokyo ward
+      // selection in Settings, in which case the previously-loaded zone set
+      // is stale (or empty if they hadn't picked any wards on first launch).
+      loadZones(currentLocation ?? undefined);
+    }, [loadUserLists, loadZones, currentLocation])
   );
 
   useEffect(() => {

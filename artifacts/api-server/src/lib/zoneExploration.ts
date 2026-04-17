@@ -19,6 +19,17 @@ const ZONE_COMPLETION_XP = 500;
 const DATA_DIR = join(process.cwd(), "src/data/zones");
 
 const PROXIMITY_DEG = 0.009;
+// Hard cap: never send more than this many zones to the client for Tokyo
+const TOKYO_ZONE_CAP = 40;
+// Fallback radius when user is not inside any ward (parks, stations, rivers)
+const FALLBACK_RADIUS_DEG = 0.015; // ~1.5 km
+
+// Approximate squared distance in degrees (cosine-corrected lng) — good enough for proximity sorting
+function approxDistSq(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dLat = lat1 - lat2;
+  const dLng = (lng1 - lng2) * Math.cos(lat1 * (Math.PI / 180));
+  return dLat * dLat + dLng * dLng;
+}
 
 interface WardBoundary {
   id: string;
@@ -572,14 +583,41 @@ export async function getZonesForLocation(
     }
   }
 
+  // Fallback: when the user is outside all ward boundaries (parks, rivers, station plazas,
+  // boundary gaps), do a tight bounding-box query rather than dumping all city zones.
+  // This keeps the payload small even in edge-case locations.
   if (targetWardIds.size === 0) {
-    return getAllZonesForUser(userId, city);
+    const r = FALLBACK_RADIUS_DEG;
+    const fallbackZones = await db
+      .select()
+      .from(zones)
+      .where(
+        sql`${zones.city} = ${city}
+          AND ${zones.bboxMinLat} <= ${lat + r}
+          AND ${zones.bboxMaxLat} >= ${lat - r}
+          AND ${zones.bboxMinLng} <= ${lng + r}
+          AND ${zones.bboxMaxLng} >= ${lng - r}`
+      );
+    logger.debug({ city, lat, lng, count: fallbackZones.length }, "zone fallback bbox query");
+    return attachCoverage(userId, fallbackZones);
   }
 
-  const cityZones = await db
+  let cityZones = await db
     .select()
     .from(zones)
     .where(and(eq(zones.city, city), inArray(zones.wardId, [...targetWardIds])));
+
+  // Hard cap: for dense cities, limit the render budget by keeping only the
+  // N zones closest to the user. This prevents sending 100+ zones when the
+  // user is near a ward with many small neighbourhoods.
+  if (city === "tokyo" && cityZones.length > TOKYO_ZONE_CAP) {
+    cityZones = cityZones
+      .map((z) => ({ z, d: approxDistSq(lat, lng, z.centroidLat, z.centroidLng) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, TOKYO_ZONE_CAP)
+      .map(({ z }) => z);
+    logger.debug({ userId, city, cap: TOKYO_ZONE_CAP }, "zone hard cap applied");
+  }
 
   return attachCoverage(userId, cityZones);
 }

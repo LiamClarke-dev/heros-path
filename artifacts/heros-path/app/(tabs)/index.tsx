@@ -19,7 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import type RNMapView from "react-native-maps";
-import type { MapViewProps, MapMarkerProps, MapPolylineProps, MapPolygonProps, Region, Provider } from "react-native-maps";
+import type { Region } from "react-native-maps";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import { rdpSimplify } from "../../lib/geo";
@@ -27,7 +27,6 @@ import Colors from "../../constants/colors";
 import {
   type ZoneData,
   boundaryToPolygonCoords,
-  isZoneInViewport,
   getZoneCompletionLabel,
   ZONE_COLORS,
   ZONE_COMPLETION_THRESHOLD,
@@ -35,27 +34,11 @@ import {
 
 const IS_WEB = Platform.OS === "web";
 
-let MapView: React.ComponentClass<MapViewProps> | null = null;
-let Marker: React.ComponentType<MapMarkerProps> | null = null;
-let Polyline: React.ComponentType<MapPolylineProps> | null = null;
-let Polygon: React.ComponentType<MapPolygonProps> | null = null;
-let PROVIDER_GOOGLE: Provider | null = null;
-
-if (!IS_WEB) {
-  const Maps = require("react-native-maps");
-  MapView = Maps.default;
-  Marker = Maps.Marker;
-  Polyline = Maps.Polyline;
-  Polygon = Maps.Polygon;
-  PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
-}
-
-const MARKER_ARROW = require("../../assets/sprites/marker_arrow.png");
 import PingResultsSheet, { type PlaceResult as PingPlace } from "../../components/PingResultsSheet";
 import QuestProgressBar from "../../components/QuestProgressBar";
-import { EmojiPin } from "../../components/EmojiPin";
 import ListFilterSheet, { type ListInfo } from "../../components/ListFilterSheet";
 import { MapPinCallout, type MapPinPlace } from "../../components/MapPinCallout";
+import { MapCanvas } from "../../components/MapCanvas";
 
 interface Waypoint {
   lat: number;
@@ -76,13 +59,6 @@ interface ExploredCell {
 }
 
 type JourneyStatus = "idle" | "active" | "ending";
-
-interface ViewportRegion {
-  swLat: number;
-  swLng: number;
-  neLat: number;
-  neLng: number;
-}
 
 interface QuestItem {
   key: string;
@@ -109,16 +85,20 @@ interface GamificationResult {
   newStreak: number;
 }
 
-type ClusterItem = { kind: "pin"; pin: MapPinPlace };
-
-// Journey polylines stay bright BotW-green regardless of palette changes
-const JOURNEY_GREEN       = "#4efeb5";
-const JOURNEY_GREEN_GLOW  = "rgba(78,254,181,0.35)";
+// Historical journey polylines fade from brightest (most recent) to dimmest
 const HISTORY_COLORS = [
   "rgba(78,254,181,0.80)",
   "rgba(78,254,181,0.55)",
   "rgba(78,254,181,0.30)",
 ];
+
+// Default region used while we wait for the user's first GPS fix
+const FALLBACK_REGION: Region = {
+  latitude: 51.505,
+  longitude: -0.09,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
 
 function formatDistance(m: number): string {
   if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
@@ -163,7 +143,6 @@ export default function JourneyTab() {
   const [unexploredCells, setUnexploredCells] = useState<ExploredCell[]>([]);
   const [newTerritoryNearby, setNewTerritoryNearby] = useState(false);
   const [zonesData, setZonesData] = useState<ZoneData[]>([]);
-  const [viewport, setViewport] = useState<ViewportRegion | null>(null);
   const [elapsedDisplay, setElapsedDisplay] = useState("0:00");
   const [pingLoading, setPingLoading] = useState(false);
   const [pingSheetVisible, setPingSheetVisible] = useState(false);
@@ -461,17 +440,12 @@ export default function JourneyTab() {
 
   const zoomLatDeltaRef = useRef<number>(0.05);
 
-  function handleRegionChangeComplete(region: Region) {
+  // Stable identity (useCallback w/ no deps) so MapCanvas's React.memo doesn't
+  // bust on every parent render. Only updates zoomLatDelta when the change is
+  // meaningful (>5%), giving the zone-zoom gate built-in hysteresis.
+  const handleRegionChangeComplete = useCallback((region: Region) => {
     if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
     viewportTimerRef.current = setTimeout(() => {
-      const vp: ViewportRegion = {
-        swLat: region.latitude - region.latitudeDelta / 2,
-        swLng: region.longitude - region.longitudeDelta / 2,
-        neLat: region.latitude + region.latitudeDelta / 2,
-        neLng: region.longitude + region.longitudeDelta / 2,
-      };
-      setViewport(vp);
-      // Only trigger re-clustering when zoom level changes meaningfully (>5%)
       const newLatDelta = region.latitudeDelta;
       const prev = zoomLatDeltaRef.current;
       if (Math.abs(newLatDelta - prev) / Math.max(prev, 0.0001) > 0.05) {
@@ -479,7 +453,25 @@ export default function JourneyTab() {
         setZoomLatDelta(newLatDelta);
       }
     }, 400);
-  }
+  }, []);
+
+  // Locked initial region: captures the first non-null currentLocation, then
+  // never changes. Stable reference for MapCanvas memo.
+  const lockedInitialRegionRef = useRef<Region | null>(null);
+  const initialRegion = useMemo<Region>(() => {
+    if (lockedInitialRegionRef.current) return lockedInitialRegionRef.current;
+    if (currentLocation) {
+      const r: Region = {
+        latitude: currentLocation.lat,
+        longitude: currentLocation.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      lockedInitialRegionRef.current = r;
+      return r;
+    }
+    return FALLBACK_REGION;
+  }, [currentLocation]);
 
   async function handleLocateMe() {
     if (IS_WEB) return;
@@ -767,7 +759,11 @@ export default function JourneyTab() {
       loadHistory();
       loadQuests();
       if (currentLocation) loadExploredCells(currentLocation.lat, currentLocation.lng);
-      loadZones(currentLocation ?? undefined);
+      // NOTE: deliberately NOT calling loadZones() here. The PATCH above and
+      // the snap-to-roads job below both write coverage server-side. Calling
+      // loadZones() now races the server's coverage recalc and can briefly
+      // show zones as undiscovered before snap completes — the "completed →
+      // undiscovered → completed" flash. Defer to snap-to-roads completion.
 
       // Fire snap-to-roads asynchronously — does not block the journey-end UX
       setSnapLoading(true);
@@ -778,8 +774,14 @@ export default function JourneyTab() {
             headers: { Authorization: `Bearer ${token}` },
           });
           loadHistory();
+          // Single authoritative refresh once snapping (and any coverage
+          // recalculation it triggers) has fully resolved server-side.
+          loadZones(currentLocation ?? undefined);
         } catch (err) {
           console.warn("[JourneyMap] snap-to-roads failed (non-fatal)", err);
+          // Snap failed — fall back to a direct zones refresh so coverage
+          // still updates from the PATCH-time data.
+          loadZones(currentLocation ?? undefined);
         } finally {
           setSnapLoading(false);
         }
@@ -934,177 +936,100 @@ export default function JourneyTab() {
     [currentLocation]
   );
 
-  const clusteredPins = useMemo(
-    (): ClusterItem[] => mapPins.map((pin) => ({ kind: "pin", pin })),
+  // Pre-compute pin render data with a STABLE coordinate object per pin.
+  // The Google Maps iOS adapter compares `coordinate` by identity, so an
+  // inline `{ latitude: pin.lat, longitude: pin.lng }` literal in the render
+  // body would force a marker re-upload on every pan.
+  const pinRenderData = useMemo(
+    () => mapPins.map((pin) => ({
+      pin,
+      coordinate: { latitude: pin.lat, longitude: pin.lng },
+    })),
     [mapPins]
   );
+
+  // Bump a version counter when the pin set transitions empty <-> non-empty.
+  // Used as a Fragment key around the pin Markers to force GMSMapView's
+  // marker layer to flush, which works around the Google iOS adapter's
+  // "GMSMarker lingers after unmount" behaviour.
+  const [pinSetVersion, setPinSetVersion] = useState(0);
+  const prevPinsEmptyRef = useRef(true);
+  useEffect(() => {
+    const isEmpty = mapPins.length === 0;
+    if (isEmpty !== prevPinsEmptyRef.current) {
+      prevPinsEmptyRef.current = isEmpty;
+      setPinSetVersion((v) => v + 1);
+    }
+  }, [mapPins]);
 
   const listMap = useMemo(
     () => Object.fromEntries(userLists.map((l) => [l.id, l])),
     [userLists]
   );
 
+  // Pre-compute zone render data — depends ONLY on zonesData, not viewport.
+  // Building stable `coordinates` arrays here means a pan (which only updates
+  // viewport) never re-uploads polygon geometry to GMSMapView. This is the
+  // single largest perf win for idle-state map interaction.
+  const zoneRenderData = useMemo(() => {
+    return zonesData.map((zone) => {
+      const rings = boundaryToPolygonCoords(zone.boundary);
+      const isCompleted = zone.coveragePct >= ZONE_COMPLETION_THRESHOLD;
+      const isVisited = zone.coveragePct > 0;
+      const fillColor = isCompleted
+        ? ZONE_COLORS.completedFill
+        : isVisited
+          ? `rgba(255,213,0,${Math.round(zone.coveragePct * 0.45 * 100) / 100})`
+          : "transparent";
+      const strokeColor = isCompleted
+        ? ZONE_COLORS.completedStroke
+        : isVisited
+          ? ZONE_COLORS.inProgressStroke
+          : ZONE_COLORS.unvisitedStroke;
+      const strokeWidth = isCompleted ? 2 : isVisited ? 1.5 : 1;
+      return {
+        id: zone.id,
+        coveragePct: zone.coveragePct,
+        labelCoord: { latitude: zone.centroidLat, longitude: zone.centroidLng },
+        labelText: getZoneCompletionLabel(zone),
+        rings: rings.map((ring, ri) => {
+          const closed = ring.length > 0 ? [...ring, ring[0]] : ring;
+          return {
+            fillKey: `zone-fill-${zone.id}-${ri}`,
+            borderKey: `zone-border-${zone.id}-${ri}`,
+            fillCoords: ring,
+            borderCoords: closed,
+            fillColor,
+            strokeColor,
+            strokeWidth,
+          };
+        }),
+      };
+    });
+  }, [zonesData]);
+
   return (
     <View style={styles.container}>
-      {MapView && (
-        <MapView
-          ref={mapRef}
-          style={StyleSheet.absoluteFillObject}
-          provider={!IS_WEB && PROVIDER_GOOGLE ? PROVIDER_GOOGLE : undefined}
-          customMapStyle={Colors.mapDark}
-          showsUserLocation={false}
-          showsMyLocationButton={false}
-          showsCompass={false}
+      {!IS_WEB && (
+        <MapCanvas
+          mapRef={mapRef}
+          characterMarkerRef={characterMarkerRef}
+          initialRegion={initialRegion}
           onRegionChangeComplete={handleRegionChangeComplete}
-          initialRegion={
-            currentLocation
-              ? {
-                  latitude: currentLocation.lat,
-                  longitude: currentLocation.lng,
-                  latitudeDelta: 0.01,
-                  longitudeDelta: 0.01,
-                }
-              : {
-                  latitude: 51.505,
-                  longitude: -0.09,
-                  latitudeDelta: 0.05,
-                  longitudeDelta: 0.05,
-                }
-          }
-        >
-
-          {zoomLatDelta <= 0.12 && zonesData.flatMap((zone) => {
-            if (viewport && !isZoneInViewport(zone, viewport)) return [];
-
-            const rings = boundaryToPolygonCoords(zone.boundary);
-            const isCompleted = zone.coveragePct >= ZONE_COMPLETION_THRESHOLD;
-            const isVisited = zone.coveragePct > 0;
-            // Completed zones get a fixed fill; in-progress zones scale with coverage; untouched = transparent
-            const scaledFill = isCompleted
-              ? ZONE_COLORS.completedFill
-              : isVisited
-              ? `rgba(255,213,0,${Math.round(zone.coveragePct * 0.45 * 100) / 100})`
-              : "transparent";
-            const strokeColor = isCompleted
-              ? ZONE_COLORS.completedStroke
-              : isVisited
-              ? ZONE_COLORS.inProgressStroke
-              : ZONE_COLORS.unvisitedStroke;
-            const strokeWidth = isCompleted ? 2 : isVisited ? 1.5 : 1;
-            const elements = [];
-
-            for (let ri = 0; ri < rings.length; ri++) {
-              if (Polygon) {
-                // Fill polygon — stroke suppressed so PROVIDER_GOOGLE's solid-line
-                // override doesn't bleed through; the dashed border is drawn via Polyline below
-                elements.push(
-                  <Polygon
-                    key={`zone-fill-${zone.id}-${ri}`}
-                    coordinates={rings[ri]}
-                    strokeColor="transparent"
-                    strokeWidth={0}
-                    fillColor={scaledFill}
-                  />
-                );
-              }
-              if (Polyline) {
-                // Dashed border — lineDashPattern works on Polyline for both Apple Maps
-                // and Google Maps iOS; close the ring by appending the first coordinate
-                const ring = rings[ri];
-                const closed = ring.length > 0 ? [...ring, ring[0]] : ring;
-                elements.push(
-                  <Polyline
-                    key={`zone-border-${zone.id}-${ri}`}
-                    coordinates={closed}
-                    strokeColor={strokeColor}
-                    strokeWidth={strokeWidth}
-                    lineDashPattern={[8, 4]}
-                  />
-                );
-              }
-            }
-
-            if (Marker && !journeyId && zone.coveragePct > 0) {
-              elements.push(
-                <Marker
-                  key={`zone-label-${zone.id}`}
-                  coordinate={{
-                    latitude: zone.centroidLat,
-                    longitude: zone.centroidLng,
-                  }}
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  tracksViewChanges={false}
-                  flat
-                >
-                  <View style={styles.suburbLabelChip}>
-                    <Text style={styles.suburbLabelText}>
-                      {getZoneCompletionLabel(zone)}
-                    </Text>
-                  </View>
-                </Marker>
-              );
-            }
-
-            return elements;
-          })}
-          {Polyline && historicalPolylineData.map((p) => (
-            <Polyline
-              key={p.key}
-              coordinates={p.coords}
-              strokeColor={p.color}
-              strokeWidth={4}
-            />
-          ))}
-
-          {journeyStatus === "active" && activeSegmentGlow.length > 0 && Polyline && (
-            <>
-              {activeSegmentGlow.map((s) => (
-                <Polyline
-                  key={s.key}
-                  coordinates={s.coords}
-                  strokeColor={JOURNEY_GREEN_GLOW}
-                  strokeWidth={10}
-                />
-              ))}
-              {activeSegmentLine.map((s) => (
-                <Polyline
-                  key={s.key}
-                  coordinates={s.coords}
-                  strokeColor={JOURNEY_GREEN}
-                  strokeWidth={4}
-                />
-              ))}
-            </>
-          )}
-
-          {characterCoord && Marker && React.createElement(Marker as React.ElementType, {
-            ref: characterMarkerRef,
-            key: "character-arrow",
-            coordinate: characterCoord,
-            anchor: { x: 0.5, y: 0.9 },
-            tracksViewChanges: false,
-            flat: false,
-            rotation: 0,
-            image: MARKER_ARROW,
-          })}
-
-          {Marker && clusteredPins.map((item) => {
-            const list = listMap[item.pin.listId];
-            if (!list) return null;
-            const isSelected = selectedPin?.googlePlaceId === item.pin.googlePlaceId;
-            return (
-              <Marker
-                key={`pin-${item.pin.googlePlaceId}`}
-                coordinate={{ latitude: item.pin.lat, longitude: item.pin.lng }}
-                anchor={{ x: 0.5, y: 1.0 }}
-                tracksViewChanges={isSelected}
-                onPress={() => setSelectedPin(isSelected ? null : item.pin)}
-              >
-                <EmojiPin emoji={list.emoji} color={list.color} size="md" />
-              </Marker>
-            );
-          })}
-        </MapView>
+          zoneRenderData={zoneRenderData}
+          zoomLatDelta={zoomLatDelta}
+          showZoneLabels={!journeyId}
+          historicalPolylineData={historicalPolylineData}
+          isJourneyActive={journeyStatus === "active"}
+          activeSegmentGlow={activeSegmentGlow}
+          activeSegmentLine={activeSegmentLine}
+          characterCoord={characterCoord}
+          pinRenderData={pinRenderData}
+          pinSetVersion={pinSetVersion}
+          listMap={listMap}
+          selectedPinId={selectedPin?.googlePlaceId ?? null}
+          onPinPress={setSelectedPin}
+        />
       )}
 
       {selectedPin && (() => {
@@ -1679,18 +1604,5 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     color: Colors.parchment,
-  },
-  suburbLabelChip: {
-    backgroundColor: Colors.backgroundAlpha72,
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  suburbLabelText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 10,
-    color: Colors.parchmentMuted,
   },
 });

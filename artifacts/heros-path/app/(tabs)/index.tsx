@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -50,7 +50,7 @@ if (!IS_WEB) {
   PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
 }
 
-import { CharacterMarker, headingToDirection } from "../../components/CharacterMarker";
+const MARKER_ARROW = require("../../assets/sprites/marker_arrow.png");
 import PingResultsSheet, { type PlaceResult as PingPlace } from "../../components/PingResultsSheet";
 import QuestProgressBar from "../../components/QuestProgressBar";
 import { EmojiPin } from "../../components/EmojiPin";
@@ -202,6 +202,11 @@ export default function JourneyTab() {
   const hasAutocenteredRef = useRef(false);
   const bypassQualityGateRef = useRef(false);
   const journeyIdRef = useRef<string | null>(null);
+
+  // Arrow marker smooth-rotation refs
+  const characterMarkerRef = useRef<any>(null);
+  const headingAnimRef = useRef(new Animated.Value(0));
+  const displayedHeadingRef = useRef(0);
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zonesFingerprintRef = useRef<string>("");
 
@@ -386,6 +391,38 @@ export default function JourneyTab() {
         .catch(() => {});
     };
   }, []);
+
+  // Smooth arrow-marker rotation via setNativeProps — no React re-renders
+  useEffect(() => {
+    if (!currentLocation) return;
+    const targetRaw = (journeyStatus === "active" && currentHeading !== null)
+      ? currentHeading
+      : displayedHeadingRef.current;
+    // Shortest-path interpolation across the 0/360 boundary
+    const current = displayedHeadingRef.current;
+    let diff = ((targetRaw - current) % 360 + 360) % 360;
+    if (diff > 180) diff -= 360;
+    const target = current + diff;
+
+    headingAnimRef.current.setValue(current);
+    const anim = Animated.timing(headingAnimRef.current, {
+      toValue: target,
+      duration: 280,
+      useNativeDriver: false,
+    });
+    const listenerId = headingAnimRef.current.addListener(({ value }) => {
+      displayedHeadingRef.current = value;
+      characterMarkerRef.current?.setNativeProps({ rotation: value });
+    });
+    anim.start(() => {
+      headingAnimRef.current.removeListener(listenerId);
+      displayedHeadingRef.current = target;
+    });
+    return () => {
+      headingAnimRef.current.removeListener(listenerId);
+      anim.stop();
+    };
+  }, [currentHeading, journeyStatus, currentLocation]);
 
   useEffect(() => {
     if (IS_WEB) return;
@@ -1064,20 +1101,16 @@ export default function JourneyTab() {
             </>
           )}
 
-          {characterCoord && Marker && (() => {
-            const direction = headingToDirection(journeyStatus === "active" ? currentHeading : null);
-            return (
-              <Marker
-                key={`character-${direction}`}
-                coordinate={characterCoord}
-                anchor={{ x: 0.5, y: 1.0 }}
-                tracksViewChanges={false}
-                flat={false}
-              >
-                <CharacterMarker direction={direction} />
-              </Marker>
-            );
-          })()}
+          {characterCoord && Marker && React.createElement(Marker as React.ElementType, {
+            ref: characterMarkerRef,
+            key: "character-arrow",
+            coordinate: characterCoord,
+            anchor: { x: 0.5, y: 0.9 },
+            tracksViewChanges: false,
+            flat: false,
+            rotation: 0,
+            image: MARKER_ARROW,
+          })}
 
           {Marker && clusteredPins.map((item) => {
             if (item.kind === "cluster") {

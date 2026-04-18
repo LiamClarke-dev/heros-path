@@ -23,6 +23,7 @@ import type { Region } from "react-native-maps";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import { rdpSimplify } from "../../lib/geo";
+import { defaultJourneyName } from "../../lib/journeyName";
 import Colors from "../../constants/colors";
 import {
   type ZoneData,
@@ -557,9 +558,14 @@ export default function JourneyTab() {
 
     let data: { id: string; startedAt: string };
     try {
+      // Generate the default name client-side so it reflects the user's local
+      // timezone (server is UTC; otherwise an Australian morning walk gets
+      // labeled "Night Walk").
+      const localName = defaultJourneyName(new Date());
       data = (await apiFetch("/api/journeys", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: localName }),
       })) as { id: string; startedAt: string };
     } catch (err) {
       Alert.alert("Error", "Could not start journey. Please try again.");

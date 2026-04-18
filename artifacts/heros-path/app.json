@@ -20,7 +20,8 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "Hero's Path uses your location to record your journey and show you on the map.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Hero's Path tracks your location in the background so your journey keeps recording when your screen is locked."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Hero's Path tracks your location in the background so your journey keeps recording when your screen is locked.",
+        "UIBackgroundModes": ["location", "fetch"]
       }
     },
     "android": {
@@ -49,7 +50,16 @@
       ],
       "expo-font",
       "expo-dev-client",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Hero's Path tracks your location in the background so your journey keeps recording when your screen is locked.",
+          "locationWhenInUsePermission": "Hero's Path uses your location to record your journey and show you on the map.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

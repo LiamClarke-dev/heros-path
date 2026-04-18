@@ -127,7 +127,13 @@ router.post("/", async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const id = crypto.randomUUID();
   const now = new Date();
-  const name = generateJourneyName(now);
+  // Prefer the client-supplied name (computed in the user's local timezone).
+  // Fall back to server-generated name only for legacy clients that don't send one.
+  const clientName =
+    typeof req.body?.name === "string" && req.body.name.trim().length > 0
+      ? req.body.name.trim().slice(0, 100)
+      : null;
+  const name = clientName ?? generateJourneyName(now);
   const [journey] = await db
     .insert(journeys)
     .values({ id, userId: user.id, name })

@@ -33,9 +33,9 @@ if (!IS_WEB) {
 
 // Explicitly reference the 2x file so React Native's auto-resolution never
 // picks the 3x variant (456×465 px) on high-DPI screens. Size is fixed at
-// 40×41 pt via the RNImage style below, regardless of screen density.
+// 80×82 pt via the RNImage style below, regardless of screen density.
 const MARKER_ARROW_2X = require("../assets/sprites/marker_arrow2x.png");
-const MARKER_ARROW_STYLE = { width: 40, height: 41 } as const;
+const MARKER_ARROW_STYLE = { width: 80, height: 82 } as const;
 
 // Stable references — see notes in app/(tabs)/index.tsx
 const DASH_PATTERN: number[] = [8, 4];

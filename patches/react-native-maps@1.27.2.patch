@@ -1,0 +1,21 @@
+diff --git a/ios/AirGoogleMaps/AIRGoogleMap.mm b/ios/AirGoogleMaps/AIRGoogleMap.mm
+index b375241079d30214ccfab790e8ea6c18910243c0..0a987d3cee0cbb9d4964d7ab02ee8f8b96e4109f 100644
+--- a/ios/AirGoogleMaps/AIRGoogleMap.mm
++++ b/ios/AirGoogleMaps/AIRGoogleMap.mm
+@@ -290,7 +290,15 @@ id regionAsJSON(MKCoordinateRegion region) {
+       [self insertReactSubview:(UIView *)childSubviews[i] atIndex:atIndex];
+     }
+   }
+-  [_reactSubviews insertObject:(UIView *)subview atIndex:(NSUInteger) atIndex];
++  // Guard against NSRangeException when Fabric's legacy interop
++  // (RCTLegacyViewManagerInteropComponentView) sends stale atIndex values during
++  // rapid mount transactions (e.g. starting a journey while many zone polygons are
++  // already mounted). Without this check the array throws and the app SIGABRTs.
++  NSUInteger safeIndex = (NSUInteger)atIndex;
++  if (safeIndex > _reactSubviews.count) {
++    safeIndex = _reactSubviews.count;
++  }
++  [_reactSubviews insertObject:(UIView *)subview atIndex:safeIndex];
+ }
+ #pragma clang diagnostic pop
+ 

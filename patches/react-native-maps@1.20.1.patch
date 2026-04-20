@@ -1,0 +1,54 @@
+diff --git a/ios/AirGoogleMaps/AIRGoogleMap.m b/ios/AirGoogleMaps/AIRGoogleMap.m
+index a1ffe694df8b5016dfffff75c454afde5bf32348..7fc7876bdc2edc78496df987a581f66522199ea9 100644
+--- a/ios/AirGoogleMaps/AIRGoogleMap.m
++++ b/ios/AirGoogleMaps/AIRGoogleMap.m
+@@ -188,7 +188,15 @@ id regionAsJSON(MKCoordinateRegion region) {
+       [self insertReactSubview:(UIView *)childSubviews[i] atIndex:atIndex];
+     }
+   }
+-  [_reactSubviews insertObject:(UIView *)subview atIndex:(NSUInteger) atIndex];
++  // Guard against NSRangeException when Fabric's legacy interop
++  // (RCTLegacyViewManagerInteropComponentView) sends stale atIndex values during
++  // rapid mount transactions (e.g. starting a journey while many zone polygons are
++  // already mounted). Without this check the array throws and the app SIGABRTs.
++  NSUInteger safeIndex = (NSUInteger)atIndex;
++  if (safeIndex > _reactSubviews.count) {
++    safeIndex = _reactSubviews.count;
++  }
++  [_reactSubviews insertObject:(UIView *)subview atIndex:safeIndex];
+ }
+ #pragma clang diagnostic pop
+ 
+diff --git a/ios/AirGoogleMaps/AIRGoogleMapPolyline.m b/ios/AirGoogleMaps/AIRGoogleMapPolyline.m
+index 1f29d88ee4465cdec1708c27f5bd78ddcddb14e2..123fd8ad655e8425b923731fa2c2c9c8496db8fc 100644
+--- a/ios/AirGoogleMaps/AIRGoogleMapPolyline.m
++++ b/ios/AirGoogleMaps/AIRGoogleMapPolyline.m
+@@ -20,8 +20,12 @@
+ {
+   if (self = [super init]) {
+     _polyline = [[AIRGMSPolyline alloc] init];
+-    _polyline.spans = @[[GMSStyleSpan spanWithColor:_strokeColor]];
+-    _polyline.strokeColor = _strokeColor;
++    // Do NOT set _polyline.spans here: _strokeColor is nil at init time, so
++    // [GMSStyleSpan spanWithColor:nil] produces a span with the SDK's default
++    // colour (dark blue). Once spans is set, GMSPolyline ignores strokeColor, so
++    // the polyline would permanently render blue no matter what strokeColor is
++    // later passed by React. Let setStrokeColor: / setFillColor: set spans once
++    // real values are available.
+   }
+   return self;
+ }
+@@ -51,6 +55,13 @@
+ {
+   _strokeColor = strokeColor;
+   _polyline.strokeColor = strokeColor;
++  if (strokeColor && !_lineDashPattern) {
++    // Keep _polyline.spans in sync when no dash pattern is configured.
++    // GMSPolyline ignores strokeColor whenever spans is non-nil, so without
++    // this the polyline would render whatever colour spans was last set to
++    // (typically the SDK blue default from a stale init or previous setFillColor).
++    _polyline.spans = @[[GMSStyleSpan spanWithColor:strokeColor]];
++  }
+   [self configureStyleSpansIfNeeded];
+ }
+ 

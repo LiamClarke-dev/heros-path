@@ -87,10 +87,10 @@ interface GamificationResult {
 }
 
 // Historical journey polylines fade brightest (most recent) → dimmest (oldest).
-// MUST be opaque 6-char hex — AIRGoogleMapPolyline's native Obj-C parser cannot
-// handle rgba() or 8-char #RRGGBBAA, both of which fall back to GMSPolyline's
-// default dark blue. Achieve "fade" effect through decreasing brightness instead
-// of opacity: darkening toward the map's background makes older routes recede.
+// These values are passed as BOTH strokeColor AND fillColor on the <Polyline>.
+// See MapCanvas.tsx for the full explanation of the fillColor workaround that
+// makes colours actually render (react-native-maps bug: setStrokeColor: never
+// updates GMSPolyline.spans, so strokeColor alone is always ignored on iOS).
 const HISTORY_COLORS = [
   "#4efeb5", // most recent — full-brightness teal (same as active journey)
   "#239e6c", // middle — ~55% brightness teal

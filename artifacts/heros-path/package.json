@@ -33,6 +33,7 @@
     "expo-status-bar": "~3.0.9",
     "expo-system-ui": "~6.0.9",
     "expo-web-browser": "~15.0.10",
+    "patch-package": "^8.0.1",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-native": "0.81.5",

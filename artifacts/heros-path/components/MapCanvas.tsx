@@ -44,10 +44,19 @@ const CHARACTER_ANCHOR = { x: 0.5, y: 0.9 } as const;
 const LABEL_ANCHOR = { x: 0.5, y: 0.5 } as const;
 
 const JOURNEY_GREEN = "#4efeb5";
-// Glow uses a slightly darker opaque teal — AIRGoogleMapPolyline's native parser
-// cannot handle rgba() or 8-char #RRGGBBAA; opaque 6-char hex is required.
-// The wider glow polyline (10 pt) under the 4 pt solid line creates the halo effect.
-const JOURNEY_GREEN_GLOW = "#1a9e6e";
+// ─── WHY fillColor is passed alongside strokeColor on every Polyline ─────────
+// react-native-maps bug (all versions including 1.20.x): AIRGoogleMapPolyline.m
+// init sets _polyline.spans = @[[GMSStyleSpan spanWithColor:_strokeColor]] while
+// _strokeColor is still nil → span gets the GMSPolyline SDK default (dark blue).
+// GMSPolyline ignores strokeColor whenever spans is set, so setStrokeColor: never
+// has any effect unless lineDashPattern is also provided (zone borders work because
+// they have lineDashPattern which triggers configureStyleSpansIfNeeded).
+//
+// The workaround: setFillColor: *does* update _polyline.spans with the correct
+// colour (AIRGoogleMapPolyline.m:83-87), overriding the broken init span.
+// Pass fillColor matching strokeColor on every plain Polyline to invoke this path.
+// fillColor is harmlessly ignored by Android's Polyline implementation.
+const JOURNEY_GREEN_GLOW = "#4efeb580"; // semi-teal glow (fillColor drives actual render)
 
 export interface ZoneRingRenderData {
   fillKey: string;
@@ -194,6 +203,7 @@ function MapCanvasInner({
           key={p.key}
           coordinates={p.coords}
           strokeColor={p.color}
+          fillColor={p.color}
           strokeWidth={4}
         />
       ))}
@@ -205,6 +215,7 @@ function MapCanvasInner({
               key={s.key}
               coordinates={s.coords}
               strokeColor={JOURNEY_GREEN_GLOW}
+              fillColor={JOURNEY_GREEN_GLOW}
               strokeWidth={10}
             />
           ))}
@@ -213,6 +224,7 @@ function MapCanvasInner({
               key={s.key}
               coordinates={s.coords}
               strokeColor={JOURNEY_GREEN}
+              fillColor={JOURNEY_GREEN}
               strokeWidth={4}
             />
           ))}

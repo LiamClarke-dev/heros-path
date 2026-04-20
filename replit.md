@@ -138,10 +138,22 @@ lib/
 
 ## react-native-maps Notes
 
-- **Pin to exactly `1.18.0`** — only version compatible with Expo Go
+- **Version: `1.20.1`** (upgraded from 1.18.0 to fix the original AIRGoogleMap crash on SDK 54)
 - **Do NOT add to plugins array** in `app.json` — causes native build failures
 - Web stub via `metro.config.js` `resolveRequest` returning `{ type: "empty" }`
 - Loaded via conditional `require()` with try/catch to avoid web crashes
+
+### Native Patches (applied automatically via pnpm patch on every install)
+
+`patches/react-native-maps@1.20.1.patch` covers two bugs:
+
+**Bug 1 — `AIRGoogleMap insertReactSubview:atIndex:` crash (SIGABRT)**
+Fabric's legacy interop (`RCTLegacyViewManagerInteropComponentView`) occasionally sends stale `atIndex` values to `insertReactSubview:atIndex:`. The unguarded `[_reactSubviews insertObject:... atIndex:atIndex]` throws `NSRangeException` (index N beyond bounds [0..M]) and kills the app. Fix: clamp `safeIndex = min(atIndex, _reactSubviews.count)` before the insert.
+
+**Bug 2 — `AIRGoogleMapPolyline` always renders dark blue (strokeColor ignored)**
+`init` sets `_polyline.spans = @[[GMSStyleSpan spanWithColor:nil]]` (nil = SDK default blue). Once `spans` is set, `GMSPolyline` ignores `strokeColor` entirely. `setStrokeColor:` was calling `_polyline.strokeColor = ...` but NOT updating spans. Fix: (a) remove the `_polyline.spans` line from `init` so no broken span is pre-set, (b) add `_polyline.spans = @[[GMSStyleSpan spanWithColor:strokeColor]]` inside `setStrokeColor:` when no dash pattern is configured.
+
+**JS-side belt-and-braces workaround**: All plain `<Polyline>` elements (without `lineDashPattern`) also receive `fillColor` matching `strokeColor`. `setFillColor:` correctly updates `_polyline.spans` with the right colour and is ignored by Android. Zone-border polylines already work because they use `lineDashPattern` which triggers `configureStyleSpansIfNeeded` (rebuilds spans correctly).
 
 ## Critical Implementation Notes
 

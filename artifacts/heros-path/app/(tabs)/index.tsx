@@ -86,11 +86,13 @@ interface GamificationResult {
   newStreak: number;
 }
 
-// Historical journey polylines fade from brightest (most recent) to dimmest
+// Historical journey polylines fade from brightest (most recent) to dimmest.
+// Use #RRGGBBAA hex format — rgba() strings are not reliably parsed by the
+// native Google Maps layer on iOS New Architecture (Fabric).
 const HISTORY_COLORS = [
-  "rgba(78,254,181,0.80)",
-  "rgba(78,254,181,0.55)",
-  "rgba(78,254,181,0.30)",
+  "#4efeb5CC", // 80% opacity
+  "#4efeb58C", // 55% opacity
+  "#4efeb54D", // 30% opacity
 ];
 
 // Default region used while we wait for the user's first GPS fix
@@ -970,10 +972,12 @@ export default function JourneyTab() {
       const rings = boundaryToPolygonCoords(zone.boundary);
       const isCompleted = zone.coveragePct >= ZONE_COMPLETION_THRESHOLD;
       const isVisited = zone.coveragePct > 0;
+      // Coverage-scaled gold fill uses #RRGGBBAA hex; rgba() is unreliable on iOS Fabric
+      const coverageAlpha = Math.round(zone.coveragePct * 0.45 * 255).toString(16).padStart(2, "0").toUpperCase();
       const fillColor = isCompleted
         ? ZONE_COLORS.completedFill
         : isVisited
-          ? `rgba(255,213,0,${Math.round(zone.coveragePct * 0.45 * 100) / 100})`
+          ? `#FFD500${coverageAlpha}`
           : "transparent";
       const strokeColor = isCompleted
         ? ZONE_COLORS.completedStroke

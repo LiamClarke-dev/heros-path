@@ -44,7 +44,7 @@ const CHARACTER_ANCHOR = { x: 0.5, y: 0.9 } as const;
 const LABEL_ANCHOR = { x: 0.5, y: 0.5 } as const;
 
 const JOURNEY_GREEN = "#4efeb5";
-const JOURNEY_GREEN_GLOW = "rgba(78,254,181,0.35)";
+const JOURNEY_GREEN_GLOW = "#4efeb559"; // 35% opacity — #RRGGBBAA avoids rgba() parsing issues on iOS Fabric
 
 export interface ZoneRingRenderData {
   fillKey: string;

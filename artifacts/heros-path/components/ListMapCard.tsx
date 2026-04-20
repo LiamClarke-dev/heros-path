@@ -164,7 +164,7 @@ export function ListMapCard({ places, listEmoji, listColor, onViewPlaceDetail }:
         onPress={() => onPinPress(place)}
         tracksViewChanges={false}
       >
-        <EmojiPin emoji={listEmoji} color={listColor} size={34} />
+        <EmojiPin emoji={listEmoji} color={listColor} size="md" />
       </MapMarker>
     ));
 

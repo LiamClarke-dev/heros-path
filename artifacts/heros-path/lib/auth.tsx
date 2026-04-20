@@ -121,10 +121,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const discovery = useAutoDiscovery(REPLIT_ISSUER);
   // NOTE: Expo Go is not supported — this app requires native modules (react-native-maps,
   // expo-dev-client) that are not bundled in Expo Go. Use a custom EAS dev build instead.
-  // On native, use Expo auth proxy (HTTPS) so Replit's OIDC accepts the redirect URI.
-  // On web, use the default origin-based URI.
+  // On native, use the app's custom URI scheme so the OS routes the OAuth callback back
+  // to the app. On web, use the default origin-based URI.
   const redirectUri = makeRedirectUri(
-    Platform.OS === "web" ? {} : { useProxy: true }
+    Platform.OS === "web" ? {} : { scheme: "herospath" }
   );
 
   const [request, , promptAsync] = useAuthRequest(

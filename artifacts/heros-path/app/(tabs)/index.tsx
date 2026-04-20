@@ -86,13 +86,15 @@ interface GamificationResult {
   newStreak: number;
 }
 
-// Historical journey polylines fade from brightest (most recent) to dimmest.
-// Use #RRGGBBAA hex format — rgba() strings are not reliably parsed by the
-// native Google Maps layer on iOS New Architecture (Fabric).
+// Historical journey polylines fade brightest (most recent) → dimmest (oldest).
+// MUST be opaque 6-char hex — AIRGoogleMapPolyline's native Obj-C parser cannot
+// handle rgba() or 8-char #RRGGBBAA, both of which fall back to GMSPolyline's
+// default dark blue. Achieve "fade" effect through decreasing brightness instead
+// of opacity: darkening toward the map's background makes older routes recede.
 const HISTORY_COLORS = [
-  "#4efeb5CC", // 80% opacity
-  "#4efeb58C", // 55% opacity
-  "#4efeb54D", // 30% opacity
+  "#4efeb5", // most recent — full-brightness teal (same as active journey)
+  "#239e6c", // middle — ~55% brightness teal
+  "#0d6644", // oldest  — ~30% brightness teal
 ];
 
 // Default region used while we wait for the user's first GPS fix

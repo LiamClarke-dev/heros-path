@@ -33,9 +33,9 @@ if (!IS_WEB) {
 
 // Explicitly reference the 2x file so React Native's auto-resolution never
 // picks the 3x variant (456×465 px) on high-DPI screens. Size is fixed at
-// 80×82 pt via the RNImage style below, regardless of screen density.
+// 120×123 pt via the RNImage style below, regardless of screen density.
 const MARKER_ARROW_2X = require("../assets/sprites/marker_arrow2x.png");
-const MARKER_ARROW_STYLE = { width: 80, height: 82 } as const;
+const MARKER_ARROW_STYLE = { width: 120, height: 123 } as const;
 
 // Stable references — see notes in app/(tabs)/index.tsx
 const DASH_PATTERN: number[] = [8, 4];
@@ -44,7 +44,10 @@ const CHARACTER_ANCHOR = { x: 0.5, y: 0.9 } as const;
 const LABEL_ANCHOR = { x: 0.5, y: 0.5 } as const;
 
 const JOURNEY_GREEN = "#4efeb5";
-const JOURNEY_GREEN_GLOW = "#4efeb559"; // 35% opacity — #RRGGBBAA avoids rgba() parsing issues on iOS Fabric
+// Glow uses a slightly darker opaque teal — AIRGoogleMapPolyline's native parser
+// cannot handle rgba() or 8-char #RRGGBBAA; opaque 6-char hex is required.
+// The wider glow polyline (10 pt) under the 4 pt solid line creates the halo effect.
+const JOURNEY_GREEN_GLOW = "#1a9e6e";
 
 export interface ZoneRingRenderData {
   fillKey: string;

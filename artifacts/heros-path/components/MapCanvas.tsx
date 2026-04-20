@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import { View, Text, StyleSheet, Platform } from "react-native";
+import { View, Text, StyleSheet, Platform, Image as RNImage } from "react-native";
 import type RNMapView from "react-native-maps";
 import type {
   MapViewProps,
@@ -31,7 +31,11 @@ if (!IS_WEB) {
   PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
 }
 
-const MARKER_ARROW = require("../assets/sprites/marker_arrow.png");
+// Explicitly reference the 2x file so React Native's auto-resolution never
+// picks the 3x variant (456×465 px) on high-DPI screens. Size is fixed at
+// 40×41 pt via the RNImage style below, regardless of screen density.
+const MARKER_ARROW_2X = require("../assets/sprites/marker_arrow2x.png");
+const MARKER_ARROW_STYLE = { width: 40, height: 41 } as const;
 
 // Stable references — see notes in app/(tabs)/index.tsx
 const DASH_PATTERN: number[] = [8, 4];
@@ -213,19 +217,29 @@ function MapCanvasInner({
       )}
 
       {/* Character arrow marker.
-          tracksViewChanges MUST stay true on Google Maps iOS — when it's
-          false at mount, GMSMarker captures its visual state before the
-          `image` PNG is applied, leaving an invisible marker that never
-          repaints. Single marker + tiny PNG = negligible perf cost. */}
-      {characterCoord && Marker && React.createElement(Marker as React.ElementType, {
-        key: "character-arrow",
-        coordinate: characterCoord,
-        anchor: CHARACTER_ANCHOR,
-        tracksViewChanges: true,
-        flat: true,
-        rotation: characterRotation,
-        image: MARKER_ARROW,
-      })}
+          Uses children + explicit RNImage dimensions (40×41 pt) so the marker
+          always renders at the intended size regardless of screen density —
+          the 2x PNG (304×310 px) was chosen; without this, auto-resolution
+          would pick the 3x file (456×465 px) on iPhone 16's @3x screen.
+          tracksViewChanges MUST stay true on Google Maps iOS — when false at
+          mount, GMSMarker captures its visual state before the child view
+          is applied, leaving an invisible marker that never repaints. */}
+      {characterCoord && Marker && React.createElement(
+        Marker as React.ElementType,
+        {
+          key: "character-arrow",
+          coordinate: characterCoord,
+          anchor: CHARACTER_ANCHOR,
+          tracksViewChanges: true,
+          flat: true,
+          rotation: characterRotation,
+        },
+        <RNImage
+          source={MARKER_ARROW_2X}
+          style={MARKER_ARROW_STYLE}
+          resizeMode="contain"
+        />,
+      )}
 
       {/* Pin marker subtree — Fragment key bumps on empty<->non-empty
           transitions to flush GMSMapView's stale marker layer. */}

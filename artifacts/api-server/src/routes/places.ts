@@ -98,6 +98,7 @@ router.get("/discovered", async (req: Request, res: Response) => {
       lat: placeCache.lat,
       lng: placeCache.lng,
       rating: placeCache.rating,
+      userRatingCount: placeCache.userRatingCount,
       types: placeCache.types,
       primaryType: placeCache.primaryType,
       photoReference: placeCache.photoReference,
@@ -126,7 +127,23 @@ router.get("/discovered", async (req: Request, res: Response) => {
   const [rows, countRow] = await Promise.all([
     baseJoin
       .where(whereCondition)
-      .orderBy(sql`${userDiscoveredPlaces.lastDiscoveredAt} DESC`)
+      // Bayesian-weighted ranking (IMDb formula). Avoids the "5★ with 2 reviews
+      // beats 4.8★ with 50 reviews" trap by smoothing every place's rating
+      // toward the assumed prior C=4.0 (Google Places average) using a
+      // confidence weight of m=20 reviews. Places with no rating get score 0
+      // and fall to the bottom; ties are broken by recency.
+      // Formula: ((v / (v + m)) * R) + ((m / (v + m)) * C)
+      .orderBy(
+        sql`CASE WHEN ${placeCache.rating} IS NULL THEN 0
+            ELSE (
+              (COALESCE(${placeCache.userRatingCount}, 0)::float
+                / (COALESCE(${placeCache.userRatingCount}, 0) + 20))
+              * ${placeCache.rating}::float
+              + (20.0 / (COALESCE(${placeCache.userRatingCount}, 0) + 20)) * 4.0
+            )
+            END DESC`,
+        sql`${userDiscoveredPlaces.lastDiscoveredAt} DESC`
+      )
       .limit(limit)
       .offset(offset),
     db
@@ -150,6 +167,7 @@ router.get("/discovered", async (req: Request, res: Response) => {
     lat: parseFloat(String(p.lat)),
     lng: parseFloat(String(p.lng)),
     rating: p.rating !== null ? parseFloat(String(p.rating)) : null,
+    userRatingCount: p.userRatingCount ?? null,
     isFavorited: p.isFavorited ?? false,
     isDismissed: p.isDismissed ?? false,
     isSnoozed: p.isSnoozed ?? false,

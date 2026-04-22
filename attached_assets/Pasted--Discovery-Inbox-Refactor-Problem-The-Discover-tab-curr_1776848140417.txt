@@ -1,0 +1,78 @@
+# Discovery Inbox Refactor
+
+## Problem
+
+The Discover tab currently shows all non-dismissed places in a single flat list. When a user favorites a place, marks it as visited, or adds it to a list, the card stays in the same position in the same list. There's no sense of progress or completion. Sorting through discoveries feels like homework because the list never gets shorter.
+
+## Solution: Inbox / Archive Model
+
+Treat discoveries like an inbox. New places arrive unactioned. The user triages them — favoriting, logging visits, adding to lists — then swipes the card away to archive it. The Discover tab defaults to showing only unactioned places. An archive view holds everything the user has already dealt with.
+
+## Data Model Changes
+
+Add `isActioned` (boolean, default false) to the `user_place_states` table. This is the only new field. A place becomes actioned when the user explicitly swipes it away after taking their desired actions, or when it's acted on during a ping results popup.
+
+Remove all snooze-related fields from `user_place_states`: `isSnoozed` and `snoozeUntil`. The snooze feature is being retired — the inbox/archive model replaces its purpose. Any existing snoozed places should be migrated to `isActioned = false` so they appear in the inbox.
+
+Rename the concept of "dismiss" to "delete" throughout the codebase. The `isDismissed` field can keep its column name in the database for simplicity, but all user-facing labels change from "Dismiss" to "Delete."
+
+## Discover Tab Changes
+
+The tab gets a segmented control or toggle at the top with two views: Inbox and Archive. Inbox is the default and shows only places where `isActioned = false`, not deleted. Archive shows places where `isActioned = true`, not deleted. The existing filter chips (favorites, by type, by journey) work in both views.
+
+The tab bar icon for Discover should show a badge count of unactioned places in the inbox. This creates the "clear your inbox" motivation loop.
+
+## PlaceCard Changes
+
+The action buttons on each card stay the same minus snooze: Favorite, Visited, List, and a "More" menu. The "More" menu contains "Delete" (was "Dismiss") and the existing options (View on Maps, Share). Snooze options are removed entirely from the More menu.
+
+Add a swipe-left-to-archive gesture on each PlaceCard. When the user swipes left, the card slides out with an animation and the place is marked as `isActioned = true`. This is the "I'm done with this one" gesture. Swiping without having taken any other action is valid — it means "I've seen this, not interested right now, but don't delete it."
+
+In the Archive view, the swipe gesture works in reverse — swipe to move a place back to the inbox (sets `isActioned = false`). This lets users recover places they want to reconsider.
+
+## Delete Behavior (formerly Dismiss)
+
+When a user taps "Delete" from the More menu, show a confirmation dialog: "Are you sure? This will permanently remove this place from all current and future discoveries." Include a checkbox: "Don't show this warning again." Store the user's preference for suppressing this warning in local storage (AsyncStorage or SecureStore). If suppressed, delete immediately without the dialog.
+
+Deleting a place sets `isDismissed = true` and should also prevent the place from being re-discovered on future journeys. The backend discovery/ping logic should continue to exclude dismissed places from results.
+
+## Ping Results Sheet Changes
+
+Add the same action buttons (Favorite, Visited, List) to each place card in the PingResultsSheet. Currently the ping popup only displays place info with no actions.
+
+Any place the user acts on during the ping popup (favorites, adds to list, logs visit) is automatically marked as `isActioned = true`. It goes straight to the archive and never appears in the inbox. Places the user scrolls past without acting on land in the inbox as unactioned for later triage.
+
+## Onboarding Education
+
+Add a step to the onboarding flow that explains the discovery inbox. This should appear after the user sets their discovery preferences (place types, rating, max discoveries). Keep it to a single screen with a brief explanation and a visual hint:
+
+The messaging should convey: "After each journey, new places land in your Discover inbox. Take action on them — favorite, add to a list, or log a visit — then swipe to archive. Your inbox is your to-do list of places to check out."
+
+Include a small animation or illustration showing the swipe-to-archive gesture so the user understands the mechanic before they encounter it.
+
+## Backend API Changes
+
+Modify `GET /api/places/discovered` to accept a `view` query parameter with values `inbox` or `archive`. Inbox returns places where `isActioned = false` (plus existing not-deleted filters). Archive returns places where `isActioned = true` (plus not-deleted). Default to `inbox` if no view param is provided.
+
+Add `"archive"` as a new action in `POST /api/places/:id/state`. This sets `isActioned = true`. Add `"unarchive"` to set it back to `false`.
+
+Remove the `"snooze"` action from `POST /api/places/:id/state`. Remove snooze-related query logic from the discovered places endpoint. Remove the "snoozed" filter option from the frontend filter chips.
+
+When a place is deleted, also set `isActioned = true` so it doesn't appear in either view (the existing `isDismissed` filter already excludes it, but this keeps the data consistent).
+
+## Files to Change
+
+| Area | Files |
+|------|-------|
+| Schema | `lib/db/src/schema/lists.ts` — add `isActioned`, remove `isSnoozed` and `snoozeUntil` |
+| Migration | New migration to add column, drop columns, migrate snoozed places |
+| API routes | `artifacts/api-server/src/routes/places.ts` — add view param, archive/unarchive actions, remove snooze logic |
+| Discover tab | `artifacts/heros-path/app/(tabs)/discover.tsx` — inbox/archive toggle, remove snooze filter, add badge count |
+| PlaceCard | `artifacts/heros-path/components/PlaceCard.tsx` — swipe gesture, remove snooze from More menu, rename Dismiss to Delete |
+| PingResultsSheet | `artifacts/heros-path/components/PingResultsSheet.tsx` — add action buttons, auto-archive on action |
+| Onboarding | `artifacts/heros-path/components/OnboardingSheet.tsx` — add inbox education step |
+| Delete warning | New local storage key for "don't show again" preference |
+
+## What Stays the Same
+
+The place detail screen, visit logging sheet, add-to-list sheet, list management, and all gamification features are unchanged. The favorite, visit, and list data models are untouched. The only structural change is the addition of `isActioned` and the removal of snooze.

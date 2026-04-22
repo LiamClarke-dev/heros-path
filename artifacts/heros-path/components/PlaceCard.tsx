@@ -21,6 +21,7 @@ export interface DiscoveredPlace {
   lat: number;
   lng: number;
   rating: number | null;
+  userRatingCount: number | null;
   types: string[];
   primaryType: string | null;
   photoUrl: string | null;
@@ -46,7 +47,18 @@ interface Props {
   onMarkVisited: (id: string) => void;
 }
 
-function RatingStars({ rating }: { rating: number | null }) {
+function formatReviewCount(count: number): string {
+  if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}k`;
+  return String(count);
+}
+
+function RatingStars({
+  rating,
+  reviewCount,
+}: {
+  rating: number | null;
+  reviewCount: number | null;
+}) {
   if (rating === null) return null;
   const full = Math.floor(rating);
   const half = rating - full >= 0.5;
@@ -61,6 +73,9 @@ function RatingStars({ rating }: { rating: number | null }) {
         <Feather key={`e${i}`} name="star" size={12} color={Colors.parchmentDim} />
       ))}
       <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
+      {reviewCount !== null && reviewCount > 0 && (
+        <Text style={styles.reviewCountText}>({formatReviewCount(reviewCount)})</Text>
+      )}
     </View>
   );
 }
@@ -216,7 +231,7 @@ export function PlaceCard({
             <Text style={styles.type}>{typeLabel}</Text>
           )}
 
-          <RatingStars rating={place.rating} />
+          <RatingStars rating={place.rating} reviewCount={place.userRatingCount} />
 
           {place.address ? (
             <Text style={styles.address} numberOfLines={1}>{place.address}</Text>
@@ -369,6 +384,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.parchmentMuted,
     marginLeft: 2,
+  },
+  reviewCountText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.parchmentDim,
+    marginLeft: 3,
   },
   address: {
     fontFamily: "Inter_400Regular",

@@ -305,7 +305,17 @@ export default function JourneyTab() {
         )) as { explored: ExploredCell[]; unexplored: ExploredCell[] };
         setExploredCells(data.explored);
         setUnexploredCells(data.unexplored);
-        setNewTerritoryNearby(data.unexplored.length > 0);
+        // "New territory ahead" should only fire when the user is actually
+        // close to the boundary of a new cell — not whenever ANY unexplored
+        // cell happens to be within the 1km API radius (in dense cities like
+        // Tokyo that's basically always true). 80m ≈ "you're about to step
+        // into it within ~1 minute of walking".
+        const NEAR_EDGE_M = 80;
+        const closestUnexploredM = data.unexplored.reduce((min, cell) => {
+          const d = haversineM(lat, lng, cell.lat, cell.lng);
+          return d < min ? d : min;
+        }, Infinity);
+        setNewTerritoryNearby(closestUnexploredM <= NEAR_EDGE_M);
       } catch (err) {
         console.warn("[JourneyMap] loadExploredCells failed", err);
       }
@@ -516,8 +526,10 @@ export default function JourneyTab() {
 
   const locationWatchOptions: Location.LocationOptions = {
     accuracy: Location.Accuracy.BestForNavigation,
-    distanceInterval: 10,
-    timeInterval: 2000,
+    // Lowered from 10m / 2000ms → 5m / 1500ms for slightly smoother polylines.
+    // Going much lower than this drains battery and adds GPS jitter (zigzags).
+    distanceInterval: 5,
+    timeInterval: 1500,
   };
 
   function onLocationUpdate(position: Location.LocationObject) {
@@ -802,6 +814,15 @@ export default function JourneyTab() {
           Animated.timing(celebrationOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
         ]).start(() => setCelebrationVisible(false));
       }
+
+      // Surface the journey's discoveries straight away — previously the user
+      // had to navigate to Past Journeys to see what they'd found. We push the
+      // detail page after a short delay so the celebration overlay can play
+      // first when XP was earned (no delay if no celebration).
+      const navDelayMs = (result.xpGained ?? 0) > 0 ? 3600 : 0;
+      setTimeout(() => {
+        router.push(`/journey-detail?journeyId=${endedJourneyId}`);
+      }, navDelayMs);
     } catch (err) {
       console.warn("[JourneyMap] endJourney PATCH failed", err);
       // Restore buffer and restart full tracking so user can retry

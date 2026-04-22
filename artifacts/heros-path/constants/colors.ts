@@ -63,10 +63,18 @@ const Colors = {
   tabBarInactive: "#2A3F5E",  // Dark slate inactive
 
   // ── Map: Zelda Breath of the Wild warm parchment cartography ─
+  // All `labels.icon` features are forced off — without this, Google Maps renders
+  // grey square placeholders where icons would normally sit, covering roads.
   mapDark: [
+    { featureType: "all", elementType: "labels", stylers: [{ visibility: "on" }] },
+    { featureType: "all", elementType: "labels.text", stylers: [{ visibility: "on" }] },
+    { featureType: "all", elementType: "labels.text.fill", stylers: [{ visibility: "on" }] },
+    { featureType: "all", elementType: "labels.text.stroke", stylers: [{ visibility: "on" }] },
+    { featureType: "all", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
     { featureType: "administrative", elementType: "all", stylers: [{ visibility: "on" }] },
     { featureType: "administrative", elementType: "labels.text.fill", stylers: [{ color: "#9d935e" }] },
     { featureType: "administrative", elementType: "labels.text.stroke", stylers: [{ color: "#3f3b28" }] },
+    { featureType: "administrative", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
     { featureType: "landscape", elementType: "geometry.fill", stylers: [{ color: "#5a5335" }] },
     { featureType: "landscape.man_made", elementType: "geometry.fill", stylers: [{ color: "#4d4329" }] },
     { featureType: "landscape.man_made", elementType: "geometry.stroke", stylers: [{ visibility: "off" }] },
@@ -76,9 +84,12 @@ const Colors = {
     { featureType: "poi.park", elementType: "geometry.fill", stylers: [{ color: "#372f14" }] },
     { featureType: "road", elementType: "all", stylers: [{ saturation: -100 }, { lightness: 45 }, { color: "#959358" }] },
     { featureType: "road", elementType: "labels.text", stylers: [{ visibility: "off" }] },
+    { featureType: "road", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
     { featureType: "road.highway", elementType: "all", stylers: [{ visibility: "simplified" }] },
+    { featureType: "road.highway", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
     { featureType: "road.arterial", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
     { featureType: "transit", elementType: "all", stylers: [{ visibility: "off" }] },
+    { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
     { featureType: "water", elementType: "geometry.fill", stylers: [{ color: "#344144" }] },
   ],
 };
